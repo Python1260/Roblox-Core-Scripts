@@ -1,14 +1,11 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 
+local KeepPrefix = require(script.Parent.colorScopeKeepPrefix)
 local Tokens = require(Foundation.Providers.Style.Tokens)
 local Types = require(script.Parent.Rules.Types)
 
 type Tokens = Tokens.Tokens
 type FormattedTokens = Types.FormattedTokens
-
-local KeepPrefix = {
-	System = true,
-}
 
 local function pascalToKebab(str: string)
 	-- Replace underscores with hyphens
@@ -56,7 +53,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return formattedTokens
 	end
 
-	for name, value in tokens.Color :: any do
+	for name, value in pairs(tokens.Color) do
 		if value.Background then
 			-- ActionX color
 			variants[pascalToKebab(name)] = value
@@ -70,7 +67,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		end
 	end
 
-	for name, value in tokens.Inverse :: any do
+	for name, value in pairs(tokens.Inverse) do
 		-- Generate only Content colors on purpose
 		if name == "Content" then
 			for innerName, innerValue in value do
@@ -80,7 +77,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		end
 	end
 
-	for name, value in tokens.Stroke do
+	for name, value in pairs(tokens.Stroke) do
 		table.insert(strokes, { name = pascalToKebab(name), size = value })
 	end
 
@@ -90,7 +87,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return a.size < b.size
 	end)
 
-	for name, value in tokens.Gap do
+	for name, value in pairs(tokens.Gap) do
 		table.insert(gaps, { name = string.lower(name), size = UDim.new(0, value) })
 	end
 
@@ -98,7 +95,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return a.size.Offset < b.size.Offset
 	end)
 
-	for name, value in tokens.Radius do
+	for name, value in pairs(tokens.Radius) do
 		table.insert(radii, { name = string.lower(name), size = UDim.new(0, value) })
 	end
 
@@ -106,7 +103,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return a.size.Offset < b.size.Offset
 	end)
 
-	for name, value in tokens.Size do
+	for name, value in pairs(tokens.Size) do
 		local number = string.split(name, "_")[2]
 		table.insert(sizes, { name = pascalToKebab(number), size = UDim.new(0, value) })
 	end
@@ -118,7 +115,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return a.size.Offset < b.size.Offset
 	end)
 
-	for name, value in tokens.Typography do
+	for name, value in pairs(tokens.Typography) do
 		typography[pascalToKebab(name)] = {
 			Font = value.Font,
 			TextSize = value.FontSize,
@@ -126,7 +123,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		}
 	end
 
-	for name, value in tokens.Padding do
+	for name, value in pairs(tokens.Padding) do
 		table.insert(paddings, { name = string.lower(name), size = UDim.new(0, value) })
 	end
 
@@ -134,7 +131,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return a.size.Offset < b.size.Offset
 	end)
 
-	for name, value in tokens.Margin do
+	for name, value in pairs(tokens.Margin) do
 		table.insert(margins, { name = string.lower(name), size = UDim.new(0, value) })
 	end
 
@@ -142,7 +139,7 @@ local function formatTokens(tokens: Tokens?): FormattedTokens
 		return a.size.Offset < b.size.Offset
 	end)
 
-	for name, value in tokens.Gutter do
+	for name, value in pairs(tokens.Gutter) do
 		table.insert(gutters, { name = string.lower(name), size = UDim.new(0, value) })
 	end
 

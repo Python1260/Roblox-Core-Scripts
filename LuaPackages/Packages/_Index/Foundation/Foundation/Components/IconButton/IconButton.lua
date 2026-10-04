@@ -56,9 +56,9 @@ export type IconButtonProps = {
 	-- Size of IconButton. `IconSize` is deprecated - use `InputSize`.
 	-- `Large` and `XLarge` `IconSize`s map to `InputSize.Large` and are not supported.
 	size: (InputSize | IconSize)?,
-	-- Sets a custom width. Prefer wrapping in a fixed-width container and using `fillBehavior = Fill` instead.
+	-- **DEPRECATED** Sets a custom width. Prefer wrapping in a fixed-width container and using `fillBehavior = Fill` instead.
 	width: UDim?,
-	-- Controls how the IconButton fills space in a layout.
+	-- **DEPRECATED** Controls how the IconButton fills space in a layout.
 	fillBehavior: FillBehavior?,
 	variant: SupportedIconButtonVariant?,
 	icon: string | {
@@ -96,7 +96,7 @@ local function IconButton(iconButtonProps: IconButtonProps, ref: React.Ref<GuiOb
 		tokens,
 		props.size,
 		props.variant,
-		if presentationContext then presentationContext.colorMode else nil
+		if presentationContext then presentationContext.colorNamespace else nil
 	)
 
 	local containerSize = variantProps.container.size

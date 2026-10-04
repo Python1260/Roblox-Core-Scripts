@@ -37,9 +37,7 @@ local VRToggleButtonIntegration = ChromeService:register({
 	initialAvailability = initialAvailability,
 	id = "vr_toggle_button",
 	label = "Feature.Catalog.Label.Filter.Hide",
-	isActivated = function()
-		return mappedSignal:get()
-	end,
+	isActivated = mappedSignal,
 	activated = function()
 		if VRHub.ShowTopBar then
 			UIManager.getInstance():prepareGuiToggleAnimationState()

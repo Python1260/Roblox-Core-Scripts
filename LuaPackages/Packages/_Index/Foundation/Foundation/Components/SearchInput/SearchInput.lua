@@ -48,6 +48,8 @@ export type SearchInputProps = {
 	size: InputSize?,
 	-- Whether the SearchInput is disabled
 	isDisabled: boolean?,
+	-- Whether to show the clear button (defaults to true)
+	hasClearButton: boolean?,
 	-- Whether the SearchInput is in an error state
 	hasError: boolean?,
 	-- Width of the SearchInput
@@ -66,24 +68,26 @@ local defaultProps = {
 	size = InputSize.Medium,
 	variant = InputVariant.Standard,
 	shape = SearchInputShape.Pill,
+	hasClearButton = true,
 	testId = "--foundation-search-input",
 }
 
 local function SearchInput(searchInputProps: SearchInputProps, ref: React.Ref<GuiObject>?)
 	local props = withDefaults(searchInputProps, defaultProps)
 	local tokens = useTokens()
-	--[[
-		https://roblox.atlassian.net/browse/UIBLOX-4297
-		CLEAN AFTER CLEANING UP ALL 3 FLAGS: FFlagFoundationTextInputAlignStrokeBehavior, FFlagFoundationInternalTextInputVariants, FFlagFoundationInternalTextInputCornerRadius
-	]]
-	local textInputVariantProps =
-		useTextInputVariants(tokens, props.size :: InputSize, props.variant, nil, nil, nil, nil, true)
+	local textInputVariantProps = useTextInputVariants(tokens, props.size :: InputSize, props.variant)
 	local defaultWidth = useScaledValue(Constants.DEFAULT_INPUT_FIELD_WIDTH_PIXELS)
 
 	-- TODO: https://roblox.atlassian.net/browse/UIBLOX-4313 we should figure out if this should be default padding on InternalTextInput instead
-	local searchIconPosition = React.useMemo(function()
-		return UDim2.fromOffset(0, (textInputVariantProps.outerContainer.minHeight - tokens.Stroke.Standard) / 2)
-	end, { textInputVariantProps.outerContainer.minHeight, tokens.Stroke.Standard } :: { unknown })
+	local searchIconPosition = React.useMemo(
+		function()
+			return UDim2.fromOffset(0, (textInputVariantProps.container.minHeight - tokens.Stroke.Standard) / 2)
+		end,
+		{
+			textInputVariantProps.container.minHeight,
+			tokens.Stroke.Standard,
+		} :: { unknown }
+	)
 
 	return React.createElement(
 		View,
@@ -95,17 +99,17 @@ local function SearchInput(searchInputProps: SearchInputProps, ref: React.Ref<Gu
 		}),
 		{
 			Input = React.createElement(InternalTextInput, {
-				forceEnableFlagsForSearchInput = true,
 				ref = ref,
 				hasError = props.hasError,
 				isDisabled = props.isDisabled,
+				hasClearButton = props.hasClearButton,
 				text = props.text,
 				size = props.size,
 				radius = SHAPE_TO_RADIUS[props.shape],
 				variant = props.variant,
 				horizontalPadding = {
-					left = textInputVariantProps.innerContainer.horizontalPadding,
-					right = textInputVariantProps.innerContainer.horizontalPadding,
+					left = textInputVariantProps.container.horizontalPadding,
+					right = textInputVariantProps.container.horizontalPadding,
 				},
 				onChanged = props.onChanged,
 				onFocus = props.onFocusGained,

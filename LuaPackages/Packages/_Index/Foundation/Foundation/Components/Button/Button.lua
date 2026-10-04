@@ -15,9 +15,7 @@ type InputSize = InputSize.InputSize
 
 local ButtonVariant = require(Foundation.Enums.ButtonVariant)
 type ButtonVariant = ButtonVariant.ButtonVariant
-
-local ButtonTypes = require(script.Parent.Types)
-type SupportedButtonVariant = ButtonTypes.SupportedButtonVariant
+type SupportedButtonVariant = ButtonVariant.SupportedButtonVariant
 
 local FillBehavior = require(Foundation.Enums.FillBehavior)
 type FillBehavior = FillBehavior.FillBehavior
@@ -139,7 +137,7 @@ local function Button(buttonProps: ButtonProps, ref: React.Ref<GuiObject>?)
 		tokens,
 		props.size,
 		props.variant,
-		if presentationContext then presentationContext.colorMode else nil
+		if presentationContext then presentationContext.colorNamespace else nil
 	)
 
 	local motionStates = useButtonMotionStates(variantProps.content.style.Transparency, Constants.DISABLED_TRANSPARENCY)

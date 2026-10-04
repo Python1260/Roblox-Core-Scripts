@@ -15,8 +15,17 @@ local Assets = require(InGameMenu.Resources.Assets)
 local OpenReportDialog = require(InGameMenu.Actions.OpenReportDialog)
 
 local ImageSetButton = UIBlox.Core.ImageSet.ImageSetButton
-local withSelectionCursorProvider = UIBlox.App.SelectionImage.withSelectionCursorProvider
-local CursorKind = UIBlox.App.SelectionImage.CursorKind
+local Foundation = require(CorePackages.Packages.Foundation)
+local FFlagCoreUiMigrateUIBloxToFoundation = require(CorePackages.Workspace.Packages.SharedFlags).FFlagCoreUiMigrateUIBloxToFoundation
+
+local withSelectionCursorProvider = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.UNSTABLE.withCursorMigration
+	else UIBlox.App.SelectionImage.withSelectionCursorProvider
+local CursorKind = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.Enums.CursorType
+	else UIBlox.App.SelectionImage.CursorKind
+
+local Image = Foundation.Image
 
 local validateProps = t.strictInterface({
 	userId = t.optional(t.integer),
@@ -31,18 +40,38 @@ local function ReportButton(props)
 	end
 
 	return withSelectionCursorProvider(function(getSelectionCursor)
-		return Roact.createElement(ImageSetButton, {
-			Selectable = false,
-			Image = Assets.Images.ReportIcon,
-			Size = UDim2.new(0, 36, 0, 36),
-			ImageColor3 = Color3.fromRGB(255, 255, 255),
-			BackgroundTransparency = 1,
-			LayoutOrder = props.LayoutOrder,
-			SelectionImageObject = getSelectionCursor(CursorKind.RoundedRectNoInset),
-			[Roact.Event.Activated] = function()
-				props.dispatchOpenReportDialog(props.userId, props.userName)
-			end,
-		})
+		if FFlagCoreUiMigrateUIBloxToFoundation then
+			return Roact.createElement(Image, {
+				Image = Assets.Images.ReportIcon :: string,
+				Size = UDim2.new(0, 36, 0, 36),
+				backgroundStyle = { Transparency = 1 },
+				imageStyle = {
+					Color3 = Color3.fromRGB(255, 255, 255),
+					Transparency = 0,
+				},
+				LayoutOrder = props.LayoutOrder,
+				selection = {
+					Selectable = false,
+					SelectionImageObject = getSelectionCursor(CursorKind.RoundedRectNoInset),
+				},
+				onActivated = function()
+					props.dispatchOpenReportDialog(props.userId, props.userName)
+				end,
+			})
+		else
+			return Roact.createElement(ImageSetButton, {
+				Selectable = false,
+				Image = Assets.Images.ReportIcon,
+				Size = UDim2.new(0, 36, 0, 36),
+				ImageColor3 = Color3.fromRGB(255, 255, 255),
+				BackgroundTransparency = 1,
+				LayoutOrder = props.LayoutOrder,
+				SelectionImageObject = getSelectionCursor(CursorKind.RoundedRectNoInset),
+				[Roact.Event.Activated] = function()
+					props.dispatchOpenReportDialog(props.userId, props.userName)
+				end,
+			})
+		end
 	end)
 end
 

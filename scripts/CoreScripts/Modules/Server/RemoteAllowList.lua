@@ -1,5 +1,9 @@
 local CorePackages = game:GetService("CorePackages")
-local FFlagEnableModerateChatRemoteEvent = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableModerateChatRemoteEvent
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagEnableModerateChatRemoteEvent = SharedFlags.FFlagEnableModerateChatRemoteEvent
+local FFlagPlatformLeaderboardRccEnabled = SharedFlags.FFlagPlatformLeaderboardRccEnabled
+local FFlagRemoteAllowListAddExpChatFeatureValueChanged =
+	game:DefineFastFlag("RemoteAllowListAddExpChatFeatureValueChanged", false)
 
 return function()
 	assert(game:FindService("NetworkServer") ~= nil)
@@ -37,20 +41,16 @@ return function()
 	table.insert(allowList, "ShowPlayerJoinedFriendsToast")
 	table.insert(allowList, "ShowFriendJoinedPlayerToast")
 	table.insert(allowList, "CreateOrJoinParty")
-	if game:DefineFastFlag("RemoteAllowListAddSocial", false) then
-		table.insert(allowList, "RequestPlayerProfileSettings")
-	end
+	table.insert(allowList, "RequestPlayerProfileSettings")
 	if FFlagEnableModerateChatRemoteEvent then
 		table.insert(allowList, "ModerateChatSettingUpdated")
+	end
+	if FFlagRemoteAllowListAddExpChatFeatureValueChanged then
+		table.insert(allowList, "ExpChatFeatureValueChanged")
 	end
 
 	-- content/scripts/CoreScripts/ServerCoreScripts/ServerDialog.lua
 	table.insert(allowList, "SetDialogInUse")
-
-	-- content/scripts/CoreScripts/ServerCoreScripts/ServerContactList.lua
-	table.insert(allowList, "ContactListInvokeIrisInvite")
-	table.insert(allowList, "ContactListIrisInviteTeleport")
-	table.insert(allowList, "UpdateCurrentCall")
 
 	-- content/scripts/CoreScripts/ServerCoreScripts/PlayerViewCapability.lua
 	table.insert(allowList, "RequestDeviceCameraOrientationCapability")
@@ -60,14 +60,20 @@ return function()
 	-- content/scripts/CoreScripts/ServerCoreScripts/ReferredByPlayerRemoteEvent.lua
 	table.insert(allowList, "ReferredPlayerJoin")
 
+	-- content/scripts/CoreScripts/ServerCoreScripts/ServerBuildExperiencePlaytestTeleport.lua
+	table.insert(allowList, "BuildExperiencePlaytestTeleport")
+
 	-- content/scripts/CoreScripts/ServerCoreScripts/VoiceDefault.lua
 	table.insert(allowList, "SetUserActive")
-	table.insert(allowList, "SendLikelySpeakingUsers")
-	table.insert(allowList, "ReceiveLikelySpeakingUsers")
 
 	-- content/scripts/CoreScripts/Modules/Server/VR/VRAvatarGesturesServer.lua
-	if game:DefineFastFlag("RemoteAllowListAddVR", false) then
-		table.insert(allowList, "AvatarGesturesVRPlayer")
+	table.insert(allowList, "AvatarGesturesVRPlayer")
+
+	-- content/scripts/CoreScripts/ServerCoreScripts/ServerPlatformLeaderboard.lua
+	if FFlagPlatformLeaderboardRccEnabled then
+		table.insert(allowList, "PlatformLeaderboardPush")
+		table.insert(allowList, "PlatformLeaderboardTabOpened")
+		table.insert(allowList, "PlatformLeaderboardTabClosed")
 	end
 
 	networkPeer:InitializeRemoteAllowList(allowList)

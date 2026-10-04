@@ -64,8 +64,9 @@ end
 
 return function(tokens: Tokens, size: ChipSize, isLeading: boolean, isCircular: boolean)
 	local props = VariantsContext.useVariants("ChipAccessory", variantsFactory, tokens)
+
 	local style: Style = if isCircular then "Circular" else "Default"
-	local position: Position = if isCircular then "Leading" else "Trailing"
+	local position: Position = if isLeading then "Leading" else "Trailing"
 
 	return composeStyleVariant({
 		accessory = {

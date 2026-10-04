@@ -16,6 +16,13 @@ local GetFFlagEnablePlayerNamesEnabledSetting = require(Modules.Settings.Flags.G
 local FFlagBadgeVisibilitySettingEnabled = require(CorePackages.Workspace.Packages.SharedFlags).FFlagBadgeVisibilitySettingEnabled
 local FFlagEnableModerateChatRemoteEvent = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableModerateChatRemoteEvent
 local FFlagIEMSettingsGroups = require(Modules.Settings.Flags.FFlagIEMSettingsGroups)
+local RUUserScalePreferenceAPI = game:GetEngineFeature("RUUserScalePreferenceAPI")
+local FFlagAIRephraseSettingEnabled = require(CorePackages.Workspace.Packages.SharedFlags).FFlagAIRephraseSettingEnabled
+local FFlagUpdateRephraseSettingUI = game:DefineFastFlag("UpdateRephraseSettingUI", false)
+local FFlagChatSummariesSettingEnabled = require(CorePackages.Workspace.Packages.SharedFlags).FFlagChatSummariesSettingEnabled
+local FFlagExpChatEnableFriendsTab = require(CorePackages.Workspace.Packages.SharedFlags).FFlagExpChatEnableFriendsTab
+local FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider =
+	require(Modules.Settings.Flags.FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider)
 
 local isInExperienceUIVREnabled = require(CorePackages.Workspace.Packages.SharedExperimentDefinition).isInExperienceUIVREnabled
 local ReactUtils = require(CorePackages.Packages.ReactUtils)
@@ -26,6 +33,8 @@ local FIntChatModerationFrameLayoutOrder = game:DefineFastInt("ChatModerationFra
 -- Recall that layout order values are relative
 local SETTINGS_MENU_LAYOUT_ORDER = {}
 
+-- Pioneer "more settings available" banner, pinned above every setting
+SETTINGS_MENU_LAYOUT_ORDER.MoreSettingsBanner = 0
 -- Overscan Entry point, console only
 SETTINGS_MENU_LAYOUT_ORDER.OverscanAdjustButton = 1
 -- Chat Moderation Mode
@@ -66,6 +75,9 @@ else
 	SETTINGS_MENU_LAYOUT_ORDER.ChatLanguageSelectorFrame = 41
 	SETTINGS_MENU_LAYOUT_ORDER.ChatTranslationToggleFrame = 42
 end
+if FFlagExpChatEnableFriendsTab then
+	SETTINGS_MENU_LAYOUT_ORDER.ChatNotificationsFrame = 44
+end
 -- VR Settings
 if isInExperienceUIVREnabled then
 	SETTINGS_MENU_LAYOUT_ORDER.VRComfortSettingFrame = 54
@@ -78,10 +90,18 @@ end
 SETTINGS_MENU_LAYOUT_ORDER.DeviceFrameInput = 60
 SETTINGS_MENU_LAYOUT_ORDER.DeviceFrameOutput = 61
 SETTINGS_MENU_LAYOUT_ORDER.VolumeFrame = 62
-if PartyVoiceVolumeFeatureAvailable then
-	SETTINGS_MENU_LAYOUT_ORDER.PartyVoiceVolumeFrame = 63
+if FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider then 
+	SETTINGS_MENU_LAYOUT_ORDER.VoiceChatVolumeFrame = 63
+	if PartyVoiceVolumeFeatureAvailable then
+		SETTINGS_MENU_LAYOUT_ORDER.PartyVoiceVolumeFrame = 64
+	end
+	SETTINGS_MENU_LAYOUT_ORDER.HapticsFrame = if PartyVoiceVolumeFeatureAvailable then 65 else 64
+else 
+	if PartyVoiceVolumeFeatureAvailable then
+		SETTINGS_MENU_LAYOUT_ORDER.PartyVoiceVolumeFrame = 63
+	end
+	SETTINGS_MENU_LAYOUT_ORDER.HapticsFrame = if PartyVoiceVolumeFeatureAvailable then 64 else 63
 end
-SETTINGS_MENU_LAYOUT_ORDER.HapticsFrame = if PartyVoiceVolumeFeatureAvailable then 64 else 63
 -- Graphics
 SETTINGS_MENU_LAYOUT_ORDER.FullScreenFrame = 70
 SETTINGS_MENU_LAYOUT_ORDER.GraphicsEnablerFrame = 71
@@ -89,7 +109,13 @@ SETTINGS_MENU_LAYOUT_ORDER.GraphicsQualityFrame = 72
 SETTINGS_MENU_LAYOUT_ORDER.ReducedMotionFrame = 73
 SETTINGS_MENU_LAYOUT_ORDER.PreferredTransparencyFrame = 74
 SETTINGS_MENU_LAYOUT_ORDER.PreferredTextSizeFrame = 75
-SETTINGS_MENU_LAYOUT_ORDER.UiNavigationKeyBindEnabledFrame = 76
+if RUUserScalePreferenceAPI then
+	SETTINGS_MENU_LAYOUT_ORDER.UIScaleModeFrame = 76
+	SETTINGS_MENU_LAYOUT_ORDER.UIScaleFrame = 77
+	SETTINGS_MENU_LAYOUT_ORDER.UiNavigationKeyBindEnabledFrame = 78
+else
+	SETTINGS_MENU_LAYOUT_ORDER.UiNavigationKeyBindEnabledFrame = 76
+end
 -- Performance
 SETTINGS_MENU_LAYOUT_ORDER.PerformanceStatsFrame = 80
 SETTINGS_MENU_LAYOUT_ORDER.MicroProfilerFrame = 81
@@ -102,6 +128,12 @@ if GetFFlagEnablePlayerNamesEnabledSetting() then
 end
 if FFlagBadgeVisibilitySettingEnabled then
 	SETTINGS_MENU_LAYOUT_ORDER.BadgeVisibilityFrame = 106
+end
+if FFlagAIRephraseSettingEnabled then
+	SETTINGS_MENU_LAYOUT_ORDER.AIRephraseFrame = if FFlagUpdateRephraseSettingUI then 20 else 43
+end
+if FFlagChatSummariesSettingEnabled then
+	SETTINGS_MENU_LAYOUT_ORDER.ChatSummariesFrame = 20
 end
 SETTINGS_MENU_LAYOUT_ORDER.UiToggleRow = 200
 SETTINGS_MENU_LAYOUT_ORDER.UiToggleRowCustom = 200 -- Replaces "UiToggleRow" when FFlagUserShowGuiHideToggles == true
@@ -117,8 +149,11 @@ if FFlagIEMSettingsGroups then
 	local nextOrder = ReactUtils.createNextOrder()
 
 	LAYOUT_ORDER_GROUPS = {
+		MoreSettingsBanner = nextOrder(),
+
 		AudioHeader = nextOrder(),
 		VolumeFrame = nextOrder(),
+		VoiceChatVolumeFrame = if FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider then nextOrder() else nil,
 		PartyVoiceVolumeFrame = nextOrder(),
 		DeviceFrameInput = nextOrder(),
 		DeviceFrameOutput = nextOrder(),
@@ -129,12 +164,15 @@ if FFlagIEMSettingsGroups then
 		VoiceConnectDisconnectSelector = nextOrder(),
 		VoiceConnectFrame = nextOrder(),
 		VoiceDisconnectFrame = nextOrder(),
+		ChatSummariesFrame = if FFlagChatSummariesSettingEnabled then nextOrder() else nil,
+		AIRephraseFrame = if FFlagAIRephraseSettingEnabled then nextOrder() else nil,
 		PlayerChoiceTranslationFrame = if game:GetEngineFeature("InExperiencePlayerChoiceToggle") then nextOrder() else nil,
 		LanguageSelectorFrame = nextOrder(),
 		FeedbackModeButton = nextOrder(),
 		ChatTranslationFrame = nextOrder(),
 		ChatLanguageSelectorFrame = nextOrder(),
 		ChatTranslationToggleFrame = nextOrder(),
+		ChatNotificationsFrame = if FFlagExpChatEnableFriendsTab then nextOrder() else nil,
 		LanguageDivider = nextOrder(),
 
 		DisplayHeader = nextOrder(),
@@ -142,6 +180,8 @@ if FFlagIEMSettingsGroups then
 		FullScreenFrame = nextOrder(),
 		PreferredTransparencyFrame = nextOrder(),
 		PreferredTextSizeFrame = nextOrder(),
+		UIScaleModeFrame = if RUUserScalePreferenceAPI then nextOrder() else nil,
+		UIScaleFrame = if RUUserScalePreferenceAPI then nextOrder() else nil,
 		VRComfortSettingFrame = if isInExperienceUIVREnabled then nextOrder() else nil,
 		VRVignetteEnabledFrame = if isInExperienceUIVREnabled then nextOrder() else nil,
 		VRSteppedRotationEnabledFrame = if isInExperienceUIVREnabled then nextOrder() else nil,

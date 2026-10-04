@@ -4,6 +4,8 @@ local UGCValidationService = game:GetService("UGCValidationService")
 local UGCValidation = require(CorePackages.Packages.UGCValidation)
 local EngineFeatureUGCValidationWithContextEntrypoint =
 	game:GetEngineFeature("UGCValidationWithContextEntrypointFeature")
+local FFlagUGCValidateMigrateSchemaProperties = game:DefineFastFlag("UGCValidateMigrateSchemaProperties2", false)
+local FFlagUGCValidateForwardIECRestrictedUserIds = game:DefineFastFlag("UGCValidateForwardIECRestrictedUserIds", false)
 
 local function UGCValidationFunction(args)
 	local objectInstances = args["instances"]
@@ -83,27 +85,29 @@ local function UGCValidationFunction(args)
 		end
 	end
 
-	if UGCValidation.isFolderStructureEnabled and UGCValidation.isFolderStructureEnabled() then -- isFolderStructureEnabled returns a flag state, this is flagged
-		local valConfigs = {
-			source = (isServer and "InExpServer" or "InExpClient") :: any,
-			enforceR15FolderStructure = requireAllFolders or false,
-		}
+	local valConfigs = {
+		source = (isServer and "InExpServer" or "InExpClient") :: any,
+		enforceR15FolderStructure = requireAllFolders or false,
+		-- returns the DebugUGCDisableAssetQualityChecks flag state, this is flagged
+		skipAssetQualityChecks = UGCValidation.shouldSkipAssetQualityChecks and UGCValidation.shouldSkipAssetQualityChecks() or nil,
+		iecConfigs = if FFlagUGCValidateMigrateSchemaProperties
+			then {
+				token = token,
+				universeId = universeId,
+				restrictedUserIds = if FFlagUGCValidateForwardIECRestrictedUserIds then restrictedUserIds else nil,
+			} :: any
+			else nil,
+	}
 
-		local validationData
-		if fullBodyData then
-			validationData = UGCValidation.ValidateFinalizedBundle(fullBodyData, Enum.BundleType.BodyParts, valConfigs)
-		else
-			validationData = UGCValidation.ValidateAsset(
-				objectInstances :: { Instance },
-				assetTypeEnum :: Enum.AssetType,
-				valConfigs
-			)
-		end
-
-		if UGCValidation.isEntrypointMergingEnabled and UGCValidation.isEntrypointMergingEnabled() then
-			success, reasons = UGCValidation.combineResultsIntoLegacy(success, reasons, validationData)
-		end
+	local validationData
+	if fullBodyData then
+		validationData = UGCValidation.ValidateFinalizedBundle(fullBodyData, Enum.BundleType.BodyParts, valConfigs)
+	else
+		validationData =
+			UGCValidation.ValidateAsset(objectInstances :: { Instance }, assetTypeEnum :: Enum.AssetType, valConfigs)
 	end
+
+	success, reasons = UGCValidation.combineResultsIntoLegacy(success, reasons, validationData)
 
 	if not success then
 		return false, reasons

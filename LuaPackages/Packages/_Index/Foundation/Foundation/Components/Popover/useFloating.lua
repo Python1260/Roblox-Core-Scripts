@@ -71,6 +71,8 @@ local function useFloating(
 	local arrowPosition, setArrowPosition = React.useBinding(Vector2.new())
 	local anchorPoint, setAnchorPoint = React.useBinding(Vector2.new(0, 0))
 	local recalculatePositionRef = React.useRef(function() end)
+	local clippingAncestorsRef: { current: { GuiObject } }? = React.useRef({} :: { GuiObject })
+	local pendingRecalcRef: { current: boolean }? = React.useRef(false)
 
 	local recalculatePosition = React.useCallback(function()
 		if not isOpen or not anchor or not content or not overlay then
@@ -90,6 +92,26 @@ local function useFloating(
 
 		-- If the anchor is not visible on the screen, hide the popover
 		if not positioning.isOnScreen(anchorRect, screenRect) then
+			setIsVisible(false)
+			return
+		end
+		local clippingAncestors = (clippingAncestorsRef :: { current: { GuiObject } }).current
+		local clipRect: Rect? = nil
+		for _, clippingAncestor in clippingAncestors do
+			local rect = Rect.new(
+				clippingAncestor.AbsolutePosition,
+				clippingAncestor.AbsolutePosition + clippingAncestor.AbsoluteSize
+			)
+			if clipRect == nil then
+				clipRect = rect
+			else
+				clipRect = Rect.new(
+					Vector2.new(math.max(clipRect.Min.X, rect.Min.X), math.max(clipRect.Min.Y, rect.Min.Y)),
+					Vector2.new(math.min(clipRect.Max.X, rect.Max.X), math.min(clipRect.Max.Y, rect.Max.Y))
+				)
+			end
+		end
+		if clipRect and not positioning.isOnScreen(anchorRect, clipRect) then
 			setIsVisible(false)
 			return
 		end
@@ -138,10 +160,78 @@ local function useFloating(
 		-- https://roblox.atlassian.net/wiki/spaces/UIC/pages/1588593391/Quantum+Gui
 		local _ = content.AbsolutePosition
 	end, { isOpen, anchor, content, overlay, sideConfig, alignConfig, arrowSize } :: { unknown })
-	recalculatePositionRef.current = recalculatePosition
+	-- Coalesce recalc fires within a frame into a single deferred recalc.
+	local pending = pendingRecalcRef :: { current: boolean }
+	recalculatePositionRef.current = function()
+		if pending.current then
+			return
+		end
+		pending.current = true
+		task.defer(function()
+			pending.current = false
+			recalculatePosition()
+		end)
+	end
 	useConnectSignals(anchor, { "AbsolutePosition", "AbsoluteSize" }, recalculatePositionRef)
 	useConnectSignals(content, { "AbsoluteSize" }, recalculatePositionRef)
 	useConnectSignals(overlay, { "AbsoluteSize" }, recalculatePositionRef)
+	React.useLayoutEffect(function()
+		if not isOpen then
+			return
+		end
+		if typeof(anchor) ~= "Instance" or not anchor:IsA("GuiObject") then
+			return
+		end
+		local guiAnchor = anchor :: GuiObject
+		local ref = clippingAncestorsRef :: { current: { GuiObject } }
+		local propConnections: { RBXScriptConnection } = {}
+
+		local function rebuild()
+			for _, conn in propConnections do
+				conn:Disconnect()
+			end
+			table.clear(propConnections)
+
+			-- Limitation: an ancestor toggling ClipsDescendants at runtime won't update the cache.
+			local clippingAncestors: { GuiObject } = {}
+			local current = guiAnchor.Parent
+			while current and current:IsA("GuiObject") do
+				if current.ClipsDescendants then
+					table.insert(clippingAncestors, current)
+					table.insert(
+						propConnections,
+						current:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+							recalculatePositionRef.current()
+						end)
+					)
+					table.insert(
+						propConnections,
+						current:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+							recalculatePositionRef.current()
+						end)
+					)
+				end
+				current = current.Parent
+			end
+
+			ref.current = clippingAncestors
+			-- Skip recalc when there are no ancestors; the recalc layout effect handles it.
+			if #clippingAncestors > 0 then
+				recalculatePositionRef.current()
+			end
+		end
+
+		rebuild()
+		local ancestryConn = guiAnchor.AncestryChanged:Connect(rebuild)
+
+		return function()
+			ancestryConn:Disconnect()
+			for _, conn in propConnections do
+				conn:Disconnect()
+			end
+			ref.current = {}
+		end
+	end, { anchor, isOpen } :: { unknown })
 
 	React.useLayoutEffect(function()
 		recalculatePosition()

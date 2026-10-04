@@ -56,10 +56,7 @@ local FFlagChromeShortcutRemoveLeaveOnRespawnPage = SharedFlags.FFlagChromeShort
 local FFlagRespawnActionChromeShortcutTelemetry = require(RobloxGui.Modules.Chrome.Flags.FFlagRespawnActionChromeShortcutTelemetry)
 local FFlagRefactorMenuConfirmationButtons = require(RobloxGui.Modules.Settings.Flags.FFlagRefactorMenuConfirmationButtons)
 local FFlagConfirmationButtonsUseGreyButtons = require(RobloxGui.Modules.Settings.Flags.FFlagConfirmationButtonsUseGreyButtons)
-local FFlagMenuButtonsFixConfirmationScrolling = require(RobloxGui.Modules.Settings.Flags.FFlagMenuButtonsFixConfirmationScrolling)
 local FFlagRenameRespawnConfirmationPage = SharedFlags.FFlagRenameRespawnConfirmationPage
-
-local EngineFeatureAvatarEditorServiceBustCacheEnabled = game:GetEngineFeature("AvatarEditorServiceBustCacheEnabled")
 
 local Constants = require(RobloxGui.Modules:WaitForChild("InGameMenu"):WaitForChild("Resources"):WaitForChild("Constants"))
 
@@ -93,9 +90,9 @@ local function ResetCharacterButtonsContainer(props: Props)
 		ConfirmResetCharacter = Constants.ConfirmResetCharacterLocalizedKey,
 		ResetCharacter = if FFlagRenameRespawnConfirmationPage then Constants.RespawnLocalizedKey else Constants.ResetCharacterLocalizedKey,
 		DontResetCharacter = Constants.DontResetCharacterLocalizedKey,
-	}) 
+	})
 
-	React.useEffect(function() 
+	React.useEffect(function()
 		if lastInput ~= Input.Touch then
 			focusGuiObject(resetCharacterButtonRef.current)
 		else
@@ -154,7 +151,7 @@ local function ResetCharacterContainer(props: Props)
 		localization = localization,
 	}, {
 		FoundationProvider = React.createElement(FoundationProvider, {
-			theme = Foundation.Enums.Theme.Dark,
+			colorMode = Foundation.Enums.ColorMode.Dark,
 		}, {
 			FocusNavigationProvider = React.createElement(ReactFocusNavigation.FocusNavigationContext.Provider, {
 				value = focusNavigationService,
@@ -268,10 +265,7 @@ local function Initialize()
 	this.ResetBindable = true
 
 	local onResetFunction = function(props: ResetProps?)
-		if EngineFeatureAvatarEditorServiceBustCacheEnabled then
-			-- Remove any cast with EngineFeatureAvatarEditorServiceBustCacheEnabled
-			(AvatarEditorService :: any):BustAvatarFetchCache()
-		end
+		AvatarEditorService:BustAvatarFetchCache()
 
 		if this.ResetBindable == true then
 			resetCharFunc(props)
@@ -314,9 +308,7 @@ local function Initialize()
 			end
 		end
 
-		if FFlagMenuButtonsFixConfirmationScrolling then
-			this.Page.Size = UDim2.new(1,0,0,0)
-		end
+		this.Page.Size = UDim2.new(1,0,0,0)
 	end
 
 	return this
@@ -335,8 +327,8 @@ PageInstance.Displayed.Event:connect(function()
 	if not FFlagRefactorMenuConfirmationButtons then
 		GuiService.SelectedCoreObject = PageInstance.ResetCharacterButton
 	end
-	if FFlagEnableConsoleExpControls then 
-		if ChromeEnabled then 
+	if FFlagEnableConsoleExpControls then
+		if ChromeEnabled then
 			if FFlagChromeShortcutRemoveLeaveOnRespawnPage then
 				ChromeService:setShortcutBar(ChromeConstants.TILTMENU_RESPAWN_DIALOG_SHORTCUTBAR_ID)
 			else

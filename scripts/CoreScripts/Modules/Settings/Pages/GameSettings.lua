@@ -25,7 +25,6 @@ local GameSettings = Settings.GameSettings
 local VideoCaptureService = game:GetService("VideoCaptureService")
 local UserGameSettings = Settings:GetService("UserGameSettings")
 local Url = require(CorePackages.Workspace.Packages.CoreScriptsCommon).Url
-local VoiceChatService = nil
 local TextChatService = game:GetService("TextChatService")
 local SafetyService = game:GetService("SafetyService")
 local ExperienceStateCaptureService = nil
@@ -54,40 +53,66 @@ if FFlagIEMSettingsGroups then
 	renderSettingsHeader = require(RobloxGui.Modules.Settings.Components.renderSettingsHeader)
 	renderSettingsDivider = require(RobloxGui.Modules.Settings.Components.renderSettingsDivider)
 end
+local FFlagEnablePioneerIGMSettingsBanner =
+	require(RobloxGui.Modules.Settings.Flags.FFlagEnablePioneerIGMSettingsBanner)
+local renderMoreSettingsBanner
+if FFlagEnablePioneerIGMSettingsBanner then
+	local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
+	if isPioneerLaunch() then
+		renderMoreSettingsBanner = require(RobloxGui.Modules.Settings.Components.renderMoreSettingsBanner)
+	end
+end
 local PermissionsProtocol = require(CorePackages.Workspace.Packages.PermissionsProtocol).PermissionsProtocol.default
 local isVoiceFocused = require(CorePackages.Workspace.Packages.CrossExperience).Utils.isVoiceFocused
 local observeIsVoiceFocused = require(CorePackages.Workspace.Packages.CrossExperience).Utils.observeIsVoiceFocused
 local cameraDevicePermissionGrantedSignal =
 	require(CoreGui.RobloxGui.Modules.Settings.cameraDevicePermissionGrantedSignal)
-local getFFlagDoNotPromptCameraPermissionsOnMount =
-	require(RobloxGui.Modules.Flags.getFFlagDoNotPromptCameraPermissionsOnMount)
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local GetFFlagEnablePartyVoiceVolumeOnlyWhenInEligibleParty = SharedFlags.GetFFlagEnablePartyVoiceVolumeOnlyWhenInEligibleParty
 local GetFFlagEnableCrossExpVoice = SharedFlags.GetFFlagEnableCrossExpVoice
 local GetFFlagSelfViewCameraSettings = SharedFlags.GetFFlagSelfViewCameraSettings
 local GetFFlagAlwaysShowVRToggle = require(RobloxGui.Modules.Flags.GetFFlagAlwaysShowVRToggle)
-local GetFFlagDebounceConnectDisconnectSelector = require(RobloxGui.Modules.Settings.Flags.GetFFlagDebounceConnectDisconnectSelector)
+
 local GetFIntDebounceDisconnectButtonDelay = require(RobloxGui.Modules.Flags.GetFIntDebounceDisconnectButtonDelay)
-local FFlagMicroprofileGameSettingsFix = game:DefineFastFlag("MicroprofileGameSettingsFix", false)
+local GetFIntDebounceAIRephraseSettingDelay = require(RobloxGui.Modules.Flags.GetFIntDebounceAIRephraseSettingDelay)
+local GetFIntDebounceChatSummariesSettingDelay = require(RobloxGui.Modules.Flags.GetFIntDebounceChatSummariesSettingDelay)
+local isTouchDevice = UserInputService.TouchEnabled
 local GetFFlagFixSeamlessVoiceIntegrationWithPrivateVoice = SharedFlags.GetFFlagFixSeamlessVoiceIntegrationWithPrivateVoice
-local GetFFlagVoiceChatClientRewriteMasterLua = SharedFlags.GetFFlagVoiceChatClientRewriteMasterLua
-local GetFFlagVoiceChatClientRewriteDisableVCSDevice = SharedFlags.GetFFlagVoiceChatClientRewriteDisableVCSDevice
-local FFlagIEMFocusNavToButtons = SharedFlags.FFlagIEMFocusNavToButtons
+local FFlagIEMTabFocusNav = SharedFlags.FFlagIEMTabFocusNav
 local FFlagShowAntiHarassmentSettings = game:DefineFastFlag("ShowAntiHarassmentSettings", false)
 local GetFFlagEnablePlayerNamesEnabledSetting = require(RobloxGui.Modules.Settings.Flags.GetFFlagEnablePlayerNamesEnabledSetting)
 local FFlagUpdatePeopleNamesSettingCopy = require(RobloxGui.Modules.Settings.Flags.FFlagUpdatePeopleNamesSettingCopy)
 local FFlagBadgeVisibilitySettingEnabled = SharedFlags.FFlagBadgeVisibilitySettingEnabled
 local GetFFlagEnableVoiceUxUpdates = SharedFlags.GetFFlagEnableVoiceUxUpdates
 local GetFFlagEnableVrVoiceConnectDisconnect = SharedFlags.GetFFlagEnableVrVoiceConnectDisconnect
-local FFlagEnableVoiceSelectorTranslations = game:DefineFastFlag("EnableVoiceSelectorTranslations_AEGIS2", false)
 local FFlagHideVoiceChatSelectorForFae = game:DefineFastFlag("HideVoiceChatSelectorForFae_AEGIS2", false)
 local FFlagCenterShiftLockOverride = game:DefineFastFlag("CenterShiftLockOverride", true)
 local FFlagVoiceChatSelectorReconnectFocus = game:DefineFastFlag("VoiceChatSelectorReconnectFocus2_AEGIS2", false)
 local FFlagMicroProfilerReadOnlyInformationLabel = game:DefineFastFlag("MicroProfilerReadOnlyInformationLabel", false)
 local FFlagEnableModerateChatRemoteEvent = SharedFlags.FFlagEnableModerateChatRemoteEvent
-local FFlagModerateChatAnalytics = game:DefineFastFlag("ModerateChatAnalytics", false)
 local FFlagVoiceSelectorAvailableAfterFae = game:DefineFastFlag("VoiceSelectorAvailableAfterFae", false)
 local FFlagDifferentiateVoiceSelectorSystemAndUser = game:DefineFastFlag("DifferentiateVoiceSelectorSystemAndUser", false)
+local FFlagDeferProgrammaticChange = game:DefineFastFlag("DeferProgrammaticChange", false)
+local FFlagRenameVolumeToMainVolume = require(RobloxGui.Modules.Flags.FFlagRenameVolumeToMainVolume)
+local FFlagAIRephraseSettingEnabled = require(CorePackages.Workspace.Packages.SharedFlags).FFlagAIRephraseSettingEnabled
+local FFlagChatSummariesSettingEnabled = SharedFlags.FFlagChatSummariesSettingEnabled
+local FFlagExpChatEnableFriendsTab = SharedFlags.FFlagExpChatEnableFriendsTab
+local FFlagVoiceRewarmTelemetry = SharedFlags.FFlagVoiceRewarmTelemetry
+local FFlagDebounceVoiceSelectorIndexChange = game:DefineFastFlag("DebounceVoiceSelectorIndexChange", false)
+local FFlagVoiceSelectorIgnoreFailedStateDisconnect = game:DefineFastFlag("VoiceSelectorIgnoreFailedStateDisconnect", false)
+local FFlagVoiceConnectSelectorDebounce = game:DefineFastFlag("VoiceConnectSelectorDebounce", false)
+local FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider =
+	require(RobloxGui.Modules.Settings.Flags.FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider)
+local FFlagVoiceVolumeControlsFixSliderVisibilityOnEligibleGames =
+	game:DefineFastFlag("VoiceVolumeControlsFixSliderVisibilityOnEligibleGames", false)
+local FFlagVoiceVolumeControlsDisableInteractionWhenNoMasterVolume =
+	game:DefineFastFlag("VoiceVolumeControlsDisableInteractionWhenNoMasterVolume", false)
+local FFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry =
+	require(CorePackages.Workspace.Packages.VoiceChatCore).Flags.GetFFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry()
+local FFlagVoiceVolumeControlsEnableNotAudibleVoiceChatVolumeToast =
+	require(RobloxGui.Modules.VoiceChat.Flags.FFlagVoiceVolumeControlsEnableNotAudibleVoiceChatVolumeToast)
+local FFlagVoiceVolumeControlsSuppressInExperienceUiForPartyVoice =
+	game:DefineFastFlag("VoiceVolumeControlsSuppressInExperienceUiForPartyVoice", false)
 
 local RobloxTranslator = require(CorePackages.Workspace.Packages.RobloxTranslator)
 
@@ -119,6 +144,18 @@ local GRAPHICS_QUALITY_TO_INT = {
 	["Enum.SavedQualitySetting.QualityLevel9"] = 9,
 	["Enum.SavedQualitySetting.QualityLevel10"] = 10,
 }
+
+local VOICE_CHAT_VOLUME_MAX = 2
+local VOICE_CHAT_VOLUME_SLIDER_MAX = 10
+
+local function voiceChatVolumeToSlider(volume: number): number
+	return math.floor(volume * (VOICE_CHAT_VOLUME_SLIDER_MAX / VOICE_CHAT_VOLUME_MAX) + 0.5)
+end
+
+local function voiceChatVolumeFromSlider(sliderValue: number): number
+	return sliderValue / (VOICE_CHAT_VOLUME_SLIDER_MAX / VOICE_CHAT_VOLUME_MAX)
+end
+
 local PC_CHANGED_PROPS = {
 	DevComputerMovementMode = true,
 	DevComputerCameraMode = true,
@@ -219,6 +256,7 @@ local CreateChatTranslationOptionsWithChatLanguageSwitcher = require(
 )
 
 local GameBasicSettingsFramerateCap = game:GetEngineFeature("GameBasicSettingsFramerateCap")
+local RUUserScalePreferenceAPI = game:GetEngineFeature("RUUserScalePreferenceAPI")
 
 ----------- UTILITIES --------------
 local utility = require(RobloxGui.Modules.Settings.Utility)
@@ -232,6 +270,7 @@ local Cryo = require(CorePackages.Packages.Cryo)
 local GfxReset = require(script.Parent.Parent.GfxReset)
 local Create = require(CorePackages.Workspace.Packages.AppCommonLib).Create
 local throttle = require(CoreGui.RobloxGui.Modules.Settings.Pages.ShareGame.ThrottleFunctionCall)
+local debounce = require(RobloxGui.Modules.Chrome.ChromeShared.Utility.debounce)
 local BuilderIcons = require(CorePackages.Packages.BuilderIcons)
 local Signals = require(CorePackages.Packages.Signals)
 local migrationLookup = BuilderIcons.Migration
@@ -245,6 +284,8 @@ local LocalPlayer = Players.LocalPlayer
 local platform = UserInputService:GetPlatform()
 local CachedPolicyService = require(CorePackages.Workspace.Packages.CachedPolicyService)
 local VoiceChatServiceManager = require(RobloxGui.Modules.VoiceChat.VoiceChatServiceManager).default
+local VoiceVolumeControlsEligibility =
+	require(CorePackages.Workspace.Packages.VoiceChatCore).VoiceVolumeControlsEligibility
 local CrossExperienceVoice = require(CorePackages.Workspace.Packages.CrossExperienceVoice)
 local CrossExperienceVoiceManager = CrossExperienceVoice.CrossExperienceVoiceManager.default
 
@@ -271,6 +312,7 @@ local UseMicroProfiler = if isInExperienceUIVREnabled
 local GetFIntVoiceChatDeviceChangeDebounceDelay =
 	require(RobloxGui.Modules.Flags.GetFIntVoiceChatDeviceChangeDebounceDelay)
 local GetFFlagVoiceChatUILogging = require(RobloxGui.Modules.Flags.GetFFlagVoiceChatUILogging)
+local VoiceConstants = require(RobloxGui.Modules.VoiceChat.Constants)
 local GetFFlagEnableUniveralVoiceToasts = require(RobloxGui.Modules.Flags.GetFFlagEnableUniveralVoiceToasts)
 local GetFFlagEnableExplicitSettingsChangeAnalytics =
 	require(RobloxGui.Modules.Settings.Flags.GetFFlagEnableExplicitSettingsChangeAnalytics)
@@ -287,6 +329,7 @@ local FFlagFeedbackEntryPointButtonSizeAdjustment =
 local FFlagFeedbackEntryPointImprovedStrictnessCheck =
 	game:DefineFastFlag("FeedbackEntryPointImprovedStrictnessCheck", false)
 local GetFFlagEnableLocalesForExperienceLanguageSwitcher = require(RobloxGui.Modules.Settings.Flags.GetFFlagEnableLocalesForExperienceLanguageSwitcher)
+local GetFFlagLazyInitiateExperienceLanguageSwitcher = require(RobloxGui.Modules.Settings.Flags.GetFFlagLazyInitiateExperienceLanguageSwitcher)
 local CreateExperienceLanguageSwitcher = require(
 	RobloxGui.Modules.Settings.Pages.GameSettingsRowInitializers.ExperienceLanguageSwitcherInitializer
 )
@@ -296,6 +339,8 @@ local CreatePlayerChoiceTranslationOptions = require(
 )
 
 local FFlagUpdateVisibilitySettingsCopy = game:DefineFastFlag("UpdateVisibilitySettingsCopy", false)
+local FFlagExpChatDebounceRephraseIndexSelection = game:DefineFastFlag("ExpChatDebounceRephraseIndexSelection", false)
+local FFlagEraseFPSFromDefaultSetting = game:DefineFastFlag("EraseFPSFromDefaultSetting", false)
 
 local function reportSettingsChangeForAnalytics(fieldName, oldValue, newValue, extraData)
 	if
@@ -361,6 +406,9 @@ local function reportSettingsForAnalytics()
 	stringTable["camera_y_inverted"] = tostring(GameSettings.CameraYInverted)
 	stringTable["show_performance_stats"] = tostring(GameSettings.PerformanceStatsVisible)
 	stringTable["volume"] = tostring(math.floor((GameSettings.MasterVolume * 10) + 0.5))
+	if FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider then
+		stringTable["voice_chat_volume"] = tostring(voiceChatVolumeToSlider(GameSettings.VoiceChatVolume))
+	end
 	stringTable["gfx_quality_level"] = tostring(settings().Rendering.QualityLevel)
 	if GameBasicSettingsFramerateCap then
 		stringTable["framerate_cap"] = tostring(GameSettings.FramerateCap)
@@ -395,9 +443,6 @@ local FFlagIGMEnableGFXReset = game:DefineFastFlag("IGMEnableGFXReset", false)
 ----------- CLASS DECLARATION --------------
 
 local function getLastValueChangerFrame(this)
-	if not FFlagIEMFocusNavToButtons then
-		return
-	end
 
 	local maxLayoutOrder = nil
 	local LastValueChangerFrame = nil
@@ -413,6 +458,25 @@ local function getLastValueChangerFrame(this)
 	return LastValueChangerFrame
 end
 
+local function getFirstValueChangerFrame(this)
+	if not FFlagIEMTabFocusNav then
+		return
+	end
+
+	local minLayoutOrder = nil
+	local firstValueChangerFrame = nil
+	for _, row in pairs(this:GetRows()) do
+		local SelectionFrame = row.SelectionFrame
+
+		if not minLayoutOrder or SelectionFrame.LayoutOrder < minLayoutOrder then
+			minLayoutOrder = SelectionFrame.LayoutOrder
+			firstValueChangerFrame = this:getValueChangerFrame(row.ValueChanger)
+		end
+	end
+
+	return firstValueChangerFrame
+end
+
 local function Initialize()
 	if FFlagIGMEnableGFXReset then
 		GfxReset.RunGfxReset()
@@ -420,6 +484,9 @@ local function Initialize()
 
 	local settingsPageFactory = require(RobloxGui.Modules.Settings.SettingsPageFactory)
 	local this = settingsPageFactory:CreateNewPage()
+	if GetFFlagLazyInitiateExperienceLanguageSwitcher() then
+		this.LanguageSwitcherInitialized = false
+	end
 
 	local allSettingsCreated = false
 	local settingsDisabledInVR = {}
@@ -534,9 +601,11 @@ local function Initialize()
 			if not VRService.VREnabled then
 				local framerateCaps = table.clone(Constants.FramerateCaps)
 				local framerateCapsToText = {
-					RobloxTranslator:FormatByKey("Feature.SettingsHub.GameSettings.FramerateCapDefaultEntry", {
-						Frames = GameSettings:GetDefaultFramerateCap(),
-					}),
+					if FFlagEraseFPSFromDefaultSetting
+						then RobloxTranslator:FormatByKey("CoreScripts.InGameMenu.GameSettings.Default")
+						else RobloxTranslator:FormatByKey("Feature.SettingsHub.GameSettings.FramerateCapDefaultEntry", {
+							Frames = GameSettings:GetDefaultFramerateCap(),
+						}),
 				}
 
 				for _, framerate in framerateCaps do
@@ -837,6 +906,154 @@ local function Initialize()
 		end)
 	end
 
+	local lastUIScaleMinHundredths = nil
+	local lastUIScaleMaxHundredths = nil
+
+	local function createUIScaleOptionsImpl()
+		local autoHundredths = GuiService:GetAutoUIScaleHundredths()
+		local dpr = GuiService:GetRawScreenScale()
+		local camera = workspace.CurrentCamera
+		if not camera then
+			return
+		end
+		local viewportH = camera.ViewportSize.Y
+		-- physH = viewportH * DPR * appliedScale recovers the physical framebuffer height.
+		-- GetEffectiveUIScaleHundredths returns the actual applied scale, not the stored preference,
+		-- so physH stays correct when the viewport is too small and C++ falls back to auto.
+		local physH = viewportH * dpr * GuiService:GetEffectiveUIScaleHundredths() / 100
+
+		-- Min: 1/DPR equivalent (ensures DPR * finalScale >= 1), ceil to nearest 0.25 step
+		-- Max: physH / (540 * DPR), floor to nearest 0.25 step (keeps logical viewport >= 540px)
+		local minHundredths = math.ceil(100 / dpr / 25) * 25
+		local maxHundredths = math.floor(physH / (540 * dpr) * 4) / 4 * 100
+		local NUM_STEPS = math.round((maxHundredths - minHundredths) / 25)
+
+		if NUM_STEPS <= 0 then
+			-- Viewport too small for any valid manual range; C++ already applies auto scale.
+			-- Do not clear the stored preference so it restores when the viewport grows back.
+			lastUIScaleMinHundredths = nil
+			lastUIScaleMaxHundredths = nil
+			if this.UIScaleModeFrame then
+				this.UIScaleModeFrame:Destroy()
+				this.UIScaleModeFrame = nil
+			end
+			if this.UIScaleFrame then
+				this.UIScaleFrame:Destroy()
+				this.UIScaleFrame = nil
+			end
+			return
+		end
+
+		-- Skip the rebuild if the physical range hasn't actually changed. Dragging the slider
+		-- calls SetUIScaleMultiplier, which changes Camera.ViewportSize and re-fires the viewport
+		-- listener that calls this function; physH is invariant to appliedScale (see the comment
+		-- above), so min/max stay the same during a drag and this avoids destroying the slider the
+		-- user is actively dragging. Keyed on (min, max) rather than step count, since two different
+		-- viewport/DPR combinations can produce the same step count with different endpoints.
+		if this.UIScaleModeFrame
+			and minHundredths == lastUIScaleMinHundredths
+			and maxHundredths == lastUIScaleMaxHundredths
+		then
+			return
+		end
+		lastUIScaleMinHundredths = minHundredths
+		lastUIScaleMaxHundredths = maxHundredths
+
+		if this.UIScaleModeFrame then
+			this.UIScaleModeFrame:Destroy()
+			this.UIScaleModeFrame = nil
+		end
+		if this.UIScaleFrame then
+			this.UIScaleFrame:Destroy()
+			this.UIScaleFrame = nil
+		end
+
+		local function indexToHundredths(i) return minHundredths + i * 25 end
+		local function hundredthsToIndex(h)
+			return math.clamp(math.round((h - minHundredths) / 25), 0, NUM_STEPS)
+		end
+
+		local saved = UserGameSettings.UIScaleMultiplierHundredths
+		local isCustom = saved ~= 0
+		local startMode = if isCustom then 2 else 1
+		local startSlider = if isCustom then hundredthsToIndex(saved) else 0
+
+		local localization = {
+			modeTitle = "CoreScripts.InGameMenu.GameSettings.UIScaleMode",
+			modeAuto = "CoreScripts.InGameMenu.GameSettings.UIScaleModeAuto",
+			modeManual = "CoreScripts.InGameMenu.GameSettings.UIScaleModeManual",
+			sliderTitle = "CoreScripts.InGameMenu.GameSettings.UIScale",
+			smallest = "CoreScripts.InGameMenu.GameSettings.UIScaleSmallest",
+			largest = "CoreScripts.InGameMenu.GameSettings.UIScaleLargest",
+		}
+
+		this.UIScaleModeFrame, this.UIScaleModeLabel, this.UIScaleModeSelector = utility:AddNewRow(
+			this,
+			locales:Format(localization.modeTitle),
+			"Selector",
+			{ locales:Format(localization.modeAuto), locales:Format(localization.modeManual) },
+			startMode
+		)
+		this.UIScaleModeFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER["UIScaleModeFrame"]
+
+		this.UIScaleFrame, this.UIScaleLabel, this.UIScaleSlider = utility:AddNewRow(
+			this,
+			locales:Format(localization.sliderTitle),
+			"Slider",
+			NUM_STEPS,
+			startSlider,
+			nil,
+			nil,
+			locales:Format(localization.smallest),
+			locales:Format(localization.largest)
+		)
+		this.UIScaleFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER["UIScaleFrame"]
+		this.UIScaleFrame.Visible = isCustom
+
+		-- Do not call SetUIScaleMultiplier here: the engine already applies the correct
+		-- effective scale on its own (clamped for the current viewport, without touching
+		-- the stored preference). Calling it here would persist the display-clamped value
+		-- and destroy the user's original preference on the next viewport change.
+
+		this.UIScaleModeSelector.IndexChanged:connect(function(newIndex)
+			local nowManual = newIndex == 2
+			this.UIScaleFrame.Visible = nowManual
+			if nowManual then
+				-- Snap to the nearest 0.25 step from the current auto scale on first switch to Manual
+				local snapped = math.clamp(
+					math.round(autoHundredths / 25) * 25,
+					minHundredths, indexToHundredths(NUM_STEPS))
+				this.UIScaleSlider:SetValue(hundredthsToIndex(snapped))
+				GuiService:SetUIScaleMultiplier(snapped)
+				reportSettingsChangeForAnalytics("ui_scale_mode", "auto", "manual")
+			else
+				GuiService:SetUIScaleMultiplier(0)
+				reportSettingsChangeForAnalytics("ui_scale_mode", "manual", "auto")
+			end
+			reportSettingsForAnalytics()
+		end)
+
+		this.UIScaleSlider.ValueChanged:connect(function(newIndex)
+			local oldValue = UserGameSettings.UIScaleMultiplierHundredths
+			local newHundredths = indexToHundredths(newIndex)
+			GuiService:SetUIScaleMultiplier(newHundredths)
+			reportSettingsChangeForAnalytics("ui_scale_value", oldValue, newHundredths)
+			reportSettingsForAnalytics()
+		end)
+	end
+
+	-- The engine-side GuiService/UserGameSettings APIs used above require a matching game-engine
+	-- build. If FFlagRUUserScalePreference is enabled on a client where lua-apps has landed ahead
+	-- of that engine change, calling these raises "not a valid member" — pcall contains the failure
+	-- to just skipping the UI Scale rows, instead of aborting the rest of Initialize()/
+	-- OpenSettingsPage() (which would also break unrelated rows and device listeners).
+	local function createUIScaleOptions()
+		local ok, err = pcall(createUIScaleOptionsImpl)
+		if not ok then
+			warn("createUIScaleOptions failed: " .. tostring(err))
+		end
+	end
+
 	local function createUiNavigationKeyBindOptions()
 		local UiNavigationValueEnum = {
 			On = 1,
@@ -977,7 +1194,7 @@ local function Initialize()
 		-- todo replace this with TextX and TextYAlignment to centerlise the text
 		this.InformationFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 
-		if FFlagMicroprofileGameSettingsFix then
+		if isTouchDevice then
 			this.InformationText = Create("TextLabel")({
 				Name = "InformationLabel",
 				Text = "Information Loading",
@@ -2372,7 +2589,9 @@ local function Initialize()
 	local function createVolumeOptions()
 		local startVolumeLevel = math.floor(GameSettings.MasterVolume * 10)
 		this.VolumeFrame, this.VolumeLabel, this.VolumeSlider =
-			utility:AddNewRow(this, "Volume", "Slider", 10, startVolumeLevel)
+			utility:AddNewRow(this, if FFlagRenameVolumeToMainVolume
+				then RobloxTranslator:FormatByKey("CoreScripts.InGameMenu.GameSettings.MainVolume")
+				else "Volume", "Slider", 10, startVolumeLevel)
 		this.VolumeFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER["VolumeFrame"]
 
 		-- ROBLOX FIXME: We should express the "Sounds" folder statically in the project config
@@ -2426,6 +2645,68 @@ local function Initialize()
 
 			if GetFFlagEnableExplicitSettingsChangeAnalytics() then
 				reportSettingsChangeForAnalytics("party_voice_volume", oldValue, math.floor((newValue * 10) + 0.5))
+			end
+			reportSettingsForAnalytics()
+		end)
+	end
+
+	local function createVoiceChatVolumeOptions()
+		local startVolumeLevel = voiceChatVolumeToSlider(GameSettings.VoiceChatVolume)
+		local translationOk, voiceChatVolumeLabel = pcall(function()
+			return locales:Format("CoreScripts.InGameMenu.GameSettings.VoiceChatVolume")
+		end)
+		if not translationOk then
+			voiceChatVolumeLabel = "Voice Chat Volume"
+			log:debug(
+				"[GameSettings] createVoiceChatVolumeOptions failed to get translation for Voice Chat Volume label, using placeholder text instead"
+			)
+		end
+		this.VoiceChatVolumeFrame, this.VoiceChatVolumeLabel, this.VoiceChatVolumeSlider =
+			utility:AddNewRow(this, voiceChatVolumeLabel, "Slider", VOICE_CHAT_VOLUME_SLIDER_MAX, startVolumeLevel)
+		this.VoiceChatVolumeFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER["VoiceChatVolumeFrame"]
+		this.VoiceChatVolumeFrame.Visible = false
+
+		if FFlagVoiceVolumeControlsDisableInteractionWhenNoMasterVolume then
+			local function updateVoiceChatVolumeSliderInteractable(masterVolumeSliderValue: number?)
+				local masterVolumeAtZero = if masterVolumeSliderValue ~= nil
+					then masterVolumeSliderValue == 0
+					else GameSettings.MasterVolume == 0
+
+				if masterVolumeAtZero then
+					this.VoiceChatVolumeSlider:SetZIndex(1)
+					this.VoiceChatVolumeLabel.ZIndex = 1
+					this.VoiceChatVolumeSlider:SetInteractable(false)
+				else
+					this.VoiceChatVolumeSlider:SetZIndex(2)
+					this.VoiceChatVolumeLabel.ZIndex = 2
+					this.VoiceChatVolumeSlider:SetInteractable(true)
+				end
+			end
+
+			updateVoiceChatVolumeSliderInteractable()
+			this.VolumeSlider.ValueChanged:connect(updateVoiceChatVolumeSliderInteractable)
+		end
+
+		this.VoiceChatVolumeSlider.ValueChanged:connect(function(newValue)
+			local oldValue
+			if GetFFlagEnableExplicitSettingsChangeAnalytics() then
+				oldValue = voiceChatVolumeToSlider(GameSettings.VoiceChatVolume)
+			end
+
+			GameSettings.VoiceChatVolume = voiceChatVolumeFromSlider(newValue)
+			if FFlagVoiceVolumeControlsEnableNotAudibleVoiceChatVolumeToast then 
+				if this.maxVoiceChatVolumeDuringSession ~= nil then
+					this.maxVoiceChatVolumeDuringSession =
+						math.max(this.maxVoiceChatVolumeDuringSession, GameSettings.VoiceChatVolume)
+				end
+			end
+
+			if GetFFlagEnableExplicitSettingsChangeAnalytics() then
+				reportSettingsChangeForAnalytics(
+					"voice_chat_volume",
+					oldValue,
+					voiceChatVolumeToSlider(GameSettings.VoiceChatVolume)
+				)
 			end
 			reportSettingsForAnalytics()
 		end)
@@ -2966,65 +3247,6 @@ local function Initialize()
 			and #deviceNames == #deviceGuids
 	end
 
-	local function setVCSOutput(soundServiceOutputName)
-		if GetFFlagVoiceChatClientRewriteDisableVCSDevice() then
-			log:error("setVCSOutput is deprecated")
-			return
-		end
-
-		local VCSSuccess, VCSDeviceNames, VCSDeviceGuids, VCSIndex = pcall(function()
-			return VoiceChatService:GetSpeakerDevices()
-		end)
-
-		if VCSSuccess and isValidDeviceList(VCSDeviceNames, VCSDeviceGuids, VCSIndex) then
-			-- Find the matching VCS Device
-			local VCSDeviceIndex = 0
-			for deviceIndex, deviceName in ipairs(VCSDeviceNames) do
-				if deviceName == soundServiceOutputName then
-					VCSDeviceIndex = deviceIndex
-				end
-			end
-
-			if VCSDeviceIndex > 0 then
-				if GetFFlagVoiceChatUILogging() then
-					log:debug(
-						"[OutputDeviceSelection] Setting VCS Speaker Device To {} {} ",
-						VCSDeviceNames[VCSDeviceIndex],
-						VCSDeviceGuids[VCSDeviceIndex]
-					)
-				end
-				VoiceChatService:SetSpeakerDevice(VCSDeviceNames[VCSDeviceIndex], VCSDeviceGuids[VCSDeviceIndex])
-			else
-				if GetFFlagVoiceChatUILogging() then
-					log:warning("Could not find equivalent VoiceChatService Device")
-				end
-			end
-		else
-			if GetFFlagVoiceChatUILogging() then
-				log:warning("Could not connect to Voice Chat Service to change Output Device")
-			end
-		end
-	end
-
-	-- TODO: Remove this when voice chat is unified with sound service.
-	local function syncSoundOutputs()
-		if GetFFlagVoiceChatClientRewriteDisableVCSDevice() then
-			log:error("syncSoundOutputs is deprecated")
-			return
-		end
-
-		local success, deviceNames, deviceGuids, selectedIndex = pcall(function()
-			return SoundService:GetOutputDevices()
-		end)
-		if success and isValidDeviceList(deviceNames, deviceGuids, selectedIndex) then
-			setVCSOutput(deviceNames[selectedIndex])
-		else
-			if GetFFlagVoiceChatUILogging() then
-				log:warning("Could not connect to Voice Chat Service to change Output Device")
-			end
-		end
-	end
-
 	------------------------------------------------------
 	------------------
 	------------------ Input/Output Audio Device ---------
@@ -3156,12 +3378,243 @@ local function Initialize()
 		this.ChatModerationSelector.IndexChanged:connect(function(newIndex)
 			local isEnabled = newIndex == 2
 			chatModerationStore.setIsSettingEnabled(isEnabled)
-			if FFlagModerateChatAnalytics then
-				reportSettingsChangeForAnalytics("moderate_chat", not isEnabled, isEnabled)
-			end
+			reportSettingsChangeForAnalytics("moderate_chat", not isEnabled, isEnabled)
 		end)
 		-- Fetches whether the user has the chat moderation permission. This will trigger updates in the store.
 		chatModerationStore.initialize()
+	end
+
+	local function createAIRephraseSettingOptions()
+		local title = RobloxTranslator:FormatByKey("CoreScripts.InGameMenu.GameSettings.AIRephraseMessages")
+		local description = RobloxTranslator:FormatByKey("CoreScripts.InGameMenu.GameSettings.AIRephraseMessagesDescription")
+		local onLabel = RobloxTranslator:FormatByKey("InGame.CommonUI.Label.On")
+		local offLabel = RobloxTranslator:FormatByKey("InGame.CommonUI.Label.Off")
+
+		this.AIRephraseFrame, _, this.AIRephraseSelector = utility:AddNewRow(
+			this,
+			title,
+			"Selector",
+			{ offLabel, onLabel },
+			1,
+			nil,
+			description
+		)
+		this.AIRephraseFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER["AIRephraseFrame"]
+		this.AIRephraseFrame.Visible = false
+
+		local getUserChatSettingsStore =
+			require(CorePackages.Workspace.Packages.ExpChat).Stores.GetUserChatSettingsStore
+		local aiRephraseSettingStore = getUserChatSettingsStore.getAIRephraseSettingStore(false)
+		local debounceDelay = GetFIntDebounceAIRephraseSettingDelay()
+		local useDebounce = debounceDelay > 0
+		local previousIndex = if aiRephraseSettingStore.getIsSettingEnabled(false) then 2 else 1
+
+		-- We do not dispose of this effect since this menu is not unmounted.
+		this.AIRephraseDisposeEffect = Signals.createEffect(function(scope)
+			this.AIRephraseFrame.Visible = aiRephraseSettingStore.getIsSettingVisible(scope)
+
+			local enabled = aiRephraseSettingStore.getIsSettingEnabled(scope)
+			local index = if enabled then 2 else 1
+			if this.AIRephraseSelector:GetSelectedIndex() ~= index then
+				previousIndex = index
+				this.AIRephraseSelector:SetSelectionIndex(index)
+			end
+		end)
+
+		local onAIRephraseIndexChanged = function(newIndex)
+			if newIndex == previousIndex then
+				return
+			end
+			local isEnabled = newIndex == 2
+
+			task.spawn(function()
+				local success = TextChatService:OnUserChatSettingUpdateAsync(
+					"allowAIRephrase",
+					if isEnabled then "Enabled" else "Disabled"
+				)
+				if success then
+					aiRephraseSettingStore.setIsSettingEnabled(isEnabled)
+					previousIndex = newIndex
+					reportSettingsChangeForAnalytics("ai_rephrase", not isEnabled, isEnabled)
+				else
+					this.AIRephraseSelector:SetSelectionIndex(previousIndex)
+				end
+			end)
+		end
+		if FFlagExpChatDebounceRephraseIndexSelection then
+			if useDebounce then
+				local pendingThread = nil
+				this.AIRephraseSelector.IndexChanged:connect(function(newIndex)
+					if pendingThread then
+						task.cancel(pendingThread)
+					end
+					pendingThread = task.delay(debounceDelay, function()
+						pendingThread = nil
+						onAIRephraseIndexChanged(newIndex)
+					end)
+				end)
+			else
+				this.AIRephraseSelector.IndexChanged:connect(onAIRephraseIndexChanged)
+			end
+		else
+			this.AIRephraseSelector.IndexChanged:connect(if useDebounce then throttle(debounceDelay, onAIRephraseIndexChanged) else onAIRephraseIndexChanged)
+		end
+	end
+
+	local function createChatSummariesSettingOptions()
+		local title = RobloxTranslator:FormatByKey("CoreScripts.InGameMenu.GameSettings.ChatSummaries")
+		local description = RobloxTranslator:FormatByKey("CoreScripts.InGameMenu.GameSettings.ChatSummariesDescription")
+		local onLabel = RobloxTranslator:FormatByKey("InGame.CommonUI.Label.On")
+		local offLabel = RobloxTranslator:FormatByKey("InGame.CommonUI.Label.Off")
+
+		this.ChatSummariesFrame, _, this.ChatSummariesSelector = utility:AddNewRow(
+			this,
+			title,
+			"Selector",
+			{ offLabel, onLabel },
+			1,
+			nil,
+			description
+		)
+		this.ChatSummariesFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER["ChatSummariesFrame"]
+		this.ChatSummariesFrame.Visible = false
+
+		local getUserChatSettingsStore =
+			require(CorePackages.Workspace.Packages.ExpChat).Stores.GetUserChatSettingsStore
+		local chatSummariesSettingStore = getUserChatSettingsStore.getChatSummariesSettingStore(false)
+		local debounceDelay = GetFIntDebounceChatSummariesSettingDelay()
+		local useDebounce = debounceDelay > 0
+		local previousIndex = if chatSummariesSettingStore.getIsSettingEnabled(false) then 2 else 1
+
+		-- We do not dispose of this effect since this menu is not unmounted.
+		this.ChatSummariesDisposeEffect = Signals.createEffect(function(scope)
+			this.ChatSummariesFrame.Visible = chatSummariesSettingStore.getIsSettingVisible(scope)
+
+			local enabled = chatSummariesSettingStore.getIsSettingEnabled(scope)
+			local index = if enabled then 2 else 1
+			if this.ChatSummariesSelector:GetSelectedIndex() ~= index then
+				previousIndex = index
+				this.ChatSummariesSelector:SetSelectionIndex(index)
+			end
+		end)
+
+		local onChatSummariesIndexChanged = function(newIndex)
+			if newIndex == previousIndex then
+				return
+			end
+			local isEnabled = newIndex == 2
+
+			task.spawn(function()
+				local success = TextChatService:OnUserChatSettingUpdateAsync(
+					"AllowThirdPartySummary",
+					if isEnabled then "Enabled" else "Disabled"
+				)
+				if success then
+					chatSummariesSettingStore.setIsSettingEnabled(isEnabled)
+					previousIndex = newIndex
+					reportSettingsChangeForAnalytics("chat_summaries", not isEnabled, isEnabled)
+				else
+					this.ChatSummariesSelector:SetSelectionIndex(previousIndex)
+				end
+			end)
+		end
+		if useDebounce then
+			local pendingThread = nil
+			this.ChatSummariesSelector.IndexChanged:connect(function(newIndex)
+				if pendingThread then
+					task.cancel(pendingThread)
+				end
+				pendingThread = task.delay(debounceDelay, function()
+					pendingThread = nil
+					onChatSummariesIndexChanged(newIndex)
+				end)
+			end)
+		else
+			this.ChatSummariesSelector.IndexChanged:connect(onChatSummariesIndexChanged)
+		end
+	end
+
+	local function createChatNotificationsSettingOptions()
+		local ToastNotification = require(CorePackages.Workspace.Packages.ToastNotification)
+		local ToastNotificationSnoozeManager = ToastNotification.ToastNotificationSnoozeManager.default
+		local NotificationGroups = ToastNotification.NotificationGroups
+		local ToastNotificationTypeModule = ToastNotification.ToastNotificationTypeModule
+		local NotificationSnoozedSignal = ToastNotification.Signals.NotificationSnoozedSignal
+		local NotificationTypeEnum = ToastNotificationTypeModule.NotificationTypeEnum
+		local SnoozeActionEnum = ToastNotificationTypeModule.SnoozeActionEnum
+
+		local CHAT_NOTIFICATIONS_VALUES = {
+			Off = 1,
+			On = 2,
+		}
+
+		local title = RobloxTranslator:FormatByKey("Feature.Chat.Label.InGameFriendsChatNotifications")
+		local onLabel = RobloxTranslator:FormatByKey("InGame.CommonUI.Label.On")
+		local offLabel = RobloxTranslator:FormatByKey("InGame.CommonUI.Label.Off")
+
+		local function getSelectorIndex()
+			return if ToastNotificationSnoozeManager:isSnoozedNotificationType(NotificationTypeEnum.ChatNewMessage) then CHAT_NOTIFICATIONS_VALUES.Off else CHAT_NOTIFICATIONS_VALUES.On
+		end
+
+		local previousIndex = getSelectorIndex()
+
+		this.ChatNotificationsFrame, _, this.ChatNotificationsSelector = utility:AddNewRow(
+			this,
+			title,
+			"Selector",
+			{ offLabel, onLabel },
+			previousIndex
+		)
+		this.ChatNotificationsFrame.LayoutOrder = SETTINGS_MENU_LAYOUT_ORDER.ChatNotificationsFrame
+
+		this.ChatNotificationsSelector.IndexChanged:connect(function(newIndex)
+			if newIndex == previousIndex then
+				return
+			end
+
+			local wasEnabled = previousIndex == CHAT_NOTIFICATIONS_VALUES.On
+			local isEnabled = newIndex == CHAT_NOTIFICATIONS_VALUES.On
+			previousIndex = newIndex
+
+			if isEnabled then
+				ToastNotificationSnoozeManager:unmuteNotification({
+					notificationType = NotificationGroups.ChatLandingNotificationsGroup,
+					context = "InGameSettings",
+				})
+			else
+				ToastNotificationSnoozeManager:snoozeNotification({
+					notificationType = NotificationGroups.ChatLandingNotificationsGroup,
+					durationMinutes = -1, -- -1 represents an indefinite snooze time
+					context = "InGameSettings",
+				})
+			end
+
+			reportSettingsChangeForAnalytics("chat_notifications", wasEnabled, isEnabled)
+		end)
+
+		-- Keep selector in sync when muted/unmuted from other entrypoints
+		NotificationSnoozedSignal:connect(function(params)
+			if params.notificationType ~= NotificationTypeEnum.ChatNewMessage then
+				return
+			end
+
+			local index = if params.actionType == SnoozeActionEnum.Mute
+				then CHAT_NOTIFICATIONS_VALUES.Off
+				else CHAT_NOTIFICATIONS_VALUES.On
+			if this.ChatNotificationsSelector:GetSelectedIndex() ~= index then
+				previousIndex = index
+				this.ChatNotificationsSelector:SetSelectionIndex(index)
+			end
+		end)
+
+		-- Timed snoozes can expire without a signal; refresh when the Settings tab is shown.
+		this.Displayed.Event:Connect(function()
+			local index = getSelectorIndex()
+			if this.ChatNotificationsSelector:GetSelectedIndex() ~= index then
+				previousIndex = index
+				this.ChatNotificationsSelector:SetSelectionIndex(index)
+			end
+		end)
 	end
 
 	------------------------------------------------------
@@ -3217,44 +3670,21 @@ local function Initialize()
 			return SoundService:GetOutputDevices()
 		end)
 
-		if GetFFlagVoiceChatClientRewriteDisableVCSDevice() then
-			if success and isValidDeviceList(deviceNames, deviceGuids, selectedIndex) then
-				if deviceGuids[1] == "" then
-					deviceNames[1] = locales:Format("CoreScripts.InGameMenu.GameSettings.Default") .. " (" .. deviceNames[1] .. ")"
-				end
-
-				this[deviceType .. "DeviceNames"] = deviceNames
-				this[deviceType .. "DeviceGuids"] = deviceGuids
-				this[deviceType .. "DeviceIndex"] = selectedIndex
-			else
-				if GetFFlagVoiceChatUILogging() then
-					log:warning("Errors in get {} device info", deviceType)
-				end
-				this[deviceType .. "DeviceNames"] = {}
-				this[deviceType .. "DeviceGuids"] = {}
-				this[deviceType .. "DeviceIndex"] = 0
+		if success and isValidDeviceList(deviceNames, deviceGuids, selectedIndex) then
+			if deviceGuids[1] == "" then
+				deviceNames[1] = locales:Format("CoreScripts.InGameMenu.GameSettings.Default") .. " (" .. deviceNames[1] .. ")"
 			end
+
+			this[deviceType .. "DeviceNames"] = deviceNames
+			this[deviceType .. "DeviceGuids"] = deviceGuids
+			this[deviceType .. "DeviceIndex"] = selectedIndex
 		else
-			if success and isValidDeviceList(deviceNames, deviceGuids, selectedIndex) then
-				if deviceGuids[1] == "" then
-					deviceNames[1] = locales:Format("CoreScripts.InGameMenu.GameSettings.Default") .. " (" .. deviceNames[1] .. ")"
-				end
-
-				this[deviceType .. "DeviceNames"] = deviceNames
-				this[deviceType .. "VCSDeviceNames"] = deviceNames
-				this[deviceType .. "VCSDeviceGuids"] = deviceGuids
-				this[deviceType .. "DeviceGuids"] = deviceGuids
-				this[deviceType .. "DeviceIndex"] = selectedIndex
-			else
-				if GetFFlagVoiceChatUILogging() then
-					log:warning("Errors in get {} device info", deviceType)
-				end
-				this[deviceType .. "DeviceNames"] = {}
-				this[deviceType .. "DeviceGuids"] = {}
-				this[deviceType .. "VCSDeviceNames"] = {}
-				this[deviceType .. "VCSDeviceGuids"] = {}
-				this[deviceType .. "DeviceIndex"] = 0
+			if GetFFlagVoiceChatUILogging() then
+				log:warning("Errors in get {} device info", deviceType)
 			end
+			this[deviceType .. "DeviceNames"] = {}
+			this[deviceType .. "DeviceGuids"] = {}
+			this[deviceType .. "DeviceIndex"] = 0
 		end
 
 		if not this[deviceType .. "DeviceSelector"] then
@@ -3280,73 +3710,32 @@ local function Initialize()
 			end
 		end)
 
-		if GetFFlagVoiceChatClientRewriteDisableVCSDevice() then
-			if
-				success
-				and isValidDeviceList(deviceNames, deviceGuids, selectedIndex)
-			then
-				if deviceGuids[1] == "" then
-					deviceNames[1] = locales:Format("CoreScripts.InGameMenu.GameSettings.Default") .. " (" .. deviceNames[1] .. ")"
-				end
-
-				this[deviceType .. "DeviceNames"] = deviceNames
-				this[deviceType .. "DeviceGuids"] = deviceGuids
-				this[deviceType .. "DeviceIndex"] = selectedIndex
-			else
-				if GetFFlagVoiceChatUILogging() then
-					if #deviceNames > 0 then
-						log:warning(
-							"Errors in get {} device info success: {}",
-							deviceType,
-							success
-						)
-					else
-						log:warning("Empty deviceNames list for {}", deviceType)
-					end
-				end
-				this[deviceType .. "DeviceNames"] = {}
-				this[deviceType .. "DeviceGuids"] = {}
-				this[deviceType .. "DeviceIndex"] = 0
+		if
+			success
+			and isValidDeviceList(deviceNames, deviceGuids, selectedIndex)
+		then
+			if deviceGuids[1] == "" then
+				deviceNames[1] = locales:Format("CoreScripts.InGameMenu.GameSettings.Default") .. " (" .. deviceNames[1] .. ")"
 			end
+
+			this[deviceType .. "DeviceNames"] = deviceNames
+			this[deviceType .. "DeviceGuids"] = deviceGuids
+			this[deviceType .. "DeviceIndex"] = selectedIndex
 		else
-			local VCSSuccess, VCSDeviceNames, VCSDeviceGuids, VCSIndex = pcall(function()
-				return VoiceChatService:GetSpeakerDevices()
-			end)
-
-			if
-				success
-				and VCSSuccess
-				and isValidDeviceList(deviceNames, deviceGuids, selectedIndex)
-				and isValidDeviceList(VCSDeviceNames, VCSDeviceGuids, VCSIndex)
-			then
-				if deviceGuids[1] == "" then
-					deviceNames[1] = locales:Format("CoreScripts.InGameMenu.GameSettings.Default") .. " (" .. deviceNames[1] .. ")"
+			if GetFFlagVoiceChatUILogging() then
+				if #deviceNames > 0 then
+					log:warning(
+						"Errors in get {} device info success: {}",
+						deviceType,
+						success
+					)
+				else
+					log:warning("Empty deviceNames list for {}", deviceType)
 				end
-
-				this[deviceType .. "DeviceNames"] = deviceNames
-				this[deviceType .. "VCSDeviceNames"] = VCSDeviceNames
-				this[deviceType .. "VCSDeviceGuids"] = VCSDeviceGuids
-				this[deviceType .. "DeviceGuids"] = deviceGuids
-				this[deviceType .. "DeviceIndex"] = selectedIndex
-			else
-				if GetFFlagVoiceChatUILogging() then
-					if #deviceNames > 0 then
-						log:warning(
-							"Errors in get {} device info success: {} VCSSuccess: {}",
-							deviceType,
-							success,
-							VCSSuccess
-						)
-					else
-						log:warning("Empty deviceNames list for {}", deviceType)
-					end
-				end
-				this[deviceType .. "DeviceNames"] = {}
-				this[deviceType .. "DeviceGuids"] = {}
-				this[deviceType .. "VCSDeviceNames"] = {}
-				this[deviceType .. "VCSDeviceGuids"] = {}
-				this[deviceType .. "DeviceIndex"] = 0
 			end
+			this[deviceType .. "DeviceNames"] = {}
+			this[deviceType .. "DeviceGuids"] = {}
+			this[deviceType .. "DeviceIndex"] = 0
 		end
 
 		if not this[deviceType .. "DeviceSelector"] then
@@ -3440,13 +3829,57 @@ local function Initialize()
 		end
 	end
 
+	local uiScaleViewportChangedConnection = nil
+	local uiScaleCurrentCameraChangedConnection = nil
+
+	local function setupUIScaleViewportChangedListener()
+		if not RUUserScalePreferenceAPI then
+			return
+		end
+
+		local function rebindToCurrentCamera()
+			if uiScaleViewportChangedConnection then
+				uiScaleViewportChangedConnection:Disconnect()
+				uiScaleViewportChangedConnection = nil
+			end
+			local camera = workspace.CurrentCamera
+			if not camera then
+				return
+			end
+			uiScaleViewportChangedConnection = camera
+				:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+					if this.PageOpen then
+						createUIScaleOptions()
+					end
+				end)
+		end
+
+		rebindToCurrentCamera()
+		-- workspace.CurrentCamera can be replaced (e.g. camera scripts swapping cameras);
+		-- rebind the ViewportSize listener to whichever camera is current.
+		uiScaleCurrentCameraChangedConnection = workspace
+			:GetPropertyChangedSignal("CurrentCamera"):Connect(rebindToCurrentCamera)
+	end
+
+	local function teardownUIScaleViewportChangedListener()
+		if uiScaleViewportChangedConnection then
+			uiScaleViewportChangedConnection:Disconnect()
+			uiScaleViewportChangedConnection = nil
+		end
+		if uiScaleCurrentCameraChangedConnection then
+			uiScaleCurrentCameraChangedConnection:Disconnect()
+			uiScaleCurrentCameraChangedConnection = nil
+		end
+		-- Force createUIScaleOptions to re-validate the range on next open, since the viewport
+		-- could have changed while the listener was torn down (menu closed).
+		lastUIScaleMinHundredths = nil
+		lastUIScaleMaxHundredths = nil
+	end
+
 	-- Check if voice chat is enabled
 	local function checkVoiceChatOptions()
 		if VoiceChatServiceManager:VoiceChatAvailable() then
 			this.VoiceChatOptionsEnabled = true
-			if not GetFFlagVoiceChatClientRewriteMasterLua() then
-				syncSoundOutputs()
-			end
 		end
 	end
 
@@ -3470,15 +3903,9 @@ local function Initialize()
 			end
 		end
 
-		local frameText = "Voice Chat"
-		local disconnectedText = "Disconnected"
-		local connectedText = "Connected"
-
-		if FFlagEnableVoiceSelectorTranslations then
-			frameText = locales:Format("Feature.GameDetails.Label.VoiceChat")
-			disconnectedText = locales:Format("Feature.SettingsHub.Label.Disconnected")
-			connectedText = locales:Format("Feature.SettingsHub.Label.Connected")
-		end
+		local frameText = locales:Format("Feature.GameDetails.Label.VoiceChat")
+		local disconnectedText = locales:Format("Feature.SettingsHub.Label.Disconnected")
+		local connectedText = locales:Format("Feature.SettingsHub.Label.Connected")
 
 		local initialIndex = if VoiceChatServiceManager:VoiceChatEnded() then 1 else 2
 		this.VoiceConnectDisconnectFrame, _, this.VoiceConnectDisconnectSelector =
@@ -3520,7 +3947,7 @@ local function Initialize()
 		local connectedIndex = 2
 
 		local debounceDelay = GetFIntDebounceDisconnectButtonDelay()
-		local useDebounce = GetFFlagDebounceConnectDisconnectSelector() and debounceDelay > 0
+		local useDebounce = debounceDelay > 0
 
 		local onSelectorIndexChanged = function(newIndex)
 			if newIndex == previousIndex then
@@ -3533,16 +3960,35 @@ local function Initialize()
 				return
 			end
 
-			VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
-				"clicked",
-				VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(newIndex == connectedIndex)
-			)
+			if FFlagVoiceRewarmTelemetry then
+				local universeId, placeId, playSessionId, voiceSessionId = VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(newIndex == connectedIndex)
+				VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+					"clicked", universeId, placeId, playSessionId, voiceSessionId, VoiceChatServiceManager.joinVoiceButtonContext
+				)
+			else
+				VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+					"clicked",
+					VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(newIndex == connectedIndex)
+				)
+			end
 
 			if newIndex == connectedIndex then
+				VoiceChatServiceManager.pendingConnectionSource = VoiceConstants.VOICE_CONNECTION_SOURCE.SETTINGS_TOGGLE_ON
 				VoiceChatServiceManager:JoinVoice()
 			else
-				if not VoiceChatServiceManager:VoiceChatEnded() then
-					VoiceChatServiceManager:Leave()
+				if FFlagVoiceSelectorIgnoreFailedStateDisconnect then
+					-- Make sure :Leave() is not called in a failed state
+					local service = VoiceChatServiceManager:getService()
+					local voiceDownFromFailedState = service ~= nil and service.VoiceChatState == (Enum :: any).VoiceChatState.Failed
+					if not VoiceChatServiceManager:VoiceChatEnded() and not voiceDownFromFailedState then
+						VoiceChatServiceManager.pendingDisconnectReason = VoiceConstants.VOICE_DISCONNECT_REASON.USER_DISCONNECT
+						VoiceChatServiceManager:Leave()
+					end
+				else
+					if not VoiceChatServiceManager:VoiceChatEnded() then
+						VoiceChatServiceManager.pendingDisconnectReason = VoiceConstants.VOICE_DISCONNECT_REASON.USER_DISCONNECT
+						VoiceChatServiceManager:Leave()
+					end
 				end
 			end
 
@@ -3556,9 +4002,25 @@ local function Initialize()
 			end
 		end
 
-		this.VoiceConnectDisconnectSelector.IndexChanged:connect(
-			if useDebounce then throttle(debounceDelay, onSelectorIndexChanged) else onSelectorIndexChanged
-		)
+		if FFlagVoiceConnectSelectorDebounce then
+			local debouncedRunner = if useDebounce then debounce(onSelectorIndexChanged, debounceDelay) else onSelectorIndexChanged
+			this.VoiceConnectDisconnectSelector.IndexChanged:connect(function(newIndex)
+				if FFlagDifferentiateVoiceSelectorSystemAndUser then
+					if isProgrammaticChange then
+						-- Programmatic (system-driven) change: run synchronously so it bypasses the
+						-- debounce -- it can't cancel a pending user tap, and it early-returns without
+						-- firing a voice op or click telemetry (isProgrammaticChange is still set here).
+						onSelectorIndexChanged(newIndex)
+						return
+					end
+				end
+				debouncedRunner(newIndex)
+			end)
+		else
+			this.VoiceConnectDisconnectSelector.IndexChanged:connect(
+				if useDebounce then throttle(debounceDelay, onSelectorIndexChanged) else onSelectorIndexChanged
+			)
+		end
 
     	if FFlagVoiceChatSelectorReconnectFocus then
 			this.VoiceConnectDisconnectFrame.SelectionChanged:Connect(function(_, previousSelection, newSelection)
@@ -3571,17 +4033,56 @@ local function Initialize()
 		VoiceChatServiceManager:subscribe("OnStateChanged", function(oldState, newState)
 			if FFlagDifferentiateVoiceSelectorSystemAndUser then
 				isProgrammaticChange = true
-				if newState == (Enum :: any).VoiceChatState.Joined then
-					this.VoiceConnectDisconnectSelector:SetSelectionIndex(connectedIndex)
+				if FFlagDebounceVoiceSelectorIndexChange then
+					if 
+						newState == (Enum :: any).VoiceChatState.Joined
+						and this.VoiceConnectDisconnectSelector:GetSelectedIndex() ~= connectedIndex
+					then
+						this.VoiceConnectDisconnectSelector:SetSelectionIndex(connectedIndex)
+					end
+				else
+					if newState == (Enum :: any).VoiceChatState.Joined then
+						this.VoiceConnectDisconnectSelector:SetSelectionIndex(connectedIndex)
+					end
 				end
 			end
 
-			if newState == (Enum :: any).VoiceChatState.Failed then
-				this.VoiceConnectDisconnectSelector:SetSelectionIndex(disconnectedIndex)
+			if FFlagDebounceVoiceSelectorIndexChange then
+				if 
+					newState == (Enum :: any).VoiceChatState.Failed
+					and this.VoiceConnectDisconnectSelector:GetSelectedIndex() ~= disconnectedIndex
+				then
+					this.VoiceConnectDisconnectSelector:SetSelectionIndex(disconnectedIndex)
+				end
+			else
+				if newState == (Enum :: any).VoiceChatState.Failed then
+					this.VoiceConnectDisconnectSelector:SetSelectionIndex(disconnectedIndex)
+				end
+			end
+
+			if FFlagVoiceConnectSelectorDebounce then
+				if FFlagDifferentiateVoiceSelectorSystemAndUser then
+					-- The Differentiate path syncs Joined/Failed but not Ended/Idle, which can leave the
+					-- toggle stuck on Connected after an external disconnect; reconcile it here.
+					if
+						newState == (Enum :: any).VoiceChatState.Ended
+						or newState == (Enum :: any).VoiceChatState.Idle
+					then
+						if this.VoiceConnectDisconnectSelector:GetSelectedIndex() ~= disconnectedIndex then
+							this.VoiceConnectDisconnectSelector:SetSelectionIndex(disconnectedIndex)
+						end
+					end
+				end
 			end
 
 			if FFlagDifferentiateVoiceSelectorSystemAndUser then
-				isProgrammaticChange = false
+				if FFlagDeferProgrammaticChange then
+					task.defer(function()
+						isProgrammaticChange = false
+					end)
+				else
+					isProgrammaticChange = false
+				end
 			end
 		end)
 
@@ -3594,7 +4095,13 @@ local function Initialize()
 				end
 				this.VoiceConnectDisconnectSelector:SetSelectionIndex(disconnectedIndex)
 				if FFlagDifferentiateVoiceSelectorSystemAndUser then
-					isProgrammaticChange = false
+					if FFlagDeferProgrammaticChange then
+						task.defer(function()
+							isProgrammaticChange = false
+						end)
+					else
+						isProgrammaticChange = false
+					end
 				end
 			end)
 		end)
@@ -3616,19 +4123,34 @@ local function Initialize()
 					stateChangedConnection = VoiceChatServiceManager:getService().StateChanged
 						:Connect(function(oldState, newState)
 							if newState == (Enum :: any).VoiceChatState.Joined then
-								VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
-									"clicked",
-									VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true)
-								)
+								if FFlagVoiceRewarmTelemetry then
+									local universeId, placeId, playSessionId, voiceSessionId = VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true)
+									VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+										"clicked", universeId, placeId, playSessionId, voiceSessionId, VoiceChatServiceManager.joinVoiceButtonContext
+									)
+								else
+									VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+										"clicked",
+										VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true)
+									)
+								end
 								stateChangedConnection:Disconnect()
 							end
 						end)
 				else
-					VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
-						"clicked",
-						VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(false)
-					)
+					if FFlagVoiceRewarmTelemetry then
+						local universeId, placeId, playSessionId, voiceSessionId = VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(false)
+						VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+							"clicked", universeId, placeId, playSessionId, voiceSessionId, VoiceChatServiceManager.joinVoiceButtonContext
+						)
+					else
+						VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+							"clicked",
+							VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(false)
+						)
+					end
 				end
+				VoiceChatServiceManager.pendingConnectionSource = VoiceConstants.VOICE_CONNECTION_SOURCE.SETTINGS_TOGGLE_ON
 				VoiceChatServiceManager:JoinVoice()
 			end
 
@@ -3637,6 +4159,7 @@ local function Initialize()
 					"clicked",
 					VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true)
 				)
+				VoiceChatServiceManager.pendingDisconnectReason = VoiceConstants.VOICE_DISCONNECT_REASON.USER_DISCONNECT
 				VoiceChatServiceManager:Leave()
 			end
 
@@ -3912,9 +4435,59 @@ local function Initialize()
 				:andThen(function()
 					VoiceChatService = VoiceChatServiceManager:getService()
 					checkVoiceChatOptions()
+					if FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider and this.VoiceChatVolumeFrame then
+						local function updateVoiceChatVolumeVisibility(stateOverride)
+							local ok, err = pcall(function()
+								local voiceChatService = game:GetService("VoiceChatService")
+								local voiceChatInternal = VoiceChatServiceManager:getService()
+								local currentState = if FFlagVoiceVolumeControlsFixSliderVisibilityOnEligibleGames
+									then stateOverride or (voiceChatInternal and voiceChatInternal.VoiceChatState)
+									else (voiceChatInternal and voiceChatInternal.VoiceChatState)
+								local isConnected = currentState == (Enum :: any).VoiceChatState.Joined
+								local audioApiEnabled = voiceChatService and voiceChatService.UseNewAudioApi
+								local isPartyVoiceFocused = FFlagVoiceVolumeControlsSuppressInExperienceUiForPartyVoice
+									and GetFFlagEnableCrossExpVoice()
+									and GetFFlagFixSeamlessVoiceIntegrationWithPrivateVoice()
+									and isVoiceFocused()
+								this.VoiceChatVolumeFrame.Visible =
+									VoiceVolumeControlsEligibility.isVoiceChatVolumeSliderVisible(
+										isConnected,
+										audioApiEnabled
+									) and not isPartyVoiceFocused
+							end)
+							if not ok then
+								log:debug("[GameSettings] updateVoiceChatVolumeVisibility ERROR:", err)
+							end
+						end
+						updateVoiceChatVolumeVisibility()
+						if
+							FFlagVoiceVolumeControlsSuppressInExperienceUiForPartyVoice
+							and GetFFlagEnableCrossExpVoice()
+							and GetFFlagFixSeamlessVoiceIntegrationWithPrivateVoice()
+						then
+							observeIsVoiceFocused(function()
+								updateVoiceChatVolumeVisibility()
+							end)
+						end
+						if FFlagVoiceVolumeControlsFixSliderVisibilityOnEligibleGames then
+							VoiceChatServiceManager:subscribe("OnStateChanged", function(_, newState)
+								updateVoiceChatVolumeVisibility(newState)
+							end)
+						else
+							local voiceInternal = VoiceChatServiceManager:getService()
+							if voiceInternal then
+								voiceInternal.StateChanged:Connect(function()
+									updateVoiceChatVolumeVisibility()
+								end)
+							end
+						end
+					end
 
 					if FFlagVoiceSelectorAvailableAfterFae then
-						if VoiceChatServiceManager:UserVoiceEnabled() then
+						if GetFFlagEnableVoiceUxUpdates()
+							and VoiceChatServiceManager:UserVoiceEnabled()
+							and VoiceChatServiceManager:verifyUniverseAndPlaceCanUseVoice()
+						then
 							createVoiceChatSelector()
 						end
 					end
@@ -3922,10 +4495,50 @@ local function Initialize()
 					-- Check volume settings. Show prompt if volume is 0
 					if not GetFFlagEnableUniveralVoiceToasts() then
 						VoiceChatServiceManager:CheckAndShowNotAudiblePrompt()
+						local shouldSuppressVoiceChatVolumeToast =
+							FFlagVoiceVolumeControlsSuppressInExperienceUiForPartyVoice
+							and GetFFlagEnableCrossExpVoice()
+							and GetFFlagFixSeamlessVoiceIntegrationWithPrivateVoice()
+							and isVoiceFocused()
+						if
+							FFlagVoiceVolumeControlsEnableNotAudibleVoiceChatVolumeToast
+							and not shouldSuppressVoiceChatVolumeToast
+						then
+							VoiceChatServiceManager:ShowNotAudiblePromptVoiceChatVolume()
+						end
 					end
 
 					if GetFFlagEnableVoiceUxUpdates() then
-						this.VoiceConnectDisconnectSelector:SetSelectionIndex(2)
+						if FFlagVoiceConnectSelectorDebounce then
+							-- Only sync to connected if the selector isn't already there; under the debounce a
+							-- redundant SetSelectionIndex would replay the connect animation.
+							if this.VoiceConnectDisconnectSelector:GetSelectedIndex() ~= 2 then
+								if FFlagDifferentiateVoiceSelectorSystemAndUser and FFlagDeferProgrammaticChange then
+									isProgrammaticChange = true
+
+									this.VoiceConnectDisconnectSelector:SetSelectionIndex(2)
+
+									task.defer(function()
+										isProgrammaticChange = false
+									end)
+								else
+									this.VoiceConnectDisconnectSelector:SetSelectionIndex(2)
+								end
+							end
+						else
+							if FFlagDifferentiateVoiceSelectorSystemAndUser and FFlagDeferProgrammaticChange then
+								isProgrammaticChange = true
+
+								this.VoiceConnectDisconnectSelector:SetSelectionIndex(2)
+
+								task.defer(function()
+									isProgrammaticChange = false
+								end)
+							else
+								this.VoiceConnectDisconnectSelector:SetSelectionIndex(2)
+							end
+						end
+
 					else
 						local isCurrentlyVoiceFocused = false
 						if GetFFlagEnableConnectDisconnectInSettingsAndChrome() then
@@ -4050,28 +4663,24 @@ local function Initialize()
 			this.VideoOptionsEnabled = response.hasCameraPermissions
 		end
 
-		if getFFlagDoNotPromptCameraPermissionsOnMount() then
-			if isCamEnabledForUserAndPlace() then
-				-- Only render video options setting if it's enabled + eligible for user and enabled for place
-				local shouldNotRequestPerms = true
-				getCamMicPermissions(
-					callback,
-					{ PermissionsProtocol.Permissions.CAMERA_ACCESS :: string },
-					shouldNotRequestPerms
-				)
+		if isCamEnabledForUserAndPlace() then
+			-- Only render video options setting if it's enabled + eligible for user and enabled for place
+			local shouldNotRequestPerms = true
+			getCamMicPermissions(
+				callback,
+				{ PermissionsProtocol.Permissions.CAMERA_ACCESS :: string },
+				shouldNotRequestPerms
+			)
 
-				if cameraPermissionGrantedListener then
-					cameraPermissionGrantedListener:disconnect()
-				end
-				cameraPermissionGrantedListener = cameraDevicePermissionGrantedSignal:connect(function()
-					-- Once we hear the granted signal, we'll show the Camera Device Game setting
-					this.VideoOptionsEnabled = true
-					updateCameraDevices()
-					setupVideoCameraDeviceChangedListener()
-				end)
+			if cameraPermissionGrantedListener then
+				cameraPermissionGrantedListener:disconnect()
 			end
-		else
-			getCamMicPermissions(callback, nil, nil, "GameSettings.createDeviceOptions")
+			cameraPermissionGrantedListener = cameraDevicePermissionGrantedSignal:connect(function()
+				-- Once we hear the granted signal, we'll show the Camera Device Game setting
+				this.VideoOptionsEnabled = true
+				updateCameraDevices()
+				setupVideoCameraDeviceChangedListener()
+			end)
 		end
 	end
 
@@ -4165,6 +4774,30 @@ local function Initialize()
 	end
 
 	createVolumeOptions()
+	if FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider then
+		createVoiceChatVolumeOptions()
+	end
+
+	if FFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry and FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider then
+		local isSettingsTabVisible = false
+
+		this.Displayed.Event:Connect(function()
+			isSettingsTabVisible = true
+			if this.VoiceChatVolumeFrame and this.VoiceChatVolumeFrame.Visible then
+				VoiceChatServiceManager:RecordGameSettingsOpened()
+			end
+		end)
+
+		this.Hidden.Event:Connect(function()
+			isSettingsTabVisible = false
+		end)
+
+		this.VoiceChatVolumeFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+			if this.VoiceChatVolumeFrame.Visible and isSettingsTabVisible then
+				VoiceChatServiceManager:RecordGameSettingsOpened()
+			end
+		end)
+	end
 	if hasPartyVoiceVolume then
 		createPartyVoiceVolumeOptions()
 	end
@@ -4184,6 +4817,9 @@ local function Initialize()
 		createPreferredTransparencyOptions()
 	end
 	createPreferredTextSizeOptions()
+	if RUUserScalePreferenceAPI then
+		createUIScaleOptions()
+	end
 	createUiNavigationKeyBindOptions()
 
 	local canShowPerfStats = not CachedPolicyService:IsSubjectToChinaPolicies()
@@ -4208,6 +4844,18 @@ local function Initialize()
 		createChatModerationOptions()
 	end
 
+	if FFlagAIRephraseSettingEnabled then
+		createAIRephraseSettingOptions()
+	end
+
+	if FFlagChatSummariesSettingEnabled then
+		createChatSummariesSettingOptions()
+	end
+
+	if FFlagExpChatEnableFriendsTab then
+		createChatNotificationsSettingOptions()
+	end
+
 	-- dev console option only shows for place/group place owners
 	createDeveloperConsoleOption()
 
@@ -4224,6 +4872,13 @@ local function Initialize()
 	allSettingsCreated = true
 	if VRService.VREnabled then
 		onVRSettingsReady()
+	end
+
+	if renderMoreSettingsBanner then
+		this.MoreSettingsBanner = renderMoreSettingsBanner({
+			layoutOrder = SETTINGS_MENU_LAYOUT_ORDER.MoreSettingsBanner,
+			parent = this.Page,
+		})
 	end
 
 	if FFlagIEMSettingsGroups then
@@ -4311,11 +4966,32 @@ local function Initialize()
 			end
 		end
 
+		if RUUserScalePreferenceAPI then
+			createUIScaleOptions()
+		end
+
+		if
+			GetFFlagLazyInitiateExperienceLanguageSwitcher()
+			and not this.LanguageSwitcherInitialized
+			and isLangaugeSelectionDropdownEnabled()
+			and GetFFlagEnableLocalesForExperienceLanguageSwitcher()
+		then
+			this.LanguageSwitcherInitialized = true
+			CreateExperienceLanguageSwitcher(this, SETTINGS_MENU_LAYOUT_ORDER, reportSettingsChangeForAnalytics)
+		end
+
 		-- Update device info each time user opens the menu
 		-- TODO: This should be simplified by new API
 		updateAudioOptions()
 		setupDeviceChangedListener()
+		if RUUserScalePreferenceAPI then
+			setupUIScaleViewportChangedListener()
+		end
 		this.startVolume = GameSettings.MasterVolume
+		if FFlagVoiceVolumeControlsEnableNotAudibleVoiceChatVolumeToast
+			and FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider then
+			this.maxVoiceChatVolumeDuringSession = GameSettings.VoiceChatVolume
+		end
 
 		if (GetFFlagSelfViewCameraSettings()) and this.VideoOptionsEnabled then
 			if game:GetEngineFeature("VideoCaptureService") then
@@ -4348,10 +5024,10 @@ local function Initialize()
 				this.toggleFeedbackModeText.Text = UNAVAILABLE_TEXT
 			end
 		end
-
-		-- Set the last selectable object to the last ValueChangerFrame for focus navigation
-		if FFlagIEMFocusNavToButtons then
-			table.insert(this.LastSelectableObjects, getLastValueChangerFrame(this))
+		table.insert(this.LastSelectableObjects, getLastValueChangerFrame(this))
+		if FFlagIEMTabFocusNav then
+			table.insert(this.FirstSelectableObjects, getFirstValueChangerFrame(this))
+			this.FirstSelectableObjectsUpdated:fire()
 		end
 	end
 
@@ -4365,6 +5041,9 @@ local function Initialize()
 		end
 
 		teardownDeviceChangedListener()
+		if RUUserScalePreferenceAPI then
+			teardownUIScaleViewportChangedListener()
+		end
 		if GetFFlagEnableCrossExpVoice() and teardownCrossExperienceVoiceListeners then
 			teardownCrossExperienceVoiceListeners()
 		end
@@ -4373,9 +5052,7 @@ local function Initialize()
 				teardownVideoCameraDeviceChangedListener()
 			end
 
-			if getFFlagDoNotPromptCameraPermissionsOnMount() then
-				teardownCameraPermissionGrantedListener()
-			end
+			teardownCameraPermissionGrantedListener()
 		end
 
 		-- Check volume settings.
@@ -4387,6 +5064,17 @@ local function Initialize()
 			and this.startVolume > 0
 		then
 			VoiceChatServiceManager:CheckAndShowNotAudiblePrompt()
+		end
+
+		if
+			game:GetEngineFeature("VoiceChatSupported")
+			and this.VoiceChatOptionsEnabled
+			and FFlagVoiceVolumeControlsEnableNotAudibleVoiceChatVolumeToast
+			and FFlagVoiceVolumeControlsEnableVoiceChatVolumeSlider
+			and this.maxVoiceChatVolumeDuringSession ~= nil
+			and this.maxVoiceChatVolumeDuringSession > 0
+		then
+			VoiceChatServiceManager:ShowNotAudiblePromptVoiceChatVolume()
 		end
 	end
 
@@ -4424,7 +5112,9 @@ local function Initialize()
 
 		if isLangaugeSelectionDropdownEnabled() then
 			if GetFFlagEnableLocalesForExperienceLanguageSwitcher() then
-				CreateExperienceLanguageSwitcher(this, SETTINGS_MENU_LAYOUT_ORDER, reportSettingsChangeForAnalytics)
+				if not GetFFlagLazyInitiateExperienceLanguageSwitcher() then
+					CreateExperienceLanguageSwitcher(this, SETTINGS_MENU_LAYOUT_ORDER, reportSettingsChangeForAnalytics)
+				end
 			else
 				createTranslationOptions()
 			end

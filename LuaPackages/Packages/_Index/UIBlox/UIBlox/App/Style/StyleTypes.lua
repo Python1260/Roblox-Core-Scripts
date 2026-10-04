@@ -8,7 +8,11 @@ export type ThemeItem = {
 	Transparency: number,
 }
 
+export type BaseTokens = TokenTypes.BaseTokens
 export type Tokens = TokenTypes.Tokens
+export type PublicTokens = TokenTypes.PublicTokens
+export type FoundationTokens = TokenTypes.FoundationTokens
+export type RbxDesignFoundationsV4Tokens = TokenTypes.RbxDesignFoundationsV4Tokens
 export type ComponentTokens = TokenTypes.ComponentTokens
 export type GlobalTokens = TokenTypes.GlobalTokens
 export type SemanticTokens = TokenTypes.SemanticTokens
@@ -79,7 +83,7 @@ export type BackgroundStyle = {
 }
 
 export type TypographyItem = {
-	Font: Enum.Font,
+	Font: Font | Enum.Font,
 	FontSize: number,
 	LineHeight: number,
 	LetterSpacing: number,

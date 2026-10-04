@@ -1,14 +1,13 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
-local Dash = require(Packages.Dash)
 local React = require(Packages.React)
 
-local Flags = require(Foundation.Utility.Flags)
 local Logger = require(Foundation.Utility.Logger)
 
 local Interactable = require(Foundation.Components.Interactable)
 
+local Flags = require(Foundation.Utility.Flags)
 local GuiObjectChildren = require(Foundation.Utility.GuiObjectChildren)
 local Types = require(Foundation.Components.Types)
 local useDefaultTags = require(Foundation.Utility.useDefaultTags)
@@ -41,6 +40,8 @@ local defaultProps = {
 local DEFAULT_TAGS = "gui-object-defaults"
 local DEFAULT_TAGS_WITH_BG = `{DEFAULT_TAGS} x-default-transparency`
 
+local debugWarnedAboutGroupTransparency = false
+
 local function View(viewProps: ViewProps, ref: React.Ref<GuiObject>?)
 	local props = withDefaults(viewProps, defaultProps)
 
@@ -51,29 +52,55 @@ local function View(viewProps: ViewProps, ref: React.Ref<GuiObject>?)
 
 	local isInteractable = props.onStateChanged ~= nil or props.onActivated ~= nil or props.onSecondaryActivated ~= nil
 
-	local usesCanvasGroup = React.useMemo(function()
-		if props.GroupTransparency ~= nil then
-			if type(props.GroupTransparency) == "table" then -- It's a binding
-				return true -- The binding may change outside of this memo, so we must always use a CanvasGroup
-			else
-				return props.GroupTransparency > 0
-			end
-		end
-		return false
-	end, { props.GroupTransparency })
+	local usesCanvasGroup
 
-	local engineComponent = React.useMemo(function()
-		if usesCanvasGroup then
-			if isInteractable and not props.isDisabled then
-				Logger:warning("Some state changes are not supported with GroupTransparency")
+	if Flags.FoundationViewMemoizationChanges then
+		usesCanvasGroup = props.GroupTransparency ~= nil
+			and (
+				type(props.GroupTransparency) == "table" -- It's a binding. The binding may change outside of this memo, so we must always use a CanvasGroup.
+				or props.GroupTransparency > 0
+			)
+	else
+		usesCanvasGroup = React.useMemo(function()
+			if props.GroupTransparency ~= nil then
+				if type(props.GroupTransparency) == "table" then -- It's a binding
+					return true -- The binding may change outside of this memo, so we must always use a CanvasGroup
+				else
+					return props.GroupTransparency > 0
+				end
 			end
-			return "CanvasGroup"
-		elseif isInteractable then
-			return "ImageButton" -- Required for some state changes to work, e.g. enter triggering SelectedPressed
-		else
-			return "Frame"
+			return false
+		end, { props.GroupTransparency })
+	end
+
+	local engineComponent
+
+	if Flags.FoundationViewMemoizationChanges then
+		engineComponent = if usesCanvasGroup
+			then "CanvasGroup"
+			elseif
+				isInteractable
+			then "ImageButton" -- Required for some state changes to work, e.g. enter triggering SelectedPressed
+			else "Frame"
+
+		if usesCanvasGroup and isInteractable and not props.isDisabled and not debugWarnedAboutGroupTransparency then
+			debugWarnedAboutGroupTransparency = true
+			Logger:warning("Some state changes are not supported with GroupTransparency")
 		end
-	end, { usesCanvasGroup, isInteractable })
+	else
+		engineComponent = React.useMemo(function()
+			if usesCanvasGroup then
+				if isInteractable and not props.isDisabled then
+					Logger:warning("Some state changes are not supported with GroupTransparency")
+				end
+				return "CanvasGroup"
+			elseif isInteractable then
+				return "ImageButton" -- Required for some state changes to work, e.g. enter triggering SelectedPressed
+			else
+				return "Frame"
+			end
+		end, { usesCanvasGroup, isInteractable })
+	end
 
 	local engineComponentProps = withGuiObjectProps(props, {
 		-- When CanvasGroup and Frame support all states, we can remove this.
@@ -83,41 +110,21 @@ local function View(viewProps: ViewProps, ref: React.Ref<GuiObject>?)
 		ref = ref,
 		[React.Tag] = tag,
 	})
+	local component: any = engineComponent
+	local componentProps: any = engineComponentProps
 
-	if Flags.FoundationBuildingBlocksRemoveDashUnion then
-		local component: any = engineComponent
-		local componentProps: any = engineComponentProps
-
-		if isInteractable then
-			component = Interactable
-			componentProps.component = engineComponent
-			componentProps.onActivated = props.onActivated
-			componentProps.onSecondaryActivated = props.onSecondaryActivated
-			componentProps.onStateChanged = props.onStateChanged
-			componentProps.stateLayer = props.stateLayer
-			componentProps.isDisabled = props.isDisabled
-			componentProps.cursor = props.cursor
-		end
-
-		return React.createElement(component, componentProps, GuiObjectChildren(props))
-	else
-		local component = if isInteractable then Interactable else engineComponent
-
-		local viewComponentProps = {
-			component = engineComponent,
-			onActivated = props.onActivated,
-			onSecondaryActivated = props.onSecondaryActivated,
-			onStateChanged = props.onStateChanged,
-			stateLayer = props.stateLayer,
-			isDisabled = props.isDisabled,
-			cursor = props.cursor,
-		}
-		local componentProps = if isInteractable
-			then Dash.union(engineComponentProps, viewComponentProps)
-			else engineComponentProps
-
-		return React.createElement(component, componentProps, GuiObjectChildren(props))
+	if isInteractable then
+		component = Interactable
+		componentProps.component = engineComponent
+		componentProps.onActivated = props.onActivated
+		componentProps.onSecondaryActivated = props.onSecondaryActivated
+		componentProps.onStateChanged = props.onStateChanged
+		componentProps.stateLayer = props.stateLayer
+		componentProps.isDisabled = props.isDisabled
+		componentProps.cursor = props.cursor
 	end
+
+	return React.createElement(component, componentProps, GuiObjectChildren(props))
 end
 
 return React.memo(React.forwardRef(View))

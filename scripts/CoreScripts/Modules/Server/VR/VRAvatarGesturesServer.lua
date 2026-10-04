@@ -14,8 +14,66 @@ local VR_AVATAR_GESTURES_ANALYTICS_EVENT_NAME = "VRAvatarGestures"
 -- Analytics
 local FIntVRAvatarGesturesAnalyticsThrottleHundrethsPercent = game:DefineFastInt("VRAvatarGesturesAnalyticsThrottleHundrethsPercent", 0)
 
+local FFlagVRAvatarGesturesUseNilForHandChainRootRebuild = game:DefineFastFlag("VRAvatarGesturesUseNilForHandChainRootRebuild", false)
+
+-- Frees the ragdoll joint limits across the whole arm chain instead of just the hand, so they stop
+-- fighting the VR IK. The IK solver reads these limits on legacy and AvatarJointUpgrade rigs alike.
+local FFlagVRAvatarGesturesFixJointLimits = game:DefineFastFlag("VRAvatarGesturesFixJointLimits", false)
+
+-- Avatar Rig Parts
+local ARM_PART_SUFFIXES = { "UpperArm", "LowerArm", "Hand" }
+local SIDES = { "Left", "Right" }
+local RAGDOLL_BALL_SOCKET_NAME_SUFFIX = "BallSocket"
+
+local PRIOR_LIMITS_ATTRIBUTE = "VRAvatarGesturesPriorLimitsEnabled"
+local PRIOR_TWIST_LIMITS_ATTRIBUTE = "VRAvatarGesturesPriorTwistLimitsEnabled"
+
 local VRAvatarGesturesServer = {}
 VRAvatarGesturesServer.__index = VRAvatarGesturesServer
+
+local function isRagdollBallSocket(instance: Instance): boolean
+	return instance:IsA("BallSocketConstraint")
+		and string.sub(instance.Name, -#RAGDOLL_BALL_SOCKET_NAME_SUFFIX) == RAGDOLL_BALL_SOCKET_NAME_SUFFIX
+end
+
+local function forEachArmRagdollBallSocket(character: Model, side: string, fn: (BallSocketConstraint) -> ())
+	for _, suffix in ipairs(ARM_PART_SUFFIXES) do
+		local armPart = character:FindFirstChild(side .. suffix)
+		if armPart then
+			for _, child in ipairs(armPart:GetChildren()) do
+				if isRagdollBallSocket(child) then
+					fn(child :: BallSocketConstraint)
+				end
+			end
+		end
+	end
+end
+
+-- Helper function to suppress the ragdoll limits for an arm part. Used to enable VR IK to fully synchronize with a VR controller.
+-- Caches the previous limit settings so that they can be restored later if AvatarGestures is disabled.
+local function suppressArmRagdollLimits(character: Model, side: string)
+	forEachArmRagdollBallSocket(character, side, function(constraint)
+		if constraint:GetAttribute(PRIOR_LIMITS_ATTRIBUTE) == nil then
+			constraint:SetAttribute(PRIOR_LIMITS_ATTRIBUTE, constraint.LimitsEnabled)
+			constraint:SetAttribute(PRIOR_TWIST_LIMITS_ATTRIBUTE, constraint.TwistLimitsEnabled)
+		end
+		constraint.LimitsEnabled = false
+		constraint.TwistLimitsEnabled = false
+	end)
+end
+
+-- Helper function that restores the previous limit settings that were cached by suppressArmRagdollLimits.
+local function restoreArmRagdollLimits(character: Model, side: string)
+	forEachArmRagdollBallSocket(character, side, function(constraint)
+		local priorLimits = constraint:GetAttribute(PRIOR_LIMITS_ATTRIBUTE)
+		if priorLimits ~= nil then
+			constraint.LimitsEnabled = priorLimits
+			constraint.TwistLimitsEnabled = constraint:GetAttribute(PRIOR_TWIST_LIMITS_ATTRIBUTE)
+			constraint:SetAttribute(PRIOR_LIMITS_ATTRIBUTE, nil)
+			constraint:SetAttribute(PRIOR_TWIST_LIMITS_ATTRIBUTE, nil)
+		end
+	end)
+end
 
 function VRAvatarGesturesServer.new()
 	local self: any = setmetatable({}, VRAvatarGesturesServer)
@@ -36,6 +94,13 @@ function cleanCharacter(player)
 	-- avatarUtil currently doesn't support disconnecting, but the connection should be cleaned up as well when it is supported
 
 	if player.Character then
+		if FFlagVRAvatarGesturesFixJointLimits then
+			-- gestures no longer pose the arms, so give the rig its limits back
+			for _, side in ipairs(SIDES) do
+				restoreArmRagdollLimits(player.Character, side)
+			end
+		end
+
 		local humanoid = player.Character:FindFirstChild("Humanoid")
 		if humanoid then
 			local ikControlNames = { "TrackedIKLeftHand", "TrackedIKRightHand", "TrackedIKHead" }
@@ -192,7 +257,6 @@ function VRAvatarGesturesServer:findOrCreateColliders(partName, character)
 	end
 end
 
-
 function VRAvatarGesturesServer:createHandCollider(side, character)
 	self:findOrCreateColliders(side .. "Hand", character)
     local part = character:FindFirstChild(side .. "Hand")
@@ -209,7 +273,13 @@ function VRAvatarGesturesServer:createHandCollider(side, character)
 			local ikRoot = character:FindFirstChild(side .. "UpperArm")
 			if ikRoot then
 				-- IKControl needs a reset if the character's proportions may have changed
-				ikControl.ChainRoot = part
+				if FFlagVRAvatarGesturesUseNilForHandChainRootRebuild then
+					-- Setting part as the ChainRoot causes an issue where recalculating the IK chain results in the arms disappearing.
+					-- Set the root as nil to avoid this issue while still allowing the IKControl to be reset.
+					ikControl.ChainRoot = nil
+				else
+					ikControl.ChainRoot = part
+				end
 				coroutine.wrap(function()
 					task.wait(0.1)
 					ikControl.ChainRoot = ikRoot
@@ -223,7 +293,9 @@ function VRAvatarGesturesServer:createHandCollider(side, character)
 		end
 	end
 
-	if part then
+	if FFlagVRAvatarGesturesFixJointLimits then
+		suppressArmRagdollLimits(character, side)
+	elseif part then
 		local constraint = part:FindFirstChild("RagdollBallSocket")
 		if constraint then
 			constraint.LimitsEnabled = false
@@ -266,5 +338,9 @@ function VRAvatarGesturesServer:onCharacterChanged(character)
 		self:createHeadCollider(character)
 	end
 end
+
+-- Test-only: the public entry points call SetNetworkOwner, which the client-side test DataModel rejects.
+VRAvatarGesturesServer._suppressArmRagdollLimits = suppressArmRagdollLimits
+VRAvatarGesturesServer._restoreArmRagdollLimits = restoreArmRagdollLimits
 
 return VRAvatarGesturesServer

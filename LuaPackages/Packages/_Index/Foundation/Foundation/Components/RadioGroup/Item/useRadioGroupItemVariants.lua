@@ -48,8 +48,10 @@ local function variantsFactory(tokens: Tokens)
 			checkmark = { tag = "size-250" },
 		},
 		[InputSize.Large] = {
-			input = { size = UDim2.fromOffset(tokens.Size.Size_700, tokens.Size.Size_700) },
-			checkmark = { tag = "size-300" },
+			input = {
+				size = UDim2.fromOffset(tokens.Size.Size_600, tokens.Size.Size_600),
+			},
+			checkmark = { tag = "size-250" },
 		},
 	}
 

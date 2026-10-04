@@ -3,6 +3,9 @@ local Packages = Foundation.Parent
 
 local React = require(Packages.React)
 
+local BuilderIcons = require(Packages.BuilderIcons)
+local IconVariant = BuilderIcons.IconVariant
+
 local Constants = require(Foundation.Constants)
 local Flags = require(Foundation.Utility.Flags)
 local PresentationContext = require(Foundation.Providers.Style.PresentationContext)
@@ -18,7 +21,7 @@ local Accessory = require(script.Parent.Accessory)
 local IconPosition = require(Foundation.Enums.IconPosition)
 type IconPosition = IconPosition.IconPosition
 
-local ColorMode = require(Foundation.Enums.ColorMode)
+local ColorNamespace = require(Foundation.Enums.ColorNamespace)
 local StateLayerMode = require(Foundation.Enums.StateLayerMode)
 
 local CursorType = require(Foundation.Enums.CursorType)
@@ -62,7 +65,7 @@ local defaultProps = {
 	Selectable = true,
 	isDisabled = false,
 	size = ChipSize.Medium,
-	variant = if Flags.FoundationAddUtilityVariantToChip then ChipVariant.Standard else nil :: any,
+	variant = ChipVariant.Standard,
 	testId = "--foundation-chip",
 }
 
@@ -71,39 +74,49 @@ local function Chip(chipProps: ChipProps, ref: React.Ref<GuiObject>?)
 
 	local tokens = useTokens()
 	local leading, trailing = React.useMemo(function()
-		-- selene: allow(shadowing)
-		local leading, trailing
-		if props.icon == nil then
-			return props.leading, props.trailing
-		end
+		local leadingIcon = props.leading
+		local trailingIcon = props.trailing
 
-		if typeof(props.icon) == "string" then
-			leading = {
-				iconName = props.icon,
-			}
-		else
-			local icon = {
-				iconName = props.icon.name,
-			}
-			if props.icon.position == IconPosition.Left then
-				leading = icon
+		-- Migration step for the deprecated `icon` prop
+		if props.icon ~= nil then
+			if typeof(props.icon) == "string" then
+				leadingIcon = {
+					iconName = props.icon,
+				}
 			else
-				trailing = icon
+				local icon = {
+					iconName = props.icon.name,
+				}
+				if props.icon.position == IconPosition.Left then
+					leadingIcon = icon
+				else
+					trailingIcon = icon
+				end
 			end
 		end
 
-		return props.leading or leading, props.trailing or trailing
+		if typeof(leadingIcon) == "table" and leadingIcon.isCircular then
+			leadingIcon.iconVariant = IconVariant.Filled
+		end
+		if typeof(trailingIcon) == "table" and trailingIcon.isCircular then
+			trailingIcon.iconVariant = IconVariant.Filled
+		end
+
+		return leadingIcon, trailingIcon
 	end, { props.leading, props.icon, props.trailing } :: { unknown })
 
-	local variantProps = useChipVariants(
-		tokens,
-		props.size,
-		if Flags.FoundationAddUtilityVariantToChip then props.variant else nil :: any,
-		props.isChecked,
-		leading ~= nil,
-		trailing ~= nil
-	)
+	local variantProps =
+		useChipVariants(tokens, props.size, props.variant, props.isChecked, leading ~= nil, trailing ~= nil)
 	local cursorBorderWidth = math.floor(tokens.Stroke.Thicker)
+
+	local presentationValue = if Flags.FoundationStableContextValues
+		then React.useMemo(function()
+			return {
+				colorNamespace = if props.isChecked then ColorNamespace.Inverse else ColorNamespace.Color,
+				isIconSize = true,
+			}
+		end, { props.isChecked } :: { unknown })
+		else nil
 
 	return React.createElement(
 		View,
@@ -134,10 +147,12 @@ local function Chip(chipProps: ChipProps, ref: React.Ref<GuiObject>?)
 			GroupTransparency = if props.isDisabled then Constants.DISABLED_TRANSPARENCY else 0,
 		}),
 		React.createElement(PresentationContext.Provider, {
-			value = {
-				colorMode = if props.isChecked then ColorMode.Inverse else ColorMode.Color,
-				isIconSize = true,
-			},
+			value = if Flags.FoundationStableContextValues
+				then presentationValue
+				else {
+					colorNamespace = if props.isChecked then ColorNamespace.Inverse else ColorNamespace.Color,
+					isIconSize = true,
+				},
 		}, {
 			Leading = if leading
 				then React.createElement(Accessory, {

@@ -4,7 +4,9 @@
 
 -- This can be replaced if we eventually overhaul the settings API to provide arbitrary metadata.
 
-return {
+local FFlagSlimDevConsole = game:DefineFastFlag("SlimDevConsole2", false)
+
+local content = {
 	["AreCollisionCostsShown"] = {
 		name = "AreCollisionCostsShown",
 		description="Highlights assemblies in the world with color from green to red based on how costly the collision computation is.",
@@ -84,3 +86,24 @@ return {
 		type = "Box"
 	},
 }
+
+if FFlagSlimDevConsole then
+	local PHYSICS_LEARN_MORE_BASE_URL = "https://create.roblox.com/docs/reference/engine/classes/PhysicsSettings#"
+	for name, entry in pairs(content) do
+		entry.learnMoreUrl = PHYSICS_LEARN_MORE_BASE_URL .. name
+	end
+
+	content["SlimTintMode"] = {
+		name = "SlimTintMode",
+		description = "Color-codes meshes by the selected debug criterion. Select a mode from the dropdown to visualize SLIM streaming behavior.",
+		learnMoreUrl = "https://create.roblox.com/docs/reference/engine/enums/SlimTintMode",
+		tags = {"Performance"},
+		type = "Tint",
+		kind = "Dropdown",
+		getter = "GetTintMode",
+		setter = "SetTintMode",
+		service = "SlimDebugSettings",
+	}
+end
+
+return content

@@ -2,6 +2,8 @@ local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
 local Constants = require(Foundation.Constants)
+local Dash = require(Packages.Dash)
+local Flags = require(Foundation.Utility.Flags)
 local Image = require(Foundation.Components.Image)
 local PopoverContext = require(script.Parent.Parent.PopoverContext)
 local View = require(Foundation.Components.View)
@@ -12,7 +14,6 @@ local usePointerPosition = require(Foundation.Utility.usePointerPosition)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
-local Flags = require(Foundation.Utility.Flags)
 local PopoverAlign = require(Foundation.Enums.PopoverAlign)
 local PopoverSide = require(Foundation.Enums.PopoverSide)
 local Radius = require(Foundation.Enums.Radius)
@@ -42,6 +43,10 @@ export type PopoverContentProps = {
 	align: AlignConfig?,
 	-- Whether the popover should have an arrow.
 	hasArrow: boolean?,
+	-- Whether a plugin popover can receive keyboard focus.
+	isFocusable: boolean?,
+	-- Temporary opt-in for flagged input sinking. This will be removed when the behavior is finalized.
+	DO_NOT_USE_hasContentInputSink: boolean?,
 	-- Callback for when the backdrop is pressed. Does not swallow the press event.
 	onPressedOutside: () -> ()?,
 	-- Selection behavior
@@ -144,7 +149,24 @@ local function PopoverContent(contentProps: PopoverContentProps, forwardedRef: R
 		end
 	end, {})
 
-	local shouldRenderPopover = if Flags.FoundationPopoverConditionalRender then popoverContext.isOpen else true
+	-- An AutomaticSize frame with a non-zero AnchorPoint hits the quantum-GUI "jello" behavior, so
+	-- align = End (AnchorPoint.X = 1) can render at a different size than Start/Center. Bake the anchor
+	-- offset into the position instead, keeping the content frame anchored at (0, 0) for every alignment.
+	local contentPosition
+	if Flags.FoundationPopoverContentAnchorFix then
+		contentPosition = React.joinBindings({ position, anchorPoint, contentSize })
+			:map(function(values: { any }): UDim2
+				local positionValue = values[1] :: Vector2
+				local anchorPointValue = values[2] :: Vector2
+				local sizeValue = values[3] :: UDim2
+				return UDim2.fromOffset(
+					positionValue.X - anchorPointValue.X * sizeValue.X.Offset,
+					positionValue.Y - anchorPointValue.Y * sizeValue.Y.Offset
+				)
+			end)
+	end
+
+	local shouldRenderPopover = popoverContext.isOpen
 	local content = if shouldRenderPopover
 		then React.createElement(View, {
 			ZIndex = elevation.zIndex,
@@ -198,33 +220,29 @@ local function PopoverContent(contentProps: PopoverContentProps, forwardedRef: R
 					testId = `{popoverContext.testId}--arrow`,
 				})
 				else nil,
-			Content = React.createElement(
-				View,
-				{
-					AnchorPoint = anchorPoint,
-					Position = position:map(function(value: Vector2)
+			Content = React.createElement(View, {
+				AnchorPoint = if Flags.FoundationPopoverContentAnchorFix then Vector2.zero else anchorPoint,
+				Position = if Flags.FoundationPopoverContentAnchorFix
+					then contentPosition
+					else position:map(function(value: Vector2)
 						return UDim2.fromOffset(value.X, value.Y)
 					end),
-					selection = props.selection,
-					selectionGroup = props.selectionGroup,
-					sizeConstraint = {
-						MaxSize = screenSize,
-					},
-					stateLayer = {
-						affordance = StateLayerAffordance.None,
-					},
-					ZIndex = 4,
-					-- If onPressedOutside is provided, we need to swallow the press event to prevent it from propagating to the backdrop
-					onActivated = if props.onPressedOutside then function() end else nil,
-					backgroundStyle = backgroundStyle,
-					tag = `auto-xy {radiusToTag[props.radius]}`,
-					ref = setContentInstance,
-					testId = `{popoverContext.testId}--content`,
+				selection = props.selection,
+				selectionGroup = props.selectionGroup,
+				sizeConstraint = {
+					MaxSize = screenSize,
 				},
-				if Flags.FoundationElevationKeepSiblingZIndex
-					then React.createElement(OwnerScope, { owner = elevation }, props.children)
-					else props.children
-			),
+				stateLayer = {
+					affordance = StateLayerAffordance.None,
+				},
+				ZIndex = 4,
+				-- Prevent content presses from propagating to the backdrop or underlying UI
+				onActivated = if props.onPressedOutside or props.DO_NOT_USE_hasContentInputSink then Dash.noop else nil,
+				backgroundStyle = backgroundStyle,
+				tag = `auto-xy {radiusToTag[props.radius]}`,
+				ref = setContentInstance,
+				testId = `{popoverContext.testId}--content`,
+			}, React.createElement(OwnerScope, { owner = elevation }, props.children)),
 		})
 		else nil
 

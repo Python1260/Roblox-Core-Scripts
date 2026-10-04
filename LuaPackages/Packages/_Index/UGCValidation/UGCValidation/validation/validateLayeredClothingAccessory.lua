@@ -4,24 +4,14 @@ local root = script.Parent.Parent
 local Types = require(root.util.Types)
 local Analytics = require(root.Analytics)
 local Constants = require(root.Constants)
-local ConstantsInterface = require(root.ConstantsInterface)
 
 local validateLCCageQuality = require(root.validation.validateLCCageQuality)
 local validateInstanceTree = require(root.validation.validateInstanceTree)
 local validateMeshTriangles = require(root.validation.validateMeshTriangles)
-local validateModeration = require(root.validation.validateModeration)
-local validateMaterials = require(root.validation.validateMaterials)
 local validateTags = require(root.validation.validateTags)
 local validateMeshBounds = require(root.validation.validateMeshBounds)
-local validateTextureSize = require(root.validation.validateTextureSize)
-local validatePropertyRequirements = require(root.validation.validatePropertyRequirements)
-local validateAttributes = require(root.validation.validateAttributes)
 local validateMeshVertColors = require(root.validation.validateMeshVertColors)
 local validateSingleInstance = require(root.validation.validateSingleInstance)
-local validateHSR = require(root.validation.validateHSR)
-local validateThumbnailConfiguration = require(root.validation.validateThumbnailConfiguration)
-local validateScaleType = require(root.validation.validateScaleType)
-local validateLCInRenderBounds = require(root.validation.validateLayeredClothingInRenderBounds)
 local ValidateMeshSizeProperty = require(root.validation.ValidateMeshSizeProperty)
 local ValidatePropertiesSensible = require(root.validation.ValidatePropertiesSensible)
 local validateDependencies = require(root.validation.validateDependencies)
@@ -30,8 +20,6 @@ local validateSkinningTransfer = require(root.validation.validateSkinningTransfe
 local validateTotalSurfaceArea = require(root.validation.validateTotalSurfaceArea)
 local validateCoplanarIntersection = require(root.validation.validateCoplanarIntersection)
 local validateMaxCubeDensity = require(root.validation.validateMaxCubeDensity)
-local ValidateHSRData = require(root.validation.ValidateHSRData)
-local validateSurfaceAppearanceTextureSize = require(root.validation.validateSurfaceAppearanceTextureSize)
 local ValidateTexturePack = require(root.validation.ValidateTexturePack)
 
 local RigidOrLayeredAllowed = require(root.util.RigidOrLayeredAllowed)
@@ -46,24 +34,19 @@ local pcallDeferred = require(root.util.pcallDeferred)
 
 local getFIntUGCValidationLCHandleScaleOffsetMaximum =
 	require(root.flags.getFIntUGCValidationLCHandleScaleOffsetMaximum) -- / 1000
-local getEngineUGCValidateRelativeSkinningTransfer = require(root.flags.getEngineUGCValidateRelativeSkinningTransfer)
 local getEngineFeatureEngineUGCValidatePropertiesSensible =
 	require(root.flags.getEngineFeatureEngineUGCValidatePropertiesSensible)
-local getFFlagUGCValidateAccessoryAssetTextureLimit = require(root.flags.getFFlagUGCValidateAccessoryAssetTextureLimit)
-local getFFlagUGCValidateLayeredClothingAssetSurfaceAppearanceTextureLimits =
-	require(root.flags.getFFlagUGCValidateLayeredClothingAssetSurfaceAppearanceTextureLimits)
 local getFFlagUGCValidateTexturePack = require(root.flags.getFFlagUGCValidateTexturePack)
 local getFFlagUGCValidateEyebrowEyelashThumbnailSchema =
 	require(root.flags.getFFlagUGCValidateEyebrowEyelashThumbnailSchema)
 
 local ValidateMeshPartOnlySkinnedToR15 = require(root.validation.ValidateMeshPartOnlySkinnedToR15)
+local getEngineFeatureEngineUGCValidationConsolidateAccessorySkinning =
+	require(root.flags.getEngineFeatureEngineUGCValidationConsolidateAccessorySkinning)
 
 local function validateLayeredClothingAccessory(validationContext: Types.ValidationContext): (boolean, { string }?)
 	local instances = validationContext.instances
 	local assetTypeEnum = validationContext.assetTypeEnum
-	local isServer = validationContext.isServer
-	local allowUnreviewedAssets = validationContext.allowUnreviewedAssets
-
 	if not RigidOrLayeredAllowed.isLayeredClothingAllowed(assetTypeEnum) then
 		Analytics.reportFailure(
 			Analytics.ErrorType.validateLayeredClothingAccessory_AssetTypeNotAllowedAsLayeredClothing,
@@ -109,9 +92,15 @@ local function validateLayeredClothingAccessory(validationContext: Types.Validat
 			return false, reasons
 		end
 	end
-	success, reasons = validateDependencies(instance, validationContext)
-	if not success then
-		return false, reasons
+	do
+		local skipFlags = {
+			skipExistenceCheck = true,
+			skipOwnershipCheck = true,
+		}
+		success, reasons = validateDependencies(instance, validationContext, skipFlags)
+		if not success then
+			return false, reasons
+		end
 	end
 
 	local validationResult = true
@@ -227,63 +216,11 @@ local function validateLayeredClothingAccessory(validationContext: Types.Validat
 	local boundsInfo = assetInfo.bounds[attachment.Name]
 
 	local failedReason: any = {}
-	success, failedReason = validateMaterials(instance, validationContext)
-	if not success then
-		table.insert(reasons, table.concat(failedReason, "\n"))
-		validationResult = false
-	end
-
-	success, failedReason = validatePropertyRequirements(instance, nil, validationContext)
-	if not success then
-		table.insert(reasons, table.concat(failedReason, "\n"))
-		validationResult = false
-	end
 
 	success, failedReason = validateTags(instance, validationContext)
 	if not success then
 		table.insert(reasons, table.concat(failedReason, "\n"))
 		validationResult = false
-	end
-
-	success, failedReason = validateAttributes(instance, validationContext)
-	if not success then
-		table.insert(reasons, table.concat(failedReason, "\n"))
-		validationResult = false
-	end
-
-	local textureSizeLimit = nil
-	if getFFlagUGCValidateAccessoryAssetTextureLimit() then
-		textureSizeLimit = ConstantsInterface.getTextureLimit(assetTypeEnum, handle, textureInfo.fieldName)
-	end
-	success, failedReason = validateTextureSize(textureInfo, true, validationContext, textureSizeLimit)
-	if not success then
-		table.insert(reasons, table.concat(failedReason, "\n"))
-		validationResult = false
-	end
-
-	if getFFlagUGCValidateLayeredClothingAssetSurfaceAppearanceTextureLimits() then
-		success, failedReason = validateSurfaceAppearanceTextureSize(instance, validationContext)
-		if not success then
-			table.insert(reasons, table.concat(failedReason, "\n"))
-			validationResult = false
-		end
-	end
-
-	local partScaleType = handle:FindFirstChild("AvatarPartScaleType")
-	if partScaleType and partScaleType:IsA("StringValue") then
-		success, failedReason = validateScaleType(partScaleType, validationContext)
-		if not success then
-			table.insert(reasons, table.concat(failedReason, "\n"))
-			validationResult = false
-		end
-	end
-
-	if not isEyebrowOrEyelash then
-		success, failedReason = validateThumbnailConfiguration(instance, handle, meshInfo, meshScale, validationContext)
-		if not success then
-			table.insert(reasons, table.concat(failedReason, "\n"))
-			validationResult = false
-		end
 	end
 
 	do
@@ -302,35 +239,6 @@ local function validateLayeredClothingAccessory(validationContext: Types.Validat
 					instance.Name
 				)
 			)
-			validationResult = false
-		else
-			success, failedReason = validateHSR(wrapLayer, validationContext)
-			if not success then
-				table.insert(reasons, table.concat(failedReason, "\n"))
-				validationResult = false
-			end
-
-			local allowEditableInstances = validationContext.allowEditableInstances
-			if not allowEditableInstances then
-				-- If editable instances are allowed, we skip HSR file data validation
-				-- because HSR may be created after publish in this case.
-				success, failedReason = ValidateHSRData.validate(wrapLayer, validationContext)
-				if not success then
-					table.insert(reasons, table.concat(failedReason, "\n"))
-					validationResult = false
-				end
-			end
-		end
-	end
-
-	local checkModeration = not isServer
-	if allowUnreviewedAssets then
-		checkModeration = false
-	end
-	if checkModeration then
-		success, failedReason = validateModeration(instance, {}, validationContext)
-		if not success then
-			table.insert(reasons, table.concat(failedReason, "\n"))
 			validationResult = false
 		end
 	end
@@ -394,12 +302,6 @@ local function validateLayeredClothingAccessory(validationContext: Types.Validat
 		validationResult = false
 	end
 
-	success, failedReason = validateLCInRenderBounds(instance, validationContext)
-	if not success then
-		table.insert(reasons, table.concat(failedReason, "\n"))
-		validationResult = false
-	end
-
 	if getFFlagUGCValidateTexturePack() then
 		success, failedReason = ValidateTexturePack.validate(instance, false, validationContext)
 		if not success then
@@ -408,19 +310,19 @@ local function validateLayeredClothingAccessory(validationContext: Types.Validat
 		end
 	end
 
-	if getEngineUGCValidateRelativeSkinningTransfer() then
+	if not getEngineFeatureEngineUGCValidationConsolidateAccessorySkinning() then
 		success, failedReason = validateSkinningTransfer(handle, validationContext)
 		if not success then
 			table.insert(reasons, table.concat(failedReason, "\n"))
 			validationResult = false
 		end
-	end
 
-	if not Constants.SkinningTransferRequiredTypes[assetTypeEnum] then
-		success, failedReason = ValidateMeshPartOnlySkinnedToR15.validateMeshPart(handle, validationContext)
-		if not success then
-			table.insert(reasons, table.concat(failedReason, "\n"))
-			validationResult = false
+		if not Constants.SkinningTransferRequiredTypes[assetTypeEnum] then
+			success, failedReason = ValidateMeshPartOnlySkinnedToR15.validateMeshPart(handle, validationContext)
+			if not success then
+				table.insert(reasons, table.concat(failedReason, "\n"))
+				validationResult = false
+			end
 		end
 	end
 

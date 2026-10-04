@@ -37,6 +37,11 @@ local FFlagBadgeVisibilitySettingEnabled =
 	require(CorePackages.Workspace.Packages.SharedFlags).FFlagBadgeVisibilitySettingEnabled
 local FFlagEnableModerateChatRemoteEvent =
 	require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableModerateChatRemoteEvent
+local FFlagEnableSummarySystemMessageOnLua =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableSummarySystemMessageOnLua
+
+local FFlagAIRephraseSettingEnabled = require(CorePackages.Workspace.Packages.SharedFlags).FFlagAIRephraseSettingEnabled
+local FFlagChatSummariesSettingEnabled = require(CorePackages.Workspace.Packages.SharedFlags).FFlagChatSummariesSettingEnabled
 local FFlagProfileSettingsSlidingWindowRateLimit = game:DefineFastFlag("ProfileSettingsSlidingWindowRateLimit", false)
 local FIntProfileSettingsRateLimitSeconds = game:DefineFastInt("ProfileSettingsRateLimitSeconds", 5)
 local FIntProfileSettingsMaxRequestsPerWindow = game:DefineFastInt("ProfileSettingsMaxRequestsPerWindow", 3)
@@ -44,7 +49,10 @@ local FIntProfileSettingsRateLimitWindowSeconds = game:DefineFastInt("ProfileSet
 local FFlagDisableRCCAntiHarrasmentAllowList = game:DefineFastFlag("DisableRCCAntiHarrasmentAllowList", false)
 local FFlagUseGetCanManageAsync = game:DefineFastFlag("UseGetCanManageAsync", false)
 	and game:GetEngineFeature("LuaGetCanManageAsync")
+local FFlagUserPresenceTokenRccCheckPermissionsLua =
+	require(RobloxGui.Modules.Common.Flags.FFlagUserPresenceTokenRccCheckPermissionsLua)
 local FFlagGatePrivateServerNudge = game:DefineFastFlag("GatePrivateServerNudge", false)
+local FFlagGlobalUserBlockingLuaReadsFromSCMCache = game:DefineFastFlag("GlobalUserBlockingLuaReadsFromSCMCache", false)
 
 local GET_MULTI_FOLLOW = "user/multi-following-exists"
 
@@ -152,6 +160,13 @@ if FFlagEnableModerateChatRemoteEvent then
 	RemoteEvent_ModerateChatSettingUpdated.Parent = RobloxReplicatedStorage
 end
 
+local RemoteEvent_ExpChatFeatureValueChanged
+if FFlagEnableSummarySystemMessageOnLua or FFlagAIRephraseSettingEnabled or FFlagChatSummariesSettingEnabled then
+	RemoteEvent_ExpChatFeatureValueChanged = Instance.new("RemoteEvent")
+	RemoteEvent_ExpChatFeatureValueChanged.Name = "ExpChatFeatureValueChanged"
+	RemoteEvent_ExpChatFeatureValueChanged.Parent = RobloxReplicatedStorage
+end
+
 -- Map: { UserId -> { UserId -> NumberOfNotificationsSent } }
 local FollowNotificationsBetweenMap = {}
 
@@ -181,21 +196,13 @@ local function getPlayerGroupDetails(player)
 	for groupKey, groupInfo in pairs(SPECIAL_GROUPS) do
 		if groupInfo.GroupRank ~= nil then
 			local isInGroupSuccess, isInGroupValue = pcall(function()
-				if game:GetEngineFeature("AsyncRenamesUsedInLuaApps") then
-					return player:GetRankInGroupAsync(groupInfo.GroupId) >= groupInfo.GroupRank
-				else
-					return (player :: never):GetRankInGroup(groupInfo.GroupId) >= groupInfo.GroupRank
-				end
+				return player:GetRankInGroupAsync(groupInfo.GroupId) >= groupInfo.GroupRank
 			end)
 
 			newGroupDetails[groupKey] = isInGroupSuccess and isInGroupValue
 		else
 			local isInGroupSuccess, isInGroupValue = pcall(function()
-				if game:GetEngineFeature("AsyncRenamesUsedInLuaApps") then
-					return player:IsInGroupAsync(groupInfo.GroupId)
-				else
-					return (player :: never):IsInGroup(groupInfo.GroupId)
-				end
+				return player:IsInGroupAsync(groupInfo.GroupId)
 			end)
 
 			newGroupDetails[groupKey] = isInGroupSuccess and isInGroupValue
@@ -280,7 +287,12 @@ local function getPlayerCanManage(player)
 						},
 					},
 				})
-				local response = HttpRbxApiService:PostAsyncFullUrl(url, request)
+				local response
+				if FFlagUserPresenceTokenRccCheckPermissionsLua then
+					response = HttpRbxApiService:PostAsyncFullUrlForPlayer(url, request, player)
+				else
+					response = HttpRbxApiService:PostAsyncFullUrl(url, request)
+				end
 				return HttpService:JSONDecode(response)
 			end)
 
@@ -320,40 +332,80 @@ local function sendPlayerBlockList(player)
 		return
 	end
 
-	local players = Players:GetPlayers()
-	local playerIds = {}
-	for _, otherPlayer in players do
-		if player ~= otherPlayer then
-			local uid = otherPlayer.UserId
-			table.insert(playerIds, uid)
-		end
-	end
-
-	local success, result = fetchBlockList(player, playerIds)
-
-	local blockedUserIds = {}
-	local blockedUserSet = {}
-	if success and result then
-		for _, user in result.users do
-			if user.isBlocked then
-				blockedUserSet[user.userId] = true
-				table.insert(blockedUserIds, user.userId)
+	if FFlagGlobalUserBlockingLuaReadsFromSCMCache then
+		local function scanAndSendBlockList(notifyOthers)
+			if not player.Parent then
+				return
 			end
 
-			if user.isBlockingViewer then
-				local otherPlayer = Players:GetPlayerByUserId(user.userId)
-				otherPlayer:UpdatePlayerBlocked(player.UserId, true)
-				RemoteEvent_UpdateLocalPlayerBlockList:FireClient(otherPlayer, player.UserId, true)
+			local blockedUserSet = {}
+			for _, otherPlayer in Players:GetPlayers() do
+				if otherPlayer == player then
+					continue
+				end
+
+				if player:HasBlockedPlayer(otherPlayer.UserId) then
+					blockedUserSet[otherPlayer.UserId] = true
+				end
+
+				if notifyOthers and otherPlayer:HasBlockedPlayer(player.UserId) then
+					RemoteEvent_UpdateLocalPlayerBlockList:FireClient(otherPlayer, player.UserId, true)
+				end
+			end
+
+			RemoteEvent_SendPlayerBlockList:FireClient(player, blockedUserSet)
+		end
+
+		local initialNotifyDone = false
+
+		player.BlockListChanged:Connect(function()
+			if not initialNotifyDone then
+				scanAndSendBlockList(true)
+				initialNotifyDone = true
+			else
+				scanAndSendBlockList(false)
+			end
+		end)
+		if player:GetBlockListInitialized() then
+			scanAndSendBlockList(true)
+			initialNotifyDone = true
+		end
+	else
+		local players = Players:GetPlayers()
+		local playerIds = {}
+		for _, otherPlayer in players do
+			if player ~= otherPlayer then
+				local uid = otherPlayer.UserId
+				table.insert(playerIds, uid)
 			end
 		end
-	end
 
-	player:AddToBlockList(blockedUserIds)
-	if game:GetFastFlag("EnableSetUserBlocklistInitialized") then
-		player:SetBlockListInitialized()
-	end
+		local success, result = fetchBlockList(player, playerIds)
 
-	RemoteEvent_SendPlayerBlockList:FireClient(player, blockedUserSet)
+		local blockedUserIds = {}
+		local blockedUserSet = {}
+		if success and result then
+			for _, user in result.users do
+				if user.isBlocked then
+					blockedUserSet[user.userId] = true
+					table.insert(blockedUserIds, user.userId)
+				end
+
+				if user.isBlockingViewer then
+					local otherPlayer = Players:GetPlayerByUserId(user.userId)
+					otherPlayer:UpdatePlayerBlocked(player.UserId, true)
+					RemoteEvent_UpdateLocalPlayerBlockList:FireClient(otherPlayer, player.UserId, true)
+				end
+			end
+		end
+
+		player:AddToBlockList(blockedUserIds)
+		if game:GetFastFlag("EnableSetUserBlocklistInitialized") then
+			player:SetBlockListInitialized()
+		end
+
+		RemoteEvent_SendPlayerBlockList:FireClient(player, blockedUserSet)
+	end
 end
 
 local function sendPlayerAllInExperienceNameEnabled(player)
@@ -590,6 +642,17 @@ if FFlagEnableModerateChatRemoteEvent then
 			RemoteEvent_ModerateChatSettingUpdated:FireClient(player, enabled)
 		end
 	end)
+end
+
+if FFlagEnableSummarySystemMessageOnLua or FFlagAIRephraseSettingEnabled or FFlagChatSummariesSettingEnabled then
+	TextChatService.ExpChatFeatureValueChanged:Connect(
+		function(userId: number, featureName: string, featureValue: string)
+			local player = Players:GetPlayerByUserId(userId)
+			if player then
+				RemoteEvent_ExpChatFeatureValueChanged:FireClient(player, userId, featureName, featureValue)
+			end
+		end
+	)
 end
 
 Players.PlayerAdded:connect(onPlayerAdded)

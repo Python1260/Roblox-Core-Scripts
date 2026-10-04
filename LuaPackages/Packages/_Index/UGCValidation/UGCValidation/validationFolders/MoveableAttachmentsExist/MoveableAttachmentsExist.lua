@@ -16,6 +16,7 @@ MoveableAttachmentsExist.fflag = R15plusUtils.checkFlagEnabledForAllowHrd
 MoveableAttachmentsExist.run = function(reporter: Types.ValidationReporter, data: Types.SharedData)
 	local rootInstance = data.rootInstance
 	for _, meshpart in getAllInstancesIsA(rootInstance, "MeshPart") do
+		reporter:setReportingInstance(meshpart)
 		local boneSchema = R15plusUtils.getAvatarBoneSchema(meshpart.Name)
 		local attWhiteList = R15plusUtils.getNameWhitelistOfClassInSchema(boneSchema, "Attachment")
 		for name, val in attWhiteList do

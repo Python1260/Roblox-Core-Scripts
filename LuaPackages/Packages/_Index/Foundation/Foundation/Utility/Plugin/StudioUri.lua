@@ -100,6 +100,19 @@ function StudioUri.isValid(uri: any)
 	return type(uri) == "table"
 end
 
+-- Distinguishes a URI table from other values (e.g. a React ref object), which
+-- never carry these fields.
+function StudioUri.isStudioUri(value: any): boolean
+	if type(value) ~= "table" then
+		return false
+	end
+	return value.DataModel ~= nil
+		or value.PluginType ~= nil
+		or value.PluginId ~= nil
+		or value.Category ~= nil
+		or value.ItemId ~= nil
+end
+
 function StudioUri.fromAction(pluginId: string, itemId: string): StudioUri
 	return StudioUri.wrap({
 		DataModel = "Standalone",

@@ -6,11 +6,6 @@ local Cryo = require(CorePackages.Packages.Cryo)
 
 local Actions = Constants.AnalyticsActions
 
-local FFlagInGameMenuAddChatLineReporting =
-	require(CorePackages.Workspace.Packages.SharedFlags).FFlagInGameMenuAddChatLineReporting
-local FFlagAddPreselectedAbuseTypeAnalytics =
-	require(CorePackages.Workspace.Packages.SharedFlags).FFlagAddPreselectedAbuseTypeAnalytics
-
 -- using Cryo.Dictionary.join will not overwrite an existing value with one that is nil, use this for that
 local ClearNillableValues = {
 	typeofabuseSelection = Cryo.None,
@@ -39,8 +34,6 @@ local function analyticsReducer(state: Types.AnalyticsState, action: any): Types
 		newState.reasonChangeCount += 1
 	elseif actionType == Actions.IncrementCaptureScene then
 		newState.captureSceneCount += 1
-	elseif FFlagInGameMenuAddChatLineReporting and actionType == Actions.IncrementChatLineChanged then
-		newState.chatLineChangeCount += 1
 	elseif actionType == Actions.SetViewportInformation then
 		newState.viewportSizeX = action.viewportSizeX
 		newState.viewportSizeY = action.viewportSizeY
@@ -54,7 +47,7 @@ local function analyticsReducer(state: Types.AnalyticsState, action: any): Types
 	-- a user initiating it, and we don't want to count non-user-initiated state changes.
 	elseif actionType == Actions.SetTypeOfAbuseSelection then
 		newState.typeofabuseSelection = action.selection
-	elseif FFlagAddPreselectedAbuseTypeAnalytics and actionType == Actions.SetPreselectedAbuseSelection then
+	elseif actionType == Actions.SetPreselectedAbuseSelection then
 		newState.preselectedAbuseSelection = action.selection
 	elseif actionType == Actions.SetReasonSelection then
 		newState.reasonSelection = action.selection

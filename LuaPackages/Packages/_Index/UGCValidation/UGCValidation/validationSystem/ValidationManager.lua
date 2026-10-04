@@ -7,14 +7,7 @@ Core module for running the validation framework. To run validation, we
 	5. Now, run tests layer by layer. Everything without prereqs is in the first layer, then everything enabled is second, etc.
 		Ideally, we want to have only 2 layers but 3 is okay. This layer approach is to avoid threading complications, as we can safely run everything in the same layer at once.
 		We can move to a dequeue system where we enable tests as soon as possible, but this will only be needed if we have bottlenecks on different layers that we cannot avoid.
-	6. Return a Types.ValidationResultData table: 
-		results = {
-			pass = true/false,
-			states = {ValidationEnums.ValidationModule: ValidationEnums.Status},
-			errorTranslationContexts = { failureStringContext },
-			internalData = {ValidationEnums.ValidationModule: {whatever data stored in validation}},
-		}
-
+	6. Return a Types.ValidationResultData table. See Types.lua for the full shape.
 --]]
 
 local root = script.Parent.Parent
@@ -26,10 +19,17 @@ local ValidationTestWrapper = require(root.validationSystem.ValidationTestWrappe
 local FetchAllDesiredData = require(root.validationSystem.dataFetchModules.FetchAllDesiredData)
 local getUploadCategory = require(root.util.getUploadCategory)
 local RecreateSceneFromEditables = require(root.util.RecreateSceneFromEditables)
+local stripMeshFromGltf = require(root.util.stripMeshFromGltf)
 local ErrorSourceStrings = require(root.validationSystem.ErrorSourceStrings)
-local getEngineFeatureEngineAQSJsonParsingInLua = require(root.flags.getEngineFeatureEngineAQSJsonParsingInLua)
 local R15plusUtils = require(root.util.R15plusUtils)
+local resetPhysicsData = require(root.util.resetPhysicsData)
 local getFFlagDebugAllowHRDUploadOnBundleBackend = require(root.flags.getFFlagDebugAllowHRDUploadOnBundleBackend)
+local getEngineFeatureEngineUGCValidateInstanceTreesEquivalent =
+	require(root.flags.getEngineFeatureEngineUGCValidateInstanceTreesEquivalent)
+local getFFlagUGCValidationAllowFullVaas = require(root.flags.getFFlagUGCValidationAllowFullVaas)
+local getFFlagDebugUGCDisableAssetQualityChecks = require(root.flags.getFFlagDebugUGCDisableAssetQualityChecks)
+local getEngineFeatureEngineUGCValidateEmoteAnimationExport =
+	require(root.flags.getEngineFeatureEngineUGCValidateEmoteAnimationExport)
 
 local HttpService = game:GetService("HttpService")
 local TelemetryService = game:GetService("TelemetryService")
@@ -45,46 +45,62 @@ local telemetryConfig = {
 		"EventIngest",
 	},
 	throttlingPercentage = game:GetFastInt("FullValidationTelemetryThrottleHundrethsPercent"),
-	lastUpdated = { 25, 11, 18 },
+	lastUpdated = { 26, 9, 4 },
 	description = [[Report result of ugc validation suite]],
 	links = "https://create.roblox.com/docs/art/validation-errors",
 }
 
 local getFFlagDebugUGCValidationPrintNewStructureResults =
 	require(root.flags.getFFlagDebugUGCValidationPrintNewStructureResults)
-local getEngineFeatureEngineAssetQualityEngineService =
-	require(root.flags.getEngineFeatureEngineAssetQualityEngineService)
 
 local getFIntUGCValidationFetchQualityMaxRetry = require(root.flags.getFIntUGCValidationFetchQualityMaxRetry)
 
 local ValidationManager = {}
 local consumersThatCannotYield = {
+	Publish = true,
 	Backend = true,
+	Internal = true,
 }
 
 local consumersThatWantExtraYeild = {
-	InExpClient = true,
 	InExpServer = true,
+	InExpClient = true,
 }
 
-local kAssetQualityFetchNA = "assetQualityFetchNA"
-local kAssetQualityFetchInProgress = "assetQualityFetchInProgress"
-local kAssetQualityFetchSuccess = "assetQualityFetchSuccess"
-local kAssetQualityFetchFailure = "assetQualityFetchFailure"
+local SOURCE_TO_ENV: { [Types.UGCValidationConsumerName]: Types.ConsumerEnv } = {
+	Toolbox = ValidationEnums.ConsumerEnv.Studio,
+	AutoSetup = ValidationEnums.ConsumerEnv.Studio,
+	Publish = ValidationEnums.ConsumerEnv.Backend,
+	Backend = ValidationEnums.ConsumerEnv.Backend,
+	Internal = ValidationEnums.ConsumerEnv.Backend,
+	InExpServer = ValidationEnums.ConsumerEnv.IEC,
+	InExpClient = ValidationEnums.ConsumerEnv.IEC,
+}
+
+local AssetQualityFetchStatus = ValidationEnums.AssetQualityFetchStatus
 
 local function initRunVariables(
 	uploadCategory: string,
-	_configs: Types.UGCValidationConsumerConfigs
+	configs: Types.PreloadedConsumerConfigs
 ): ({ string }, { [string]: Types.SingleValidationFileData }, { [string]: boolean })
 	-- Step 2: Figure out which validations we will run and their desired data
 	local qualityTests: { string } = {}
 	local desiredValidations: { [string]: Types.SingleValidationFileData } = {}
 	local desiredData: { [string]: boolean } = {}
+	local skipModules = configs.skipModules
 
-	local moduleEnumMap = (ValidationEnums.ValidationModule :: any) :: { [string]: string }
-	for key, testEnum in moduleEnumMap do
-		assert(key == testEnum)
-		local validationModule: Types.PreloadedValidationModule = ValidationModuleLoader.getValidationModule(testEnum)
+	for testEnum, validationModule in ValidationModuleLoader.allModules do
+		if
+			skipModules[testEnum]
+			or (
+				getFFlagDebugUGCDisableAssetQualityChecks()
+				and configs.skipAssetQualityChecks
+				and validationModule.isAssetQualityModule
+			)
+		then
+			continue
+		end
+
 		local categories = validationModule.categories
 
 		if table.find(categories, uploadCategory) and (validationModule.fflag() or validationModule.shadowFlag()) then
@@ -97,8 +113,9 @@ local function initRunVariables(
 				desiredData[dataEnum] = true
 			end
 
-			local is_quality = next(validationModule.expectedAqsData) ~= nil
-			if is_quality then
+			local isQuality = validationModule.isAssetQualityModule
+
+			if isQuality then
 				table.insert(qualityTests, testEnum)
 			end
 
@@ -111,7 +128,7 @@ local function initRunVariables(
 				name = testEnum,
 				prereqs = prevTests,
 				postreqs = {},
-				isQuality = is_quality,
+				isQuality = isQuality,
 				isShadow = runAsShadow,
 			} :: Types.SingleValidationFileData
 		end
@@ -136,34 +153,68 @@ local function initRunVariables(
 end
 
 local function fetchQualityResults(sharedData: Types.SharedData, qualityTests: { string })
-	if not getEngineFeatureEngineAssetQualityEngineService() or not AssetQualityService then
-		sharedData.aqsFetchMetrics.fetchStatus = kAssetQualityFetchFailure
+	if not AssetQualityService then
+		sharedData.aqsFetchMetrics.fetchStatus = AssetQualityFetchStatus.assetQualityFetchFailure
 		sharedData.aqsFetchMetrics.fetchFailureReason = "Not enabled"
 		return
 	end
 
-	local gltfScene = RecreateSceneFromEditables.createModelForGltfExport(sharedData)
-	local success, errors, gltfString
-	success, errors = pcall(function()
-		gltfString = AssetQualityService:GenerateAssetQualityGltfFromInstanceAsync(gltfScene)
-	end)
+	local success, errors, gltfString, gltfScene
+	if sharedData.consumerConfig.aqFetchStage ~= "scene" then
+		if sharedData.consumerConfig.aqFetchStage == "gltf" then
+			gltfString = sharedData.consumerConfig.aqFetchData
+		end
+		success = true
+	else
+		success, errors = pcall(function()
+			gltfScene = RecreateSceneFromEditables.createModelForGltfExport(sharedData)
+			gltfString = AssetQualityService:GenerateAssetQualityGltfFromInstanceAsync(gltfScene)
+		end)
+
+		-- For emote exports, strip mesh geometry from the glTF so AQ only sees animation data.
+		if
+			getEngineFeatureEngineUGCValidateEmoteAnimationExport()
+			and success
+			and gltfString
+			and sharedData.uploadCategory == ValidationEnums.UploadCategory.EMOTE_ANIMATION
+		then
+			-- If stripping fails (e.g. unexpected glTF shape), fall back to the
+			-- unstripped glTF rather than failing the whole validation.
+			local stripOk, strippedGltf = pcall(stripMeshFromGltf, gltfString)
+			if stripOk then
+				gltfString = strippedGltf
+			end
+		end
+	end
 
 	if success then
 		for iter = 1, 1 + getFIntUGCValidationFetchQualityMaxRetry() do
-			-- TODO: Log retry count
 			success, errors = pcall(function()
 				sharedData.aqsFetchMetrics.fetchAttemptCount = iter
 				local startTime = os.clock()
-				local results = AssetQualityService:FetchAssetQualitySummaryFromGltfAsync(gltfString, qualityTests)
+				local results
+				if sharedData.consumerConfig.aqFetchStage == "jobId" then
+					local jobId = sharedData.consumerConfig.aqFetchData
+					-- Under full VaaS a provided jobId is already resolved, so trust it via the direct V2 fetch; V1 covers the no-jobId / pre-VaaS path.
+					if getFFlagUGCValidationAllowFullVaas() and jobId ~= nil and jobId ~= "" then
+						results = (AssetQualityService :: any):FetchAssetQualitySummaryFromJobIdV2Async(
+							jobId,
+							qualityTests
+						)
+					else
+						results = (AssetQualityService :: any):FetchAssetQualitySummaryFromJobIdAsync(
+							jobId,
+							qualityTests
+						)
+					end
+				else
+					results = AssetQualityService:FetchAssetQualitySummaryFromGltfAsync(gltfString, qualityTests)
+				end
 				local deltaTime = 1000 * (os.clock() - startTime)
 				sharedData.aqsFetchMetrics.visualizationUrl = results.visualizationUrl
 				sharedData.aqsFetchMetrics.fetchTimeMs = deltaTime
-				if getEngineFeatureEngineAQSJsonParsingInLua() then
-					sharedData.aqsSummaryData = HttpService:JSONDecode(results["rawJson"])
-				else
-					sharedData.aqsFetchMetrics.returnVersion = results.version
-					sharedData.aqsSummaryData = results
-				end
+				sharedData.aqsFetchMetrics.aqJobId = results.aqJobId
+				sharedData.aqsSummaryData = HttpService:JSONDecode(results["rawJson"])
 			end)
 
 			if success then
@@ -173,20 +224,30 @@ local function fetchQualityResults(sharedData: Types.SharedData, qualityTests: {
 	end
 
 	if success then
+		sharedData.aqsFetchMetrics.fetchStatus = AssetQualityFetchStatus.assetQualityFetchSuccess
 		if getFFlagDebugUGCValidationPrintNewStructureResults() then
-			print("AQS Fetch Sucess:", sharedData.aqsSummaryData)
+			print(
+				string.format(
+					"AQS fetch success: aqJobId=%s attempts=%d fetchTimeMs=%d",
+					sharedData.aqsFetchMetrics.aqJobId or "",
+					sharedData.aqsFetchMetrics.fetchAttemptCount or 0,
+					sharedData.aqsFetchMetrics.fetchTimeMs or 0
+				)
+			)
+			print(sharedData.aqsSummaryData)
 		end
-		sharedData.aqsFetchMetrics.fetchStatus = kAssetQualityFetchSuccess
 	else
 		sharedData.aqsFetchMetrics.fetchFailureReason = errors
 		sharedData.aqsSummaryData = FetchAllDesiredData.DATA_FETCH_FAILURE
-		sharedData.aqsFetchMetrics.fetchStatus = kAssetQualityFetchFailure
+		sharedData.aqsFetchMetrics.fetchStatus = AssetQualityFetchStatus.assetQualityFetchFailure
 		if getFFlagDebugUGCValidationPrintNewStructureResults() then
-			print("Logged AQS fetch failure:", errors)
+			print("AQS fetch failure:", errors)
 		end
 	end
 
-	gltfScene:Destroy()
+	if gltfScene then
+		gltfScene:Destroy()
+	end
 end
 
 local function getNextLayer(
@@ -204,8 +265,40 @@ local function getNextLayer(
 	return layer
 end
 
+local function populateRelevantSourceStrings(results: Types.ValidationResultData)
+	local function capture(failureStringKey: string)
+		local keyBreakdown = failureStringKey:split(".")
+		local keyEnum = keyBreakdown[#keyBreakdown]
+		local sourceString = ErrorSourceStrings.Values[keyEnum]
+		if sourceString then
+			results.relevantSourceStrings[failureStringKey] = sourceString
+		end
+	end
+
+	for _, failures in results.failureMap do
+		for _, entry in failures do
+			capture(entry.failureStringKey)
+		end
+	end
+	for _, warnings in results.warningMap do
+		for _, entry in warnings do
+			capture(entry.failureStringKey)
+		end
+	end
+end
+
+local function getDebugLabel(sharedData: Types.SharedData): string
+	local upload = sharedData.uploadEnum
+	if upload.assetType then
+		return upload.assetType.Name
+	elseif upload.bundleType then
+		return upload.bundleType.Name
+	end
+	return "?"
+end
+
 local function reportFullResult(results: Types.ValidationResultData, sharedData: Types.SharedData, duration: number)
-	local containsAQData = sharedData.aqsFetchMetrics.fetchStatus ~= kAssetQualityFetchNA
+	local containsAQData = sharedData.aqsFetchMetrics.fetchStatus ~= AssetQualityFetchStatus.assetQualityFetchNA
 	local telemetryResult = {
 		validationJobId = sharedData.jobId,
 		bundleJobId = sharedData.consumerConfig.telemetryBundleId,
@@ -224,11 +317,39 @@ local function reportFullResult(results: Types.ValidationResultData, sharedData:
 		aqFetchAttemptCount = containsAQData and sharedData.aqsFetchMetrics.fetchAttemptCount or 0,
 		aqFetchTimeMs = containsAQData and sharedData.aqsFetchMetrics.fetchTimeMs or 0,
 		aqFetchFailureReason = containsAQData and sharedData.aqsFetchMetrics.fetchFailureReason or "",
+		aqJobId = sharedData.aqsFetchMetrics.aqJobId or "",
 	}
+
+	if getFFlagUGCValidationAllowFullVaas() then
+		telemetryResult.isVaas = sharedData.consumerConfig.isVaaS or false
+		telemetryResult.aqFetchStage = sharedData.consumerConfig.aqFetchStage
+	end
 
 	TelemetryService:LogEvent(telemetryConfig, { customFields = telemetryResult })
 
 	if getFFlagDebugUGCValidationPrintNewStructureResults() then
+		print(
+			string.format(
+				"==== %s Validation end ==== pass=%s numFailures=%d numWarnings=%d durationMs=%d",
+				getDebugLabel(sharedData),
+				tostring(results.pass),
+				results.numFailures,
+				results.numWarnings,
+				duration
+			)
+		)
+		for testEnum, failures in results.failureMap do
+			for _, entry in failures do
+				print(
+					string.format(
+						"  FAIL %s: %s @ %s",
+						testEnum,
+						entry.failureStringKey,
+						if entry.instancePath ~= "" then entry.instancePath else "<root>"
+					)
+				)
+			end
+		end
 		print(results)
 	end
 end
@@ -237,36 +358,30 @@ local function updateResultData(
 	currentResults: Types.ValidationResultData,
 	desiredValidations: { [string]: Types.SingleValidationFileData },
 	newResult: Types.SingleValidationResult,
-	jobId: string,
+	_jobId: string,
 	enforceShadowValidations: boolean
 )
 	local validationEnum = newResult.validationEnum
 	if enforceShadowValidations or not desiredValidations[validationEnum].isShadow then
 		currentResults.states[validationEnum] = newResult.status
-		currentResults.internalData[validationEnum] = newResult.internalData
-		if #newResult.errorTranslationContexts > 0 then
-			table.move(
-				newResult.errorTranslationContexts,
-				1,
-				#newResult.errorTranslationContexts,
-				#currentResults.errorTranslationContexts + 1,
-				currentResults.errorTranslationContexts
-			)
-		end
 
 		if newResult.status ~= ValidationEnums.Status.PASS then
 			currentResults.pass = false
-			currentResults.numFailures += 1
+			currentResults.numFailures += math.max(1, #newResult.failures)
+		end
 
-			if newResult.status == ValidationEnums.Status.ERROR and not currentResults.ranIntoInternalError then
-				currentResults.ranIntoInternalError = true
-				table.insert(currentResults.errorTranslationContexts, {
-					key = ErrorSourceStrings.Keys.InternalError,
-					params = {
-						ValidationJobId = jobId,
-					},
-				})
-			end
+		if #newResult.failures > 0 then
+			currentResults.failureMap[validationEnum] = newResult.failures
+		end
+
+		if #newResult.warnings > 0 then
+			currentResults.warningMap[validationEnum] = newResult.warnings
+			currentResults.numWarnings += #newResult.warnings
+		end
+
+		if newResult.status == ValidationEnums.Status.ERROR then
+			-- adapter will add a message to ask them to file a bug report with the validation job id
+			currentResults.ranIntoInternalError = true
 		end
 	end
 
@@ -293,6 +408,32 @@ local function createConsumerConfigWithDefaults(
 	newConfigs.telemetryRootId = newConfigs.telemetryRootId or ""
 	newConfigs.preloadedEditableMeshes = newConfigs.preloadedEditableMeshes or {}
 	newConfigs.preloadedEditableImages = newConfigs.preloadedEditableImages or {}
+	newConfigs.preloadedHsrAssets = newConfigs.preloadedHsrAssets or {}
+	newConfigs.skipModules = newConfigs.skipModules or {}
+	newConfigs.skipAssetQualityChecks = newConfigs.skipAssetQualityChecks or false
+	newConfigs.skipPhysicsDataReset = newConfigs.skipPhysicsDataReset or false
+	newConfigs.isVaaS = newConfigs.isVaaS or false
+
+	-- Origin / lifecycle axis: always the honest source, so a VaaS run (IEC-origin) doesn't trip first-publish caps.
+	newConfigs.consumerEnv = SOURCE_TO_ENV[newConfigs.source]
+	assert(newConfigs.consumerEnv ~= nil, `unknown consumer source: {tostring(newConfigs.source)}`)
+
+	-- Execution / capability axis: VaaS runs IEC-origin uploads on the RCC backend, so backend-only capability checks run.
+	if getFFlagUGCValidationAllowFullVaas() and newConfigs.isVaaS then
+		newConfigs.validationEnv = ValidationEnums.ValidationEnv.Backend
+	else
+		newConfigs.validationEnv = newConfigs.consumerEnv
+	end
+
+	newConfigs.backendConfigs = newConfigs.backendConfigs or {}
+	newConfigs.iecConfigs = newConfigs.iecConfigs or {}
+
+	newConfigs.aqFetchStage = newConfigs.aqFetchStage or "scene"
+	newConfigs.aqFetchData = newConfigs.aqFetchData or ""
+	assert(
+		(newConfigs.aqFetchStage == "scene") == (newConfigs.aqFetchData == ""),
+		`aqFetchData must be non-empty iff aqFetchStage is "gltf" or "jobId" (got stage="{newConfigs.aqFetchStage}")`
+	)
 
 	return newConfigs :: Types.PreloadedConsumerConfigs
 end
@@ -305,14 +446,30 @@ local function runValidationOnRootInstance(sharedData: Types.SharedData): Types.
 		sharedData.uploadEnum.bundleType,
 		sharedData.consumerConfig
 
-	local results = {
+	if getFFlagDebugUGCValidationPrintNewStructureResults() then
+		print(
+			string.format(
+				"==== %s Validation begin ==== jobId=%s source=%s",
+				getDebugLabel(sharedData),
+				sharedData.jobId,
+				sharedData.consumerConfig.source
+			)
+		)
+	end
+
+	local results: Types.ValidationResultData = {
+		validationJobId = sharedData.jobId,
+		telemetryBundleId = if getFFlagUGCValidationAllowFullVaas() then configs.telemetryBundleId else nil,
 		pass = true,
 		numFailures = 0,
+		numWarnings = 0,
 		states = {},
-		errorTranslationContexts = {},
-		internalData = {},
 		ranIntoInternalError = false,
-	} :: Types.ValidationResultData
+		failureMap = {},
+		warningMap = {},
+		relevantSourceStrings = {},
+		aqJobId = "",
+	}
 
 	-- Step 1, 2: get upload category then the required data tables
 	local uploadCategory: string = getUploadCategory(instance, assetTypeEnum, bundleTypeEnum)
@@ -320,7 +477,8 @@ local function runValidationOnRootInstance(sharedData: Types.SharedData): Types.
 		initRunVariables(uploadCategory, configs)
 	sharedData.uploadCategory = uploadCategory
 	sharedData.aqsFetchMetrics = {
-		fetchStatus = kAssetQualityFetchNA,
+		fetchStatus = AssetQualityFetchStatus.assetQualityFetchNA,
+		aqJobId = if configs.aqFetchStage == "jobId" then configs.aqFetchData else nil,
 	}
 
 	-- Step 3: Run schema check based on upload category. If schema is wrong, no point in any validations
@@ -328,17 +486,33 @@ local function runValidationOnRootInstance(sharedData: Types.SharedData): Types.
 		ValidationTestWrapper(ValidationEnums.ValidationModule.ExpectedRootSchema, sharedData, results.states)
 	updateResultData(results, desiredValidations, schemaResults, sharedData.jobId, configs.enforceShadowValidations)
 	if results.states[ValidationEnums.ValidationModule.ExpectedRootSchema] ~= ValidationEnums.Status.PASS then
+		populateRelevantSourceStrings(results)
+		results.aqJobId = sharedData.aqsFetchMetrics.aqJobId or ""
 		reportFullResult(results, sharedData, -1)
 		return results
 	end
+
+	-- Anti-tamper: reset MeshPart physics before any .Size check; let a backend load failure throw rather than validate tampered bounds.
+	if
+		getFFlagUGCValidationAllowFullVaas()
+		and sharedData.consumerConfig.consumerEnv == ValidationEnums.ConsumerEnv.Backend
+	then
+		local bypassFlags = { skipPhysicsDataReset = sharedData.consumerConfig.skipPhysicsDataReset }
+		resetPhysicsData({ sharedData.rootInstance }, { isServer = true, bypassFlags = bypassFlags } :: any)
+	end
+
+	-- A VaaS job keeps source=InExp* but executes on the RCC backend, which has no ambient heartbeat, so it must yield
+	-- like a backend consumer (sync fetch + manual RunService pump, no task.wait). Capability-gated on validationEnv.
+	local cannotYield = consumersThatCannotYield[configs.source]
+		or configs.validationEnv == ValidationEnums.ValidationEnv.Backend
 
 	-- Step 4: Fetch data and call AQS if needed
 	FetchAllDesiredData.storeDesiredData(sharedData, desiredData)
 	if #qualityTests > 0 then
 		-- if we are allowed to spawn up threads, we can do the fetching async and yeild later when all validations are finished
 		-- TODO: Play around with rccservice to do async as well
-		sharedData.aqsFetchMetrics.fetchStatus = kAssetQualityFetchInProgress
-		if consumersThatCannotYield[configs.source] then
+		sharedData.aqsFetchMetrics.fetchStatus = AssetQualityFetchStatus.assetQualityFetchInProgress
+		if cannotYield then
 			RunService:Run() -- Give rcc scripts a heartbeat so we can call delay() in cpp util
 			fetchQualityResults(sharedData, qualityTests)
 			RunService:Pause()
@@ -349,7 +523,8 @@ local function runValidationOnRootInstance(sharedData: Types.SharedData): Types.
 
 	-- Step 5: Run all tests. If a prepreq fails, the wrapper will say it cannot start
 	while next(desiredValidations) ~= nil do
-		local qualityInProgress = sharedData.aqsFetchMetrics.fetchStatus == kAssetQualityFetchInProgress
+		local qualityInProgress = sharedData.aqsFetchMetrics.fetchStatus
+			== AssetQualityFetchStatus.assetQualityFetchInProgress
 		local layerTests: { string } = getNextLayer(desiredValidations, not qualityInProgress)
 
 		if #layerTests == 0 and not qualityInProgress then
@@ -366,17 +541,19 @@ local function runValidationOnRootInstance(sharedData: Types.SharedData): Types.
 				sharedData.jobId,
 				configs.enforceShadowValidations
 			)
-			if consumersThatWantExtraYeild[configs.source] then
+			if consumersThatWantExtraYeild[configs.source] and not cannotYield then
 				task.wait()
 			end
 		end
 
-		if qualityInProgress and not consumersThatCannotYield[configs.source] then
+		if qualityInProgress and not cannotYield then
 			-- Avoid empty loop when waiting on quality results
 			task.wait()
 		end
 	end
 
+	populateRelevantSourceStrings(results)
+	results.aqJobId = sharedData.aqsFetchMetrics.aqJobId or ""
 	reportFullResult(results, sharedData, 1000 * (os.clock() - startTime))
 	return results
 end
@@ -396,47 +573,32 @@ local function getRootInstance(assetsToValidate: { Instance }): Instance?
 	return assetsToValidate[1]
 end
 
--- We expect a single root asset for all validations, but when enforceR15FolderStructure = true, we recieve multiple roots to validate.
--- We simply run validation on the root, and an additional validation enforces the folder structure is accurate
-function ValidationManager.ValidateAsset(
-	assetsToValidate: { Instance },
-	assetTypeEnum: Enum.AssetType,
-	configs: Types.UGCValidationConsumerConfigs
-): Types.ValidationResultData
-	if getFFlagDebugUGCValidationPrintNewStructureResults() then
-		print(`==== {assetTypeEnum.Name} Validation begin ====`)
+local function findFolderByName(instances: { Instance }, folderName: string, acceptFallback: boolean): Instance?
+	for _, inst in instances do
+		if inst.Name == folderName then
+			return inst
+		end
 	end
 
-	local sharedData: { [string]: any } = {
-		jobId = HttpService:GenerateGUID(),
-		entrypointInput = assetsToValidate,
-		rootInstance = getRootInstance(assetsToValidate),
-		uploadEnum = {
-			assetType = assetTypeEnum,
-		},
-		consumerConfig = createConsumerConfigWithDefaults(configs),
-	}
-
-	return runValidationOnRootInstance(sharedData)
+	-- acceptFallback mirrors getRootInstance's [1] fallback (used to build the R15ArtistIntent bundle root);
+	-- Fallback = False is specified for the ASSET version of R15Fixed, so we are strictly nil when its not made.
+	if acceptFallback then
+		return instances[1]
+	end
+	return nil
 end
 
-function ValidationManager.ValidateFinalizedBundle(
+local function synthesizeRootFromFolders(
 	fullBodyData: Types.FullBodyData,
-	bundleTypeEnum: Enum.BundleType,
-	configs: Types.UGCValidationConsumerConfigs
-): Types.ValidationResultData
-	if getFFlagDebugAllowHRDUploadOnBundleBackend() then
-		R15plusUtils.setIsBackendBundleUpload(configs.source == "Backend")
-	end
-
-	-- fullBodyData is a list of the body assets being published together. TODO: Adjust consumers to include accessories too, same format is fine
-	if getFFlagDebugUGCValidationPrintNewStructureResults() then
-		print(`==== {bundleTypeEnum.Name} Validation begin ====`)
-	end
-
+	folderName: string,
+	acceptFallback: boolean
+): Instance
+	-- Builds one root Folder by cloning each body part's <folderName> folder together. Used for both the
+	-- R15ArtistIntent bundle root (acceptFallback=true, mirroring getRootInstance's [1] fallback) and the
+	-- R15Fixed duplicate (strict). Returns an empty Folder when no matching folder is present in any body part.
 	local rootFolder = Instance.new("Folder")
 	for _, instancesAndType in fullBodyData do
-		local headOrLimbs = getRootInstance(instancesAndType.allSelectedInstances)
+		local headOrLimbs = findFolderByName(instancesAndType.allSelectedInstances, folderName, acceptFallback)
 		if headOrLimbs ~= nil then
 			if headOrLimbs:IsA("Folder") or headOrLimbs:IsA("Model") then
 				for _, childPart in headOrLimbs:GetChildren() do
@@ -448,14 +610,86 @@ function ValidationManager.ValidateFinalizedBundle(
 		end
 	end
 
+	return rootFolder
+end
+
+-- We expect a single root asset for all validations, but when enforceR15FolderStructure = true, we recieve multiple roots to validate.
+-- We simply run validation on the root, and an additional validation enforces the folder structure is accurate
+function ValidationManager.ValidateAsset(
+	assetsToValidate: { Instance },
+	assetTypeEnum: Enum.AssetType,
+	configs: Types.UGCValidationConsumerConfigs
+): Types.ValidationResultData
+	local sharedData: { [string]: any } = {
+		jobId = HttpService:GenerateGUID(),
+		entrypointInput = assetsToValidate,
+		rootInstance = getRootInstance(assetsToValidate),
+		r15LegacyDuplicateRoot = if getEngineFeatureEngineUGCValidateInstanceTreesEquivalent()
+			then findFolderByName(assetsToValidate, Constants.FOLDER_NAMES.R15Fixed, false)
+			else nil,
+		uploadEnum = {
+			assetType = assetTypeEnum,
+		},
+		consumerConfig = createConsumerConfigWithDefaults(configs),
+		hsrAssets = {},
+	}
+
+	return runValidationOnRootInstance(sharedData)
+end
+
+function ValidationManager.ValidateFinalizedBundle(
+	fullBodyData: Types.FullBodyData,
+	bundleTypeEnum: Enum.BundleType,
+	configs: Types.UGCValidationConsumerConfigs
+): Types.ValidationResultData
+	if getFFlagDebugAllowHRDUploadOnBundleBackend() then
+		R15plusUtils.setIsBackendBundleUpload(configs.source == "Publish" or configs.source == "Backend")
+	end
+
+	local rootInstance: Instance
+	local r15LegacyDuplicateRoot: Instance? = nil
+	if bundleTypeEnum == Enum.BundleType.Animations then
+		local rootModel = Instance.new("Model")
+		for _, instancesAndType in fullBodyData do
+			local animModel = getRootInstance(instancesAndType.allSelectedInstances)
+			if animModel ~= nil then
+				animModel:Clone().Parent = rootModel
+			end
+		end
+		rootInstance = rootModel
+	elseif getEngineFeatureEngineUGCValidateInstanceTreesEquivalent() then
+		-- Synthesize the R15ArtistIntent bundle root and the R15Fixed duplicate as two parallel trees so the
+		-- discarded R15Fixed copy can be re-validated (see ExpectedRootSchema, HrdBonesFollowSchema).
+		rootInstance = synthesizeRootFromFolders(fullBodyData, Constants.FOLDER_NAMES.R15ArtistIntent, true)
+		r15LegacyDuplicateRoot = synthesizeRootFromFolders(fullBodyData, Constants.FOLDER_NAMES.R15Fixed, true)
+	else
+		-- fullBodyData is a list of the body assets being published together. TODO: Adjust consumers to include accessories too, same format is fine
+		local rootFolder = Instance.new("Folder")
+		for _, instancesAndType in fullBodyData do
+			local headOrLimbs = getRootInstance(instancesAndType.allSelectedInstances)
+			if headOrLimbs ~= nil then
+				if headOrLimbs:IsA("Folder") or headOrLimbs:IsA("Model") then
+					for _, childPart in headOrLimbs:GetChildren() do
+						childPart:Clone().Parent = rootFolder
+					end
+				else
+					headOrLimbs:Clone().Parent = rootFolder
+				end
+			end
+		end
+		rootInstance = rootFolder
+	end
+
 	local sharedData: { [string]: any } = {
 		jobId = HttpService:GenerateGUID(),
 		entrypointInput = fullBodyData,
-		rootInstance = rootFolder,
+		rootInstance = rootInstance,
+		r15LegacyDuplicateRoot = r15LegacyDuplicateRoot,
 		uploadEnum = {
 			bundleType = bundleTypeEnum,
 		},
 		consumerConfig = createConsumerConfigWithDefaults(configs),
+		hsrAssets = {},
 	}
 
 	local result = runValidationOnRootInstance(sharedData)

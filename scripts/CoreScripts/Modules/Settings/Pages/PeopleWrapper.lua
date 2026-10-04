@@ -16,7 +16,6 @@ local ReactRoblox = require(CorePackages.Packages.ReactRoblox)
 
 -- Flags
 local FFlagRefactorPeoplePage = require(Modules.Settings.Flags.FFlagRefactorPeoplePage)
-local FFlagRenderPeoplePageOnTabSwitch = game:DefineFastFlag("RenderPeoplePageOnTabSwitch", false)
 local FFlagRelocateMobileMenuButtons = require(Modules.Settings.Flags.FFlagRelocateMobileMenuButtons)
 local FIntRelocateMobileMenuButtonsVariant = require(Modules.Settings.Flags.FIntRelocateMobileMenuButtonsVariant)
 
@@ -35,15 +34,16 @@ local SettingsShowSignal = require(CorePackages.Workspace.Packages.CoreScriptsCo
 local locales = Localization.new(LocalizationService.RobloxLocaleId)
 local BuilderIcons = require(CorePackages.Packages.BuilderIcons)
 local BlockingModalScreen = require(Modules.Settings.Components.Blocking.BlockingModalScreen)
-local migrationLookup = BuilderIcons.Migration['uiblox']
+local migrationLookup = BuilderIcons.Migration["uiblox"]
 local PeopleService = require(CorePackages.Workspace.Packages.PeopleService)
+local InExperienceSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet)
+local FFlagSideSheetOpenPeoplePage = InExperienceSideSheet.Flags.FFlagSideSheetOpenPeoplePage
 
 -- Focus Navigation
 local FocusNavigationUtils = require(CorePackages.Workspace.Packages.FocusNavigationUtils)
 local FocusRoot = FocusNavigationUtils.FocusRoot
 local FocusNavigableSurfaceIdentifierEnum = FocusNavigationUtils.FocusNavigableSurfaceIdentifierEnum
 local CoreScriptsRootProvider = require(CorePackages.Workspace.Packages.CoreScriptsRoactCommon).CoreScriptsRootProvider
-local useRegistryEntry = FocusNavigationUtils.FocusNavigableSurfaceRegistry.useRegistryEntry
 
 local Constants
 if FFlagRefactorPeoplePage() then
@@ -56,25 +56,28 @@ local GetFFlagAddPeoplePageCardLayout = PeopleFlags.GetFFlagAddPeoplePageCardLay
 local GetFFlagPeoplePageLazyRenderCards = PeopleFlags.GetFFlagPeoplePageLazyRenderCards
 local FFlagEnablePeopleListLazyRender = PeopleFlags.FFlagEnablePeopleListLazyRender
 local FFlagPeopleCardsEnableVirtualizedGrid = PeopleFlags.FFlagPeopleCardsEnableVirtualizedGrid
+local FFlagPeoplePageDismissVolumePopoverOnScrollOutOfView =
+	PeopleFlags.FFlagPeoplePageDismissVolumePopoverOnScrollOutOfView
+local FFlagPeoplePageFlipVolumePopoverToFitViewport =
+	PeopleFlags.FFlagPeoplePageFlipVolumePopoverToFitViewport
+local FFlagPeoplePageDismissCardMenuOnScrollOutOfView =
+	PeopleFlags.FFlagPeoplePageDismissCardMenuOnScrollOutOfView
 
 local tree: ReactRoblox.RootType? = nil
 local getDisplayed, setDisplayed = Signals.createSignal(false)
 
 local function PeopleFocusRoot(props)
-	local centralOverlay = useRegistryEntry(FocusNavigableSurfaceIdentifierEnum.CentralOverlay)
-	-- Only enable auto focus when no modal is open
-	local shouldAutoFocus = centralOverlay == nil
-
 	return React.createElement(FocusRoot, {
 		surfaceIdentifier = FocusNavigableSurfaceIdentifierEnum.RouterView,
-		isAutoFocusRoot = shouldAutoFocus,
+		isAutoFocusRoot = false ,
 	}, props.children)
 end
 
-
 -- Returns GameSettings Page with Settings Framework
 local function createPeoplePage()
-	local PeopleReactView = require(CorePackages.Workspace.Packages.PeopleReactView).PeopleReactView
+	local PeopleReactViewPackage = require(CorePackages.Workspace.Packages.PeopleReactView)
+	local PeopleReactView = PeopleReactViewPackage.PeopleReactView
+	local SideSheetFocusContext = PeopleReactViewPackage.SideSheetFocusContext
 	local PeopleService = require(CorePackages.Workspace.Packages.PeopleService)
 	local PeoplePage = SettingsPageFactory:CreateNewPage()
 
@@ -106,12 +109,33 @@ local function createPeoplePage()
 			return
 		end
 
-		local scrollingFrame = if GetFFlagPeoplePageLazyRenderCards() or FFlagEnablePeopleListLazyRender or FFlagPeopleCardsEnableVirtualizedGrid then PeoplePage.Page:FindFirstAncestorWhichIsA("ScrollingFrame") else nil
+		local scrollingFrame = if GetFFlagPeoplePageLazyRenderCards()
+				or FFlagEnablePeopleListLazyRender
+				or FFlagPeopleCardsEnableVirtualizedGrid
+				or FFlagPeoplePageDismissVolumePopoverOnScrollOutOfView
+				or FFlagPeoplePageFlipVolumePopoverToFitViewport
+				or FFlagPeoplePageDismissCardMenuOnScrollOutOfView
+			then PeoplePage.Page:FindFirstAncestorWhichIsA("ScrollingFrame")
+			else nil
 
-		local PeopleConditionalView = function()
+		-- Closes over the page-scoped locals built above, so hoisting it would mean threading all of
+		-- them through props. Pre-existing on master; only surfaced here because this PR edits lines
+		-- inside the component.
+		-- lute-lint-ignore(noNestedReactDefinitions)
+		local function PeopleConditionalView()
+			-- lute-lint-ignore(rulesOfHooks)
 			local displayed = SignalsReact.useSignalState(getDisplayed)
+			-- lute-lint-ignore(rulesOfHooks)
+			local isSideSheetVisible = if FFlagSideSheetOpenPeoplePage
+				then SignalsReact.useSignalState(InExperienceSideSheet.getSideSheetVisibility)
+				else false
+			-- lute-lint-ignore(rulesOfHooks)
+			local didSideSheetOpenWithPeoplePage = if FFlagSideSheetOpenPeoplePage
+				then SignalsReact.useSignalState(InExperienceSideSheet.getDidSideSheetOpenWithPeoplePage)
+				else false
 
-			local People = if displayed then React.createElement(CoreScriptsRootProvider, {}, {
+			local People: React.ReactElement<any, any>? = if displayed
+				then React.createElement(CoreScriptsRootProvider, {}, {
 					LocalizationProvider = React.createElement(LocalizationProvider, {
 						localization = locales,
 					}, {
@@ -119,40 +143,69 @@ local function createPeoplePage()
 							PeopleReactView = React.createElement(PeopleReactView, {
 								blockingModalScreen = BlockingModalScreen,
 								blockingFlags = {},
-								scrollingFrame = if GetFFlagPeoplePageLazyRenderCards() or FFlagEnablePeopleListLazyRender or FFlagPeopleCardsEnableVirtualizedGrid then scrollingFrame else nil,
+								scrollingFrame = if GetFFlagPeoplePageLazyRenderCards()
+										or FFlagEnablePeopleListLazyRender
+										or FFlagPeopleCardsEnableVirtualizedGrid
+										or FFlagPeoplePageDismissVolumePopoverOnScrollOutOfView
+										or FFlagPeoplePageFlipVolumePopoverToFitViewport
+										or FFlagPeoplePageDismissCardMenuOnScrollOutOfView
+									then scrollingFrame
+									else nil,
 								chromeEnabled = ChromeEnabled,
-								getUniversesExposedTo = if GetFFlagAddPeoplePageCardLayout() and LocalStore then LocalStore.getUniversesExposedTo else nil,
-								addUniverseToExposureList = if GetFFlagAddPeoplePageCardLayout() and LocalStore then LocalStore.addUniverseToExposureList else nil,
-							})
-						})
-					})
-				}) else nil
+								getUniversesExposedTo = if GetFFlagAddPeoplePageCardLayout() and LocalStore
+									then LocalStore.getUniversesExposedTo
+									else nil,
+								addUniverseToExposureList = if GetFFlagAddPeoplePageCardLayout() and LocalStore
+									then LocalStore.addUniverseToExposureList
+									else nil,
+								minimumCardWidth = if FFlagSideSheetOpenPeoplePage
+										and isSideSheetVisible
+										and didSideSheetOpenWithPeoplePage
+									then Constants.PEOPLEPAGE.PEOPLE_CARDS.SIDE_SHEET_MINIMUM_CARD_WIDTH
+									else nil,
+							}),
+						}),
+					}),
+				})
+				else nil
+
+			if FFlagSideSheetOpenPeoplePage and People then
+				-- There is only a sheet to hand focus back to when the page came up beside it, which a
+				-- screen with no room for the pairing never does.
+				People = React.createElement(SideSheetFocusContext.Provider, {
+					value = isSideSheetVisible and didSideSheetOpenWithPeoplePage,
+				}, {
+					People = People,
+				})
+			end
 
 			return People
 		end
 
 		tree = ReactRoblox.createRoot(PeoplePage.Page)
-		if tree then tree:render(React.createElement(PeopleConditionalView)) end
+		if tree then
+			tree:render(React.createElement(PeopleConditionalView))
+		end
 	end
 
 	PeoplePage.Displayed.Event:Connect(function()
-		if not FFlagRenderPeoplePageOnTabSwitch or not getDisplayed(false) then
+		if not getDisplayed(false) then
 			createReactTree()
 			setDisplayed(true)
 		end
-	end)
-
-	if FFlagRenderPeoplePageOnTabSwitch then
-		SettingsShowSignal:connect(function(isOpen)
-			if not isOpen then
-				setDisplayed(false)
+			local menuContainer = PeoplePage.Page:FindFirstAncestor("MenuContainer")
+			if menuContainer then
+				local bottomFrame = menuContainer:FindFirstChild("BottomButtonFrame", true)
+				if bottomFrame then
+					bottomFrame.SelectionBehaviorUp = Enum.SelectionBehavior.Escape
+				end
 			end
-		end)
-	else
-		PeoplePage.Hidden.Event:Connect(function()
+	end)
+	SettingsShowSignal:connect(function(isOpen)
+		if not isOpen then
 			setDisplayed(false)
-		end)
-	end
+		end
+	end)
 
 	PeoplePage.Page.Size = UDim2.new(1, 0, 0, 0)
 	PeoplePage.Page.AutomaticSize = Enum.AutomaticSize.Y

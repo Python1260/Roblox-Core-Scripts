@@ -5,8 +5,13 @@ local Packages = UIBlox.Parent
 
 local Translator = require(UIBlox.Translations.Translator)
 local React = require(Packages.React)
+local Foundation = require(Packages.Foundation)
+local normalizeFontFace = Foundation.Utility.normalizeFontFace
 
 local useStyle = require(UIBlox.Core.Style.useStyle)
+local UIBloxConfig = require(UIBlox.UIBloxConfig)
+
+local FFlagFoundationFontFaceMigration = Foundation.Utility.Flags.FoundationFontFaceMigration
 
 local REQUIRED_INDICATOR = "*"
 
@@ -31,9 +36,12 @@ end
 local function InputLabel(props: InputLabelProps)
 	local style = useStyle()
 
-	local inputLabelStyle = style.Tokens.Component.InputLabel
-	local typography = inputLabelStyle.Base.Typography
-	local textColor = inputLabelStyle.Base.ContentColor
+	local typography = if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+		then style.Tokens.Typography.BodySmall
+		else style.Tokens.Component.InputLabel.Base.Typography
+	local textColor = if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+		then style.Tokens.Color.Content.Default
+		else style.Tokens.Component.InputLabel.Base.ContentColor
 
 	return React.createElement("TextLabel", {
 		Text = labelText(props.text, props.required),
@@ -43,7 +51,8 @@ local function InputLabel(props: InputLabelProps)
 		TextWrapped = true,
 		BackgroundTransparency = 1,
 		TextColor3 = textColor.Color3,
-		Font = typography.Font,
+		Font = if FFlagFoundationFontFaceMigration then nil else typography.Font,
+		FontFace = if FFlagFoundationFontFaceMigration then normalizeFontFace(typography.Font) else nil,
 		TextSize = typography.FontSize,
 		LineHeight = typography.LineHeight,
 		Size = UDim2.new(1, 0, 0, 0),

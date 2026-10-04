@@ -20,11 +20,8 @@ local LoggingProtocol = require(CorePackages.Workspace.Packages.LoggingProtocol)
 local React = require(CorePackages.Packages.React)
 
 -- Enable CoreScript session with error reporting
-local FFlagEnableCoreScriptsSessionWithError = game:DefineFastFlag("EnableCoreScriptsSessionWithError", false)
 local SessionWithErrorReporter = require(CorePackages.Workspace.Packages.AppObservability).SessionWithErrorReporter
-local LuaCoreScriptsSessionWithErrorConfig = if FFlagEnableCoreScriptsSessionWithError
-	then require(RobloxGui.Modules.ErrorReporting.LuaCoreScriptsSessionWithErrorConfig)
-		else nil
+local LuaCoreScriptsSessionWithErrorConfig = require(RobloxGui.Modules.ErrorReporting.LuaCoreScriptsSessionWithErrorConfig)
 
 -- This flag is permanent; please do not remove it. It serves as a way to
 -- quickly turn off error reporting if it proves to be problematic, so that we
@@ -47,9 +44,6 @@ game:DefineFastInt("CoreScriptBacktraceRepeatedErrorRateLimitPeriod", 60)
 game:DefineFastInt("CoreScriptBacktraceRepeatedErrorRateLimitProcessIntervalTenths", 10)
 
 game:DefineFastInt("CoreScriptBacktraceErrorReportPercentage", 100)
-
-local FFlagEnableLuaCoreScriptsErrorV2Counter = game:DefineFastFlag("EnableLuaCoreScriptsErrorV2Counter", false)
-local FFlagEnableCoreScriptsSessionWithError = game:DefineFastFlag("EnableCoreScriptsSessionWithError", false)
 
 local function CanReportCoreScriptBacktrace()
 	return math.random(1, 100) <= math.clamp(game:GetFastInt("CoreScriptBacktraceErrorReportPercentage"), 0, 100)
@@ -85,9 +79,7 @@ then
 		})
 	end
 
-	local sessionErrorReporter = if FFlagEnableCoreScriptsSessionWithError
-		then SessionWithErrorReporter.new(LuaCoreScriptsSessionWithErrorConfig, 300, nil)
-		else nil
+	local sessionErrorReporter = SessionWithErrorReporter.new(LuaCoreScriptsSessionWithErrorConfig, 300, nil)
 
 	local function processReport(report)
 		report:addAttributes(staticAttributes)
@@ -145,13 +137,9 @@ then
 			end
 
 			reporter:reportErrorDeferred(cleanedMessage, cleanedStack, details)
-			if FFlagEnableLuaCoreScriptsErrorV2Counter then
-				LoggingProtocol:logRobloxTelemetryCounter(LuaCoreScriptsErrorV2CounterConfig, 1)
-			end
+			LoggingProtocol:logRobloxTelemetryCounter(LuaCoreScriptsErrorV2CounterConfig, 1)
 
-			if FFlagEnableCoreScriptsSessionWithError then
-				sessionErrorReporter:reportEvent(1, nil, "ERROR")
-			end
+			sessionErrorReporter:reportEvent(1, nil, "ERROR")
 		end
 	end
 

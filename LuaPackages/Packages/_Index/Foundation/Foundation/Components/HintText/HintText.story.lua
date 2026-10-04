@@ -10,14 +10,21 @@ local function Story(props)
 	return React.createElement(HintText, {
 		text = controls.text,
 		hasError = controls.hasError,
+		isDisabled = controls.isDisabled,
 	})
 end
 
 return {
 	summary = "Helper text put below inputs",
-	story = Story,
+	stories = {
+		{
+			name = "Playground",
+			story = Story,
+		},
+	},
 	controls = {
 		text = "Helper text",
 		hasError = false,
+		isDisabled = false,
 	},
 }

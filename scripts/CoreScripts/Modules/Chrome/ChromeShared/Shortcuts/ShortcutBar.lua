@@ -2,6 +2,7 @@ local Root = script:FindFirstAncestor("ChromeShared")
 
 local CorePackages = game:GetService("CorePackages")
 local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 local GamepadConnector = require(Root.Parent.Parent.TopBar.Components.GamepadConnector)
 
 local React = require(CorePackages.Packages.React)
@@ -14,13 +15,19 @@ local Constants = require(Root.Unibar.Constants)
 local ViewportUtil = require(Root.Service.ViewportUtil)
 local useObservableValue = require(Root.Hooks.useObservableValue)
 local useTokens = Foundation.Hooks.useTokens
+local useDrawerAnimating = require(CorePackages.Workspace.Packages.Drawer).Hooks.useDrawerAnimating
 
 local ChromeService = require(Root.Service)
 
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 local isSpatial = require(CorePackages.Workspace.Packages.AppCommonLib).isSpatial
-local FFlagDisableGamepadConnectorInVR = ChromePackage.Flags.FFlagDisableGamepadConnectorInVR
+local FFlagGamepadIconSupportCheck = SharedFlags.FFlagGamepadIconSupportCheck
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local FFlagSideSheetFocusNav = SharedFlags.FFlagSideSheetFocusNav
+local FFlagEnableDrawerAnimatingHook = SharedFlags.FFlagEnableDrawerAnimatingHook
+
+local getSideSheetVisibility = require(CorePackages.Workspace.Packages.InExperienceSideSheet).getSideSheetVisibility
 
 type ShortcutProps = ChromePackage.ShortcutProps
 
@@ -56,13 +63,21 @@ function ChromeShortcutBar(props)
 	end, { screenSize })
 
 	React.useEffect(function()
-		ChromeService:onShortcutBarChanged():connect(function()
+		local function updateShortcuts()
+			if FFlagGamepadIconSupportCheck and not GamepadConnector:getGamepadActive():get() then
+				return
+			end
 			local s = ChromeService:getCurrentShortcuts()
 			setShortcuts(s)
 			setTrimmedShortcuts({})
-		end)
+		end
 
-		if not FFlagDisableGamepadConnectorInVR or not isSpatial() then
+		ChromeService:onShortcutBarChanged():connect(updateShortcuts)
+		if FFlagGamepadIconSupportCheck then
+			UserInputService.LastInputTypeChanged:Connect(updateShortcuts)
+		end
+
+		if not isSpatial() then
 			local showTopBar = GamepadConnector:getShowTopBar()
 			local gamepadActive = GamepadConnector:getGamepadActive()
 
@@ -85,6 +100,17 @@ function ChromeShortcutBar(props)
 			end
 		end
 	end, {})
+
+	if isSideSheetEnabled and FFlagSideSheetFocusNav and FFlagEnableDrawerAnimatingHook then
+		local isSideSheetVisible = getSideSheetVisibility(false)
+		-- lute-lint-ignore(rulesOfHooks): isSideSheetEnabled is stable, backed by a flag and static build condition.
+		local isDrawerAnimating = useDrawerAnimating()
+
+		-- lute-lint-ignore(rulesOfHooks): isSideSheetEnabled is stable, backed by a flag and static build condition.
+		React.useEffect(function()
+			ChromeService:setHideShortcutBar("SideSheet", isSideSheetVisible or isDrawerAnimating)
+		end, { isSideSheetVisible, isDrawerAnimating })
+	end
 
 	local shortcutList = (if #trimmedShortcuts > 0 then trimmedShortcuts else shortcuts) :: { ShortcutProps }
 	local shortcutItems = {}

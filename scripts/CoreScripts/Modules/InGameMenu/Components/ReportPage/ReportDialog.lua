@@ -12,7 +12,7 @@ local Cryo = InGameMenuDependencies.Cryo
 
 local Button = UIBlox.App.Button.Button
 local ButtonType = UIBlox.App.Button.Enum.ButtonType
-local withStyle = UIBlox.Core.Style.withStyle
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 
 local InGameMenu = script.Parent.Parent.Parent
 local Flags = InGameMenu.Flags
@@ -34,6 +34,12 @@ local SendAnalytics = require(InGameMenu.Utility.SendAnalytics)
 local SendReport = require(InGameMenu.Thunks.SendReport)
 
 local ImageSetLabel = UIBlox.Core.ImageSet.ImageSetLabel
+
+local Foundation = require(CorePackages.Packages.Foundation)
+local Image = Foundation.Image
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
+
 
 local ReportDialog = Roact.PureComponent:extend("ReportDialog")
 
@@ -188,22 +194,38 @@ function ReportDialog:renderReportPlayer(style, localized, reportChildren)
 		Size = UDim2.new(1, 0, 0, 68),
 	}, {
 		--TODO: Replace this with real circular thumbnail when that is available.
-		PlayerCutout = Roact.createElement(
-			ImageSetLabel,
-			Cryo.Dictionary.join(iconPos, {
-				BackgroundTransparency = 1,
+		PlayerCutout = if FFlagCoreUiMigrateUIBloxToFoundation
+			then Roact.createElement(Image, {
+				AnchorPoint = iconPos.AnchorPoint,
+				Position = iconPos.Position,
+				Size = iconPos.Size,
 				Image = Assets.Images.CircleCutout,
-				ImageColor3 = style.Theme.BackgroundUIDefault.Color,
+				imageStyle = { Color3 = style.Theme.BackgroundUIDefault.Color, Transparency = 0 },
 				ZIndex = 2,
 			})
-		),
-		PlayerIcon = Roact.createElement(
-			ImageSetLabel,
-			Cryo.Dictionary.join(iconPos, {
-				BackgroundTransparency = 1,
+			else Roact.createElement(
+				ImageSetLabel,
+				Cryo.Dictionary.join(iconPos, {
+					BackgroundTransparency = 1,
+					Image = Assets.Images.CircleCutout,
+					ImageColor3 = style.Theme.BackgroundUIDefault.Color,
+					ZIndex = 2,
+				})
+			),
+		PlayerIcon = if FFlagCoreUiMigrateUIBloxToFoundation
+			then Roact.createElement(Image, {
+				AnchorPoint = iconPos.AnchorPoint,
+				Position = iconPos.Position,
+				Size = iconPos.Size,
 				Image = userId > 0 and "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=48&h=48" or "",
 			})
-		),
+			else Roact.createElement(
+				ImageSetLabel,
+				Cryo.Dictionary.join(iconPos, {
+					BackgroundTransparency = 1,
+					Image = userId > 0 and "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=48&h=48" or "",
+				})
+			),
 		PlayerBackground = Roact.createElement(
 			"Frame",
 			Cryo.Dictionary.join(iconPos, {
@@ -267,13 +289,20 @@ function ReportDialog:renderReportGame(style, localized, reportChildren)
 		LayoutOrder = 3,
 		Size = UDim2.new(1, 0, 0, 126),
 	}, {
-		GameIcon = Roact.createElement(ImageSetLabel, {
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 17, 0.5, 0),
-			Size = UDim2.new(0, 64, 0, 64),
-			BackgroundTransparency = 1,
-			Image = gameThumbnail,
-		}),
+		GameIcon = if FFlagCoreUiMigrateUIBloxToFoundation
+			then Roact.createElement(Image, {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 17, 0.5, 0),
+				Size = UDim2.new(0, 64, 0, 64),
+				Image = gameThumbnail,
+			})
+			else Roact.createElement(ImageSetLabel, {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 17, 0.5, 0),
+				Size = UDim2.new(0, 64, 0, 64),
+				BackgroundTransparency = 1,
+				Image = gameThumbnail,
+			}),
 
 		GameName = Roact.createElement(ThemedTextLabel, {
 			fontKey = "Body",
@@ -293,7 +322,16 @@ function ReportDialog:renderReportGame(style, localized, reportChildren)
 end
 
 function ReportDialog:render()
-	return withStyle(function(style)
+	return withFoundationOrUIBloxStyle(function(tokens)
+		return {
+			Theme = {
+				Overlay = { Color = tokens.Color.Common.Scrim.Color3, Transparency = tokens.Color.Common.Scrim.Transparency },
+				BackgroundUIDefault = { Color = tokens.Color.Surface.Surface_300.Color3, Transparency = tokens.Color.Surface.Surface_300.Transparency },
+				UIDefault = { Color = tokens.Color.Shift.Shift_200.Color3, Transparency = tokens.Color.Shift.Shift_200.Transparency },
+				Divider = { Color = tokens.Color.Stroke.Emphasis.Color3, Transparency = tokens.Color.Stroke.Emphasis.Transparency },
+			},
+		}
+	end, function(style)
 		return withLocalization({
 			flagingGame = { "CoreScripts.InGameMenu.Report.FlagingGame", RBX_NAME = self.props.placeName },
 			reportGameTitle = {
@@ -341,17 +379,29 @@ function ReportDialog:render()
 					Text = "",
 					Selectable = false,
 				}),
-				DialogMainFrame = Roact.createElement(ImageSetLabel, {
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					BackgroundTransparency = 1,
-					Image = Assets.Images.RoundedRect.Image,
-					ImageColor3 = style.Theme.BackgroundUIDefault.Color,
-					ImageTransparency = style.Theme.BackgroundUIDefault.Transparency,
-					Position = UDim2.new(0.5, 0, 0.5, 0),
-					ScaleType = Assets.Images.RoundedRect.ScaleType,
-					Size = UDim2.new(0, 600, 0, 450),
-					SliceCenter = Assets.Images.RoundedRect.SliceCenter,
-				}, reportDialogChildren),
+				DialogMainFrame = if FFlagCoreUiMigrateUIBloxToFoundation
+					then Roact.createElement(Image, {
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Image = Assets.Images.RoundedRectImageKey,
+						imageStyle = {
+							Color3 = style.Theme.BackgroundUIDefault.Color,
+							Transparency = style.Theme.BackgroundUIDefault.Transparency,
+						},
+						Position = UDim2.new(0.5, 0, 0.5, 0),
+						Size = UDim2.new(0, 600, 0, 450),
+						slice = { center = Rect.new(8, 8, 9, 9) },
+					}, reportDialogChildren)
+					else Roact.createElement(ImageSetLabel, {
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						BackgroundTransparency = 1,
+						Image = Assets.Images.RoundedRect.Image,
+						ImageColor3 = style.Theme.BackgroundUIDefault.Color,
+						ImageTransparency = style.Theme.BackgroundUIDefault.Transparency,
+						Position = UDim2.new(0.5, 0, 0.5, 0),
+						ScaleType = Assets.Images.RoundedRect.ScaleType,
+						Size = UDim2.new(0, 600, 0, 450),
+						SliceCenter = Assets.Images.RoundedRect.SliceCenter,
+					}, reportDialogChildren),
 				FocusHandler = GetFFlagIGMGamepadSelectionHistory() and Roact.createElement(FocusHandler, {
 					isFocused = self.props.canCaptureFocus and self.props.isGamepadLastInput,
 					shouldForgetPreviousSelection = not self.props.isOpen,

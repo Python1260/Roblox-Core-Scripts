@@ -20,8 +20,6 @@ local IXPService = game:GetService("IXPService")
 local LocalizationService = game:GetService("LocalizationService")
 local TelemetryService = game:GetService("TelemetryService")
 
-local featureDeprecateOldGuiObjectProperties = game:GetEngineFeature("DeprecateOldGuiObjectProperties")
-
 local RobloxGui = CoreGui:WaitForChild("RobloxGui")
 local isTenFootInterface = require(RobloxGui.Modules.TenFootInterface):IsEnabled()
 
@@ -68,10 +66,11 @@ local CoreGuiCommonStores = require(CorePackages.Workspace.Packages.CoreGuiCommo
 local Signals = require(CorePackages.Packages.Signals)
 local createSignal = Signals.createSignal
 local AppStyleProvider = require(CorePackages.Packages.UIBlox).App.Style.AppStyleProvider
-local DarkTheme = require(CorePackages.Packages.UIBlox).App.Style.Constants.ThemeName.Dark
+local DarkColorMode = require(CorePackages.Packages.Foundation).Enums.ColorMode.Dark
 local PlayerListPackage = require(CorePackages.Workspace.Packages.PlayerList)
 local isSpatial = require(CorePackages.Workspace.Packages.AppCommonLib).isSpatial
 local HelpPage = require(CorePackages.Workspace.Packages.HelpPage)
+local leaveGame = require(RobloxGui.Modules.Settings.leaveGame)
 
 local Theme = require(script.Parent.Theme)
 
@@ -90,7 +89,6 @@ local SETTINGS_HUB_MOUSE_OVERRIDE_KEY = Symbol.named("SettingsHubCursorOverride"
 
 local VERSION_BAR_HEIGHT = isTenFootInterface and 32 or (utility:IsSmallTouchScreen() and 24 or 26)
 
-local BOTTOM_BUTTON_BAR_HEIGHT = 80
 local BOTTOM_BUTTON_10FT_SIZE = 72
 
 local CHECK_LEAVE_GAME_UPSELL_COOLDOWN = game:DefineFastInt("CheckLeaveGameUpsellCooldown", 300)
@@ -103,31 +101,31 @@ local SettingsFlags = require(script.Parent.Flags)
 local Flags = {
 	EngineFeatureRbxAnalyticsServiceExposePlaySessionId = game:GetEngineFeature("RbxAnalyticsServiceExposePlaySessionId"),
 	EngineFeatureTeleportHistoryButtons = game:GetEngineFeature("TeleportHistoryButtons"),
+	EngineFeaturePlayerScriptStatusProperty = game:GetEngineFeature("PlayerScriptStatusProperty"),
 
 	FFlagRemoveRecordPage = game:DefineFastFlag("RemoveRecordPage", false),
 	FFlagPreventHiddenSwitchPage = game:DefineFastFlag("PreventHiddenSwitchPage", false),
 	FFlagLuaEnableGameInviteModalSettingsHub = game:DefineFastFlag("LuaEnableGameInviteModalSettingsHub", false),
 	FFlagFixDisableTopPaddingError = game:DefineFastFlag("FixDisableTopPaddingError", false),
+	FFlagWaitPlayerModuleStatus = game:DefineFastFlag("WaitPlayerModuleStatus", false),
 
 	GetFFlagLuaInExperienceCoreScriptsGameInviteUnification = require(RobloxGui.Modules.Flags.GetFFlagLuaInExperienceCoreScriptsGameInviteUnification),
 	FFlagEnableInGameMenuDurationLogger = require(RobloxGui.Modules.Common.Flags.GetFFlagEnableInGameMenuDurationLogger)(),
 	isNewInGameMenuEnabled = require(RobloxGui.Modules.isNewInGameMenuEnabled),
-	GetFFlagAbuseReportEnableReportSentPage = require(RobloxGui.Modules.Flags.GetFFlagAbuseReportEnableReportSentPage),
-	GetFFlagMuteButtonRaceConditionFix = require(RobloxGui.Modules.Flags.GetFFlagMuteButtonRaceConditionFix),
+
 	GetFFlagRemoveAssetVersionEndpoint = require(RobloxGui.Modules.Flags.GetFFlagRemoveAssetVersionEndpoint),
 	GetFFlagNewEventIngestPlayerScriptsDimensions = require(RobloxGui.Modules.Flags.GetFFlagNewEventIngestPlayerScriptsDimensions),
 
 	GetFFlagReportAbuseMenuEntrypointAnalytics = require(RobloxGui.Modules.Settings.Flags.GetFFlagReportAbuseMenuEntrypointAnalytics),
 	GetFFlagEnableLeaveGameUpsellEntrypoint = require(RobloxGui.Modules.Settings.Flags.GetFFlagEnableLeaveGameUpsellEntrypoint),
 	GetFStringInExperienceMenuIXPLayer = require(RobloxGui.Modules.Settings.Flags.GetFStringInExperienceMenuIXPLayer),
+	GetFStringExitModalIXPLayer = require(RobloxGui.Modules.Settings.Flags.GetFStringExitModalIXPLayer),
 	GetFStringInExperienceMenuIXPVar = require(RobloxGui.Modules.Settings.Flags.GetFStringInExperienceMenuIXPVar),
 	FFlagRelocateMobileMenuButtons = require(RobloxGui.Modules.Settings.Flags.FFlagRelocateMobileMenuButtons),
 	FIntRelocateMobileMenuButtonsVariant = require(RobloxGui.Modules.Settings.Flags.FIntRelocateMobileMenuButtonsVariant),
 	FFlagMenuButtonsMountWithIEM = require(RobloxGui.Modules.Settings.Flags.FFlagMenuButtonsMountWithIEM),
 	FFlagSpatialUIFixMenuPanelChatExclusive = require(RobloxGui.Modules.Settings.Flags.FFlagSpatialUIFixMenuPanelChatExclusive),
     FFlagRemoveLoadingTimeout = require(RobloxGui.Modules.Flags.FFlagRemoveLoadingTimeout),
-
-	FFlagAddNextUpContainer = require(RobloxGui.Modules.Settings.Pages.LeaveGameWithNextUp.Flags.FFlagAddNextUpContainer),
 
 	FFlagAddNewPlayerListMobileFocusNav = PlayerListPackage.Flags.FFlagAddNewPlayerListMobileFocusNav,
 
@@ -147,31 +145,31 @@ local Flags = {
 	FFlagSettingsHubIndependentBackgroundVisibility = SharedFlags.getFFlagSettingsHubIndependentBackgroundVisibility(),
 	GetFFlagPackagifySettingsShowSignal = SharedFlags.GetFFlagPackagifySettingsShowSignal,
 	FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls,
-	FFlagIEMFocusNavToButtons = SharedFlags.FFlagIEMFocusNavToButtons,
-	FFlagIEMResumeButtonPressBugfix = SharedFlags.FFlagIEMResumeButtonPressBugfix,
+	FFlagIEMTabFocusNav = SharedFlags.FFlagIEMTabFocusNav,
+	FFlagIEMFocusNavSupportNewButtons = SettingsFlags.FFlagIEMFocusNavSupportNewButtons,
 	FFlagAddUILessMode = SharedFlags.FFlagAddUILessMode,
 	FIntAddUILessModeVariant = SharedFlags.FIntAddUILessModeVariant,
 	FFlagInExperienceReportClosingBugfix = SharedFlags.FFlagInExperienceReportClosingBugfix,
 	FFlagEnableSettingsHubUIDelegateRollout = SharedFlags.FFlagEnableSettingsHubUIDelegateRollout,
 	FFlagAddIEMProfilePage = SharedFlags.FFlagAddIEMProfilePage,
-	FFlagSetUnibarShortcutOnTopBarFocus = require(CorePackages.Workspace.Packages.Chrome).Flags.FFlagSetUnibarShortcutOnTopBarFocus,
+	FFlagFixSpatialUICaptures = SharedFlags.FFlagFixSpatialUICaptures,
+	FFlagVoiceRewarmTelemetry = SharedFlags.FFlagVoiceRewarmTelemetry,
 
 	FFlagAddTraversalBackButton = Traversal.Flags.FFlagAddTraversalBackButton,
 	FFlagAddTraversalHistory = Traversal.Flags.FFlagAddTraversalHistory,
-	FFlagTraversalLeaveArrowDown = Traversal.Flags.FFlagTraversalLeaveArrowDown,
-	FFlagTraversalPerfFixes = Traversal.Flags.FFlagTraversalPerfFixes,
-
-	FFlagCreateInExperienceMenuReact = SettingsFlags.FFlagCreateInExperienceMenuReact,
-	FFlagFixFocusNavToButtonsWithIEMReact = game:DefineFastFlag("FixFocusNavToButtonsWithIEMReact", false),
 	FFlagEnableSystemScrimInSettingsHub = game:DefineFastFlag("EnableSystemScrimInSettingsHub", false),
 
 	FFlagHelpPageIXPExposure = HelpPage.Flags.FFlagHelpPageIXPExposure,
 	FStringHelpPageIXPLayer = HelpPage.Flags.FStringHelpPageIXPLayer,
 
-	FFlagMenuButtonsCheckVisibilityBeforeMount = true ,
+	FFlagFixDisabledScrollOnIos = game:DefineFastFlag("FixDisabledScrollOnIos", false),
 
-	FFlagFixSpatialUICaptures = game:DefineFastFlag("FixSpatialUICaptures", false),
-	FFlagMenuButtonsSkipAnimation = game:DefineFastFlag("MenuButtonsSkipAnimation", false),
+	FFlagSideSheetAndroidBack = game:DefineFastFlag("SideSheetAndroidBack", false),
+	FFlagAddInviteFriendsIntegration = SharedFlags.FFlagAddInviteFriendsIntegration,
+	FFlagIntegrateTraversalHistoryInSideSheet = SharedFlags.FFlagIntegrateTraversalHistoryInSideSheet,
+	FFlagShowSwitchServerButton = SharedFlags.FFlagShowSwitchServerButton,
+	isExitModalRemoved = require(RobloxGui.Modules.Settings.Flags.isExitModalRemoved),
+	FFlagEnableExitModalExposure = game:DefineFastFlag("EnableExitModalExposure", false),
 }
 
 --[[ SERVICES ]]
@@ -252,7 +250,7 @@ local VoiceConstants = require(RobloxGui.Modules.VoiceChat.Constants)
 local FFlagSettingsHubRaceConditionFix = game:DefineFastFlag("SettingsHubRaceConditionFix", false)
 local FFlagFixReportButtonCutOff = game:DefineFastFlag("FixReportButtonCutOff", false)
 
-local InExperienceAppChatModal = require(CorePackages.Workspace.Packages.AppChat).App.InExperienceAppChatModal
+local InExperienceAppChatModal = require(CorePackages.Workspace.Packages.AppChat.InExperienceAppChatModal)
 
 local SettingsShowSignal = if Flags.GetFFlagPackagifySettingsShowSignal() then require(CorePackages.Workspace.Packages.CoreScriptsCommon).SettingsShowSignal else nil
 local SettingsUtility = if Flags.GetFFlagPackagifySettingsShowSignal() then require(CorePackages.Workspace.Packages.CoreScriptsCommon).SettingsUtility else nil
@@ -261,6 +259,23 @@ local SPRING_PARAMS = {
 	frequency = 4,
 	dampingRatio = 1,
 }
+
+local InExperienceSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet)
+local getDidSideSheetOpenWithPeoplePage = InExperienceSideSheet.getDidSideSheetOpenWithPeoplePage
+local getHasRoomForPeoplePage = InExperienceSideSheet.getHasRoomForPeoplePage
+local getIsPeoplePageOpen = InExperienceSideSheet.getIsPeoplePageOpen
+local getSideSheetAnimationDuration = InExperienceSideSheet.getSideSheetAnimationDuration
+local getSideSheetDrawerWidth = InExperienceSideSheet.getSideSheetDrawerWidth
+local getSideSheetMenuPageHeight = InExperienceSideSheet.getSideSheetMenuPageHeight
+local getSideSheetMenuPageWidth = InExperienceSideSheet.getSideSheetMenuPageWidth
+local toggleSideSheet = InExperienceSideSheet.toggleSideSheet
+local getSideSheetVisibility = InExperienceSideSheet.getSideSheetVisibility
+local setupInGameMenuPeoplePageActions = InExperienceSideSheet.setupInGameMenuPeoplePageActions
+local setupPeoplePageOpenTracking = InExperienceSideSheet.setupPeoplePageOpenTracking
+local FFlagSideSheetOpenPeoplePage = InExperienceSideSheet.Flags.FFlagSideSheetOpenPeoplePage
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local GetSwitchServerStore = require(CorePackages.Workspace.Packages.SwitchServer).GetSwitchServerStore
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
 
 local ReactPageFactory = require(RobloxGui.Modules.Settings.ReactPageFactory)
 type ReactPage = ReactPageFactory.ReactPage
@@ -368,7 +383,7 @@ local function createReactPage(parent: GuiObject?): GuiObject
 		Name = 'InExperienceMenuPage',
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(0, 0),
-		Visible = if Flags.FFlagFixFocusNavToButtonsWithIEMReact then false else nil,
+		Visible = false ,
 		Parent = parent,
 	}
 end
@@ -390,27 +405,23 @@ local function CreateSettingsHub()
 	this.PreferredTransparencyChangedConnection = nil
 	this.TabConnection = nil
 
-	if Flags.FFlagAddNextUpContainer then
-		this.LeaveGamePage = require(RobloxGui.Modules.Settings.Pages.LeaveGameWithNextUp)
-	else
-		this.LeaveGamePage = require(RobloxGui.Modules.Settings.Pages.LeaveGame)
-	end
+	this.LeaveGamePage = require(RobloxGui.Modules.Settings.Pages.LeaveGame)
 	this.LeaveGameUpsellPage = if Flags.GetFFlagEnableLeaveGameUpsellEntrypoint() then require(RobloxGui.Modules.Settings.Pages.LeaveGameUpsell.LeaveGameUpsell) else nil
 	this.ResetCharacterPage = require(RobloxGui.Modules.Settings.Pages.ResetCharacter)
 	-- remove utility CreateSignal upon removing this flag
 	this.SettingsShowSignal = if Flags.GetFFlagPackagifySettingsShowSignal() then SettingsShowSignal else utility:CreateSignal()
 	this.CurrentPageSignal = if Flags.GetFFlagPackagifySettingsShowSignal() then SettingsUtility.CreateSignal() else utility:CreateSignal()
-	local showBottomBarSignal, setShowBottomBarSignal
-	if Flags.FFlagTraversalPerfFixes then
-		showBottomBarSignal, setShowBottomBarSignal = createSignal(false)
-		this.showBottomBarSignal = showBottomBarSignal
-		this.setShowBottomBarSignal = setShowBottomBarSignal
-	end
+	local showBottomBarSignal, setShowBottomBarSignal = createSignal(false)
+	this.showBottomBarSignal = showBottomBarSignal
+	this.setShowBottomBarSignal = setShowBottomBarSignal
 	this.OpenStateChangedCount = 0
 	this.BottomButtonFrame = nil
 	if Flags.FFlagRelocateMobileMenuButtons then
 		this.addMenuKeyBindings = nil
 		this.removeMenuKeyBindings = nil
+	end
+	if Flags.FFlagIEMFocusNavSupportNewButtons then
+		this.ResumeMenuButton = nil
 	end
 	this.hasMicPermissions = false
 	if Flags.GetFFlagEnableLeaveGameUpsellEntrypoint() then
@@ -422,6 +433,9 @@ local function CreateSettingsHub()
 	if Flags.FFlagAddUILessMode and Flags.FIntAddUILessModeVariant ~= 0 then
 		this.uiLessStore = CoreGuiCommonStores.GetUILessStore(false)
 	end
+	this.PageTitleLabel = nil
+	this.PageTitleCloseButton = nil
+	this.PageTitleHeader = nil
 
 	this.isMuted = nil
 	this.lastVoiceRecordingIndicatorTextUpdated = nil
@@ -434,6 +448,7 @@ local function CreateSettingsHub()
 	this.reactPageAnalytics = ReactPageAnalytics.new()
 
 	local pageChangeCon = nil
+	local pageViewCanvasLock = nil
 
 	local PoppedMenuEvent = Instance.new("BindableEvent")
 	PoppedMenuEvent.Name = "PoppedMenu"
@@ -441,18 +456,50 @@ local function CreateSettingsHub()
 
 	-- create early so ReactPages can mount to it
 	this.ReactPage = nil :: GuiObject?
-	if Flags.FFlagCreateInExperienceMenuReact then
 		this.ReactPage = createReactPage()
-	end
 
 	local function shouldShowHubBar(whichPage)
 		whichPage = whichPage or this.Pages.CurrentPage
-		return whichPage.ShouldShowBottomBar == true
+		return if isSideSheetEnabled then whichPage.ShouldShowHubBar == true else whichPage.ShouldShowBottomBar == true
+	end
+
+	local function updatePageTitleHeader(page)
+		if not shouldShowHubBar(page) or not page.TabHeader then
+			this.PageTitleLabel.Text = ""
+			return
+		end
+
+		this.PageTitleLabel.Text = page.TabHeader.TabLabel.Title.Text
+	end
+
+	local function setTabHeaderSelection(pageToSwitchTo)
+		if not Flags.FFlagIEMTabFocusNav then 
+			return 
+		end
+		local tabHeader = pageToSwitchTo:GetTabHeader()
+		if not tabHeader then 
+			return 
+		end
+		for _, selectable in pageToSwitchTo.FirstSelectableObjects do
+			selectable.NextSelectionUp = tabHeader
+			tabHeader.NextSelectionDown = selectable
+		end
+	end
+
+	local function updateTabHeaderWrapping()
+		if not Flags.FFlagIEMTabFocusNav then return end
+		for _, tabHeader in this.TabHeaders do
+			tabHeader.NextSelectionLeft = nil
+			tabHeader.NextSelectionRight = nil
+		end
+		local count = #this.TabHeaders
+		if count < 2 then return end
+		this.TabHeaders[1].NextSelectionLeft = this.TabHeaders[count]
+		this.TabHeaders[count].NextSelectionRight = this.TabHeaders[1]
 	end
 
 	local function setBottomBarSelection(pageToSwitchTo)
-		if not this.BottomButtonFrame and Flags.FFlagIEMFocusNavToButtons
-			and not pageToSwitchTo and (not Flags.FFlagRelocateMobileMenuButtons
+		if not this.BottomButtonFrame and not pageToSwitchTo and (not Flags.FFlagRelocateMobileMenuButtons
 			or Flags.FIntRelocateMobileMenuButtonsVariant == 0
 			or Flags.FIntRelocateMobileMenuButtonsVariant == 2) then
 			return
@@ -460,6 +507,29 @@ local function CreateSettingsHub()
 
 		if this["ResumeButton"] then
 			pageToSwitchTo.PageNextSelectionDown = this["ResumeButton"]
+		elseif Flags.FFlagIEMFocusNavSupportNewButtons and Flags.FIntRelocateMobileMenuButtonsVariant == 2
+			and this.ResumeMenuButton then
+			pageToSwitchTo.PageNextSelectionDown = this.ResumeMenuButton
+		end
+
+		if Flags.FFlagIEMTabFocusNav and this.BottomButtonFrame then
+			local tabHeader = pageToSwitchTo:GetTabHeader()
+
+			-- Wire all tab headers Up → the resume button for circular navigation
+			local resumeButton = this["ResumeButton"] or this.ResumeMenuButton
+			if resumeButton then
+				for page, _ in pairs(this.Pages.PageTable) do
+					local header = page:GetTabHeader()
+					if header then
+						header.NextSelectionUp = resumeButton
+					end
+				end
+			end
+			for _, child in this.BottomButtonFrame:GetDescendants() do
+				if child:IsA("GuiObject") and child.Selectable then
+					child.NextSelectionDown = tabHeader
+				end
+			end
 		end
 
 		for _, selectable in pageToSwitchTo.LastSelectableObjects do
@@ -471,6 +541,13 @@ local function CreateSettingsHub()
 			if LeaveGameButton then
 				LeaveGameButton.NextSelectionUp = selectable
 			end
+			if Flags.FFlagIEMFocusNavSupportNewButtons and Flags.FIntRelocateMobileMenuButtonsVariant == 2 then
+				for _, child in this.BottomButtonFrame:GetDescendants() do
+					if child:IsA("GuiObject") and child.Selectable then
+						child.NextSelectionUp = selectable
+					end
+				end
+			end
 		end
 		if #pageToSwitchTo.LastSelectableObjects < 1 then
 			this.BottomButtonFrame.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
@@ -478,6 +555,13 @@ local function CreateSettingsHub()
 			local LeaveGameButton = this["LeaveGameButton"]
 			if LeaveGameButton then
 				LeaveGameButton.NextSelectionUp = nil
+			end
+			if Flags.FFlagIEMFocusNavSupportNewButtons and Flags.FIntRelocateMobileMenuButtonsVariant == 2 then
+				for _, child in this.BottomButtonFrame:GetDescendants() do
+					if child:IsA("GuiObject") and child.Selectable then
+						child.NextSelectionUp = if Flags.FFlagIEMTabFocusNav then pageToSwitchTo:GetTabHeader() else nil
+					end
+				end
 			end
 		end
 	end
@@ -494,6 +578,11 @@ local function CreateSettingsHub()
 		end
 
 		return whichPage ~= nil and whichPage.ShouldShowBottomBar == true
+	end
+
+	local function shouldDisableDefaultScroll(whichPage)
+		whichPage = whichPage or this.Pages.CurrentPage
+		return whichPage ~= nil and whichPage.ShouldDisableDefaultScroll == true
 	end
 
 	local function setBottomBarBindings()
@@ -725,18 +814,16 @@ local function CreateSettingsHub()
 					this.hasMicPermissions = response.hasMicPermissions
 				end
 				getCamMicPermissions(callback, nil, true, "PermissionsButtons.getPermissions")
-				if Flags.GetFFlagMuteButtonRaceConditionFix() then
-					muteChangedEvent = VoiceChatServiceManager.muteChanged.Event:Connect(function(muted)
-						this.isMuted = muted
-						this.lastVoiceRecordingIndicatorTextUpdated = tick()
-						this.voiceRecordingIndicatorTextMotor:setGoal(Otter.instant(0))
-						if this.isMuted then
-							this.VoiceRecordingText.Text = tryTranslate("InGame.CommonUI.Label.MicOff", "Mic Off")
-						else
-							this.VoiceRecordingText.Text = tryTranslate("InGame.CommonUI.Label.MicOnRecording", "Mic On (recording audio)")
-						end
-					end)
-				end
+				muteChangedEvent = VoiceChatServiceManager.muteChanged.Event:Connect(function(muted)
+					this.isMuted = muted
+					this.lastVoiceRecordingIndicatorTextUpdated = tick()
+					this.voiceRecordingIndicatorTextMotor:setGoal(Otter.instant(0))
+					if this.isMuted then
+						this.VoiceRecordingText.Text = tryTranslate("InGame.CommonUI.Label.MicOff", "Mic Off")
+					else
+						this.VoiceRecordingText.Text = tryTranslate("InGame.CommonUI.Label.MicOnRecording", "Mic On (recording audio)")
+					end
+				end)
 			end
 			local function hideUI()
 				this.VoiceRecordingText.Visible = false
@@ -804,11 +891,17 @@ local function CreateSettingsHub()
 			else
 				setResetEnabled(false)
 			end
+			if isSideSheetEnabled then
+				InExperienceSideSheet.setIsRespawnEnabled(false)
+			end
 		elseif not resetEnabledValue and (isBindableEvent or callback == true) then
 			if Flags.FFlagRelocateMobileMenuButtons and Flags.FIntRelocateMobileMenuButtonsVariant ~= 0 then
 				this:GetExperienceControlStore().setCanRespawn(true)
 			else
 				setResetEnabled(true)
+			end
+			if isSideSheetEnabled then
+				InExperienceSideSheet.setIsRespawnEnabled(true)
 			end
 		end
 		if isBindableEvent then
@@ -868,7 +961,7 @@ local function CreateSettingsHub()
 				if Flags.GetFFlagEnableLeaveGameUpsellEntrypoint() and this.leaveGameUpsellProp ~= VoiceConstants.PHONE_UPSELL_VALUE_PROP.None then
 					this:SwitchToPage(this.LeaveGameUpsellPage, false)
 				else
-					this:SwitchToPage(this.LeaveGamePage, false, nil, if Flags.FFlagMenuButtonsSkipAnimation then true else nil)
+					this:SwitchToPage(this.LeaveGamePage, false, nil, true)
 				end
 
 				TelemetryService:LogCounter(MenuLeaveGameTelemetryConfig, {
@@ -884,7 +977,7 @@ local function CreateSettingsHub()
 
 				this:AddToMenuStack(this.Pages.CurrentPage)
 				this.HubBar.Visible = false
-				this:SwitchToPage(this.ResetCharacterPage, false, nil, if Flags.FFlagMenuButtonsSkipAnimation then true else nil)
+				this:SwitchToPage(this.ResetCharacterPage, false, nil, true)
 
 				TelemetryService:LogCounter(MenuResetCharacterTelemetryConfig, {
 					customFields = {
@@ -947,9 +1040,15 @@ local function CreateSettingsHub()
 				getVisibility = function()
 					return this.GetVisibility()
 				end,
-				getCanRespawn = experienceControlStore.getCanRespawn,
-				currentPageChangeSignal = if SettingsFlags.FFlagAddTraversalHistoryReactMenuButtons then this.CurrentPageSignal else nil,
-			}))
+			getCanRespawn = experienceControlStore.getCanRespawn,
+			currentPageChangeSignal = if SettingsFlags.FFlagAddTraversalHistoryReactMenuButtons then this.CurrentPageSignal else nil,
+			setResumeMenuButton = if Flags.FFlagIEMFocusNavSupportNewButtons then function(button: GuiObject?)
+				this.ResumeMenuButton = button
+				if Flags.FFlagIEMFocusNavSupportNewButtons and (not GuiService.SelectedCoreObject or not GuiService.SelectedCoreObject:IsDescendantOf(this.Shield)) then
+					GuiService.SelectedCoreObject = button
+				end
+			end else nil,
+		}))
 		end
 		else nil :: never
 
@@ -962,6 +1061,7 @@ local function CreateSettingsHub()
 		end
 		else nil :: never
 
+	-- lute-lint-ignore(noNestedReactDefinitions): pre-dates the lint rule
 	local function createGui()
 		local PageViewSizeReducer = 0
 		if utility:IsSmallTouchScreen() then
@@ -1231,39 +1331,53 @@ local function CreateSettingsHub()
 		-- insert but if a developer has overriden them Archivable will be true. This might be incorrect
 		-- if a developer has code in their game to make things UnArchivable though.
 		local function getOverridesPlayerScripts()
-			local starterPlayerScripts = StarterPlayer:WaitForChild("StarterPlayerScripts", if Flags.FFlagRemoveLoadingTimeout then math.huge else nil)
-			local playerScriptLoader = starterPlayerScripts:FindFirstChild("PlayerScriptsLoader")
-			local playerModule = starterPlayerScripts:FindFirstChild("PlayerModule")
-			if playerModule and playerScriptLoader then
-				if not playerModule.Archivable then
-					if playerScriptLoader.Archivable then
-						if shouldTryLocalizeVersionLabels then
-							return tryTranslate("InGame.CommonUI.Label.PossiblyCustom", "Possibly Custom")
+			if Flags.EngineFeaturePlayerScriptStatusProperty then
+				local PlayerScriptStatusStrings = {
+					[0] = "Unknown",
+					[1] = "v3 Custom",
+					[2] = "v3 Default",
+					[3] = "v1 Custom",
+					[4] = "v2 Default",
+					[5] = "v2 Custom",
+				}
+
+				return PlayerScriptStatusStrings[StarterPlayer.PlayerModuleStatus]
+			else
+
+				local starterPlayerScripts = StarterPlayer:WaitForChild("StarterPlayerScripts", if Flags.FFlagRemoveLoadingTimeout then math.huge else nil)
+				local playerScriptLoader = starterPlayerScripts:FindFirstChild("PlayerScriptsLoader")
+				local playerModule = starterPlayerScripts:FindFirstChild("PlayerModule")
+				if playerModule and playerScriptLoader then
+					if not playerModule.Archivable then
+						if playerScriptLoader.Archivable then
+							if shouldTryLocalizeVersionLabels then
+								return tryTranslate("InGame.CommonUI.Label.PossiblyCustom", "Possibly Custom")
+							else
+								return "Possibly Custom"
+							end
 						else
-							return "Possibly Custom"
-						end
-					else
-						if shouldTryLocalizeVersionLabels then
-							return tryTranslate("InGame.CommonUI.Label.Default", "Default")
-						else
-							return "Default"
+							if shouldTryLocalizeVersionLabels then
+								return tryTranslate("InGame.CommonUI.Label.Default", "Default")
+							else
+								return "Default"
+							end
 						end
 					end
 				end
-			end
-			local cameraScript = starterPlayerScripts:FindFirstChild("CameraScript")
-			local controlScript = starterPlayerScripts:FindFirstChild("ControlScript")
-			if cameraScript or controlScript then
-				if shouldTryLocalizeVersionLabels then
-					return tryTranslate("InGame.CommonUI.Label.CustomOld", "Custom Old")
-				else
-					return "Custom Old"
+				local cameraScript = starterPlayerScripts:FindFirstChild("CameraScript")
+				local controlScript = starterPlayerScripts:FindFirstChild("ControlScript")
+				if cameraScript or controlScript then
+					if shouldTryLocalizeVersionLabels then
+						return tryTranslate("InGame.CommonUI.Label.CustomOld", "Custom Old")
+					else
+						return "Custom Old"
+					end
 				end
-			end
-			if shouldTryLocalizeVersionLabels then
-				return tryTranslate("InGame.CommonUI.Label.Custom", "Custom")
-			else
-				return "Custom"
+				if shouldTryLocalizeVersionLabels then
+					return tryTranslate("InGame.CommonUI.Label.Custom", "Custom")
+				else
+					return "Custom"
+				end
 			end
 		end
 
@@ -1288,6 +1402,12 @@ local function CreateSettingsHub()
 			if not Players.LocalPlayer then
 				Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 			end
+			if Flags.FFlagWaitPlayerModuleStatus then
+				if StarterPlayer.PlayerModuleStatus == 0 then
+					StarterPlayer:GetPropertyChangedSignal("PlayerModuleStatus"):Wait()
+				end
+			end
+
 			local playerScriptsString = "PlayerScripts: "
 			if shouldTryLocalizeVersionLabels then
 				playerScriptsString = tryTranslate("InGame.HelpMenu.Label.PlayerScripts", "PlayerScripts: ")
@@ -1295,8 +1415,11 @@ local function CreateSettingsHub()
 
 			local playerScriptStatus = getOverridesPlayerScripts()
 
+			local isDefault = if Flags.EngineFeaturePlayerScriptStatusProperty
+				then playerScriptStatus == "v3 Default"
+				else playerScriptStatus == "Default"
 			AnalyticsService:setRBXEventStream(Constants.AnalyticsTargetName, "player_scripts_status", "player_scripts_status_action", {
-				defaultPlayerScripts = playerScriptStatus == "Default",
+				defaultPlayerScripts = isDefault,
 				placeID = tostring(game.PlaceId),
 				rawValue = if Flags.GetFFlagNewEventIngestPlayerScriptsDimensions() then playerScriptStatus else nil,
 				context = if Flags.GetFFlagNewEventIngestPlayerScriptsDimensions() then "IGMv1"else nil,
@@ -1347,32 +1470,30 @@ local function CreateSettingsHub()
 			Selectable = false
 		}
 
-		if Theme.EnableDarkenBackground then
-			if Flags.FFlagSettingsHubIndependentBackgroundVisibility then
-				this.DarkenBackground = Create("ImageButton")
-				{
-					Name = 'DarkenBackground',
-					ZIndex = this.Shield.ZIndex-1,
-					BackgroundTransparency = 1,
-					BackgroundColor3 = if Flags.isInExperienceUIVREnabled
-						then this.SettingsUIDelegate:getDarkBackgroundTheme().Color
-						else Theme.color("DarkenBackground"),
-					Size = UDim2.new(1,0,1,0),
-					Parent = this.ClippingShield,
-					AutoButtonColor = false,
-					Visible = false,
-				}
-			else
-				this.DarkenBackground = Create("Frame")
-				{
-					Name = 'DarkenBackground',
-					ZIndex = this.Shield.ZIndex-1,
-					BackgroundTransparency = 1,
-					BackgroundColor3 = Theme.color("DarkenBackground"),
-					Size = UDim2.new(1,0,1,0),
-					Parent = this.ClippingShield,
-				}
-			end
+		if Flags.FFlagSettingsHubIndependentBackgroundVisibility then
+			this.DarkenBackground = Create("ImageButton")
+			{
+				Name = 'DarkenBackground',
+				ZIndex = this.Shield.ZIndex-1,
+				BackgroundTransparency = 1,
+				BackgroundColor3 = if Flags.isInExperienceUIVREnabled
+					then this.SettingsUIDelegate:getDarkBackgroundTheme().Color
+					else Theme.color("DarkenBackground"),
+				Size = UDim2.new(1,0,1,0),
+				Parent = this.ClippingShield,
+				AutoButtonColor = false,
+				Visible = false,
+			}
+		else
+			this.DarkenBackground = Create("Frame")
+			{
+				Name = 'DarkenBackground',
+				ZIndex = this.Shield.ZIndex-1,
+				BackgroundTransparency = 1,
+				BackgroundColor3 = Theme.color("DarkenBackground"),
+				Size = UDim2.new(1,0,1,0),
+				Parent = this.ClippingShield,
+			}
 		end
 
 		local menuPos = Theme.MenuContainerPosition(this.SettingsUIDelegate)
@@ -1388,13 +1509,7 @@ local function CreateSettingsHub()
 			AutomaticSize = menuPos.AutomaticSize,
 			Parent = this.Shield
 		}
-
-		-- Root container for React pages
-		if Flags.FFlagCreateInExperienceMenuReact then
 			this.ReactPage.Parent = this.MenuContainer
-		else
-			this.ReactPage = createReactPage(this.MenuContainer)
-		end
 
 		-- Container for non-React pages
 		this.Page = Create'Frame'
@@ -1404,6 +1519,11 @@ local function CreateSettingsHub()
 			AutomaticSize = Enum.AutomaticSize.XY,
 			Parent = this.MenuContainer
 		}
+			this.Page.SelectionGroup = true
+			this.Page.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
+			this.Page.SelectionBehaviorDown = Enum.SelectionBehavior.Stop
+			this.Page.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
+			this.Page.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 
 		local menuParent = this.Page
 		this.MenuContainerPadding = Create'UIPadding'
@@ -1432,55 +1552,6 @@ local function CreateSettingsHub()
 				Parent = this.MenuContainer,
 			}
 
-			if Theme.EnableVerticalBottomBar then
-				this.MainColumn = Create'Frame'
-				{
-					Name = 'MainColumn',
-					BackgroundTransparency =1,
-					Position = menuPos.Position,
-					Size = menuPos.Size,
-					AutomaticSize =Enum.AutomaticSize.XY,
-					Parent = this.MenuContainer
-				}
-
-				menuParent = this.MainColumn
-
-				this.VerticalMenuDivider = Create'Frame'
-				{
-					Name = 'VerticalMenuDivider',
-					BackgroundTransparency = Theme.transparency("Divider"),
-					BackgroundColor3 = Theme.color("Divider"),
-					Size = UDim2.new(0,1, 1, -100),
-					Visible = true,
-					Parent = this.MenuContainer
-				}
-				this.VerticalMenu = Create'Frame'
-				{
-					Name = 'VerticalMenu',
-					BackgroundTransparency =1,
-					Size = UDim2.new(0, Theme.VerticalMenuWidth, 0, 100),
-					Visible = false,
-					Parent = this.MenuContainer
-				}
-				Create'UIListLayout'
-				{
-					Name = "MenuListLayout",
-					Padding = UDim.new(0, 10),
-					FillDirection = Enum.FillDirection.Vertical,
-					SortOrder = Enum.SortOrder.LayoutOrder,
-					VerticalAlignment = Enum.VerticalAlignment.Center,
-					HorizontalAlignment = Enum.HorizontalAlignment.Center,
-					Parent = this.VerticalMenu
-				}
-
-				this.MenuListLayout = Create'UIListLayout'
-				{
-					Name = "MenuListLayout",
-					FillDirection = Enum.FillDirection.Horizontal,
-					SortOrder = Enum.SortOrder.LayoutOrder,
-					Parent = this.MenuContainer
-				}
-			end
 		end
 
 		local setMicPermissionsCallback = function(response)
@@ -1492,7 +1563,14 @@ local function CreateSettingsHub()
 		this.SettingsShowSignal:connect(function(isOpen)
 			if isOpen then
 					if VoiceChatServiceManager:IsSeamlessVoice() and not VoiceChatServiceManager.voiceUIVisible then
-						VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId("shown", VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true))
+						if Flags.FFlagVoiceRewarmTelemetry then
+							local universeId, placeId, playSessionId, voiceSessionId = VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true)
+							VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId(
+								"shown", universeId, placeId, playSessionId, voiceSessionId, VoiceChatServiceManager.joinVoiceButtonContext
+							)
+						else
+							VoiceChatServiceManager.Analytics:reportJoinVoiceButtonEventWithVoiceSessionId("shown", VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true))
+						end
 					elseif VoiceChatServiceManager:IsSeamlessVoice() and VoiceChatServiceManager.voiceUIVisible then
 						VoiceChatServiceManager.Analytics:reportLeaveVoiceButtonEvent("shown", VoiceChatServiceManager:GetConnectDisconnectButtonAnalyticsData(true))
 					end
@@ -1537,15 +1615,52 @@ local function CreateSettingsHub()
 				Parent = menuParent
 			}
 
-			Create'Frame'
+			if not isSideSheetEnabled then
+				Create'Frame'
+				{
+					BackgroundColor3 = Theme.color("Divider"),
+					BackgroundTransparency = Theme.transparency("Divider"),
+					BorderSizePixel = 0,
+					Size = UDim2.new(1,0,0,1),
+					Position = UDim2.new(0,0,1,0),
+					AnchorPoint = Vector2.new(0,1),
+					Parent = this.HubBar,
+				}
+			end
+		end
+
+		if isSideSheetEnabled then
+			this.PageTitleHeader = Create'Frame'
 			{
-				BackgroundColor3 = Theme.color("Divider"),
-				BackgroundTransparency = Theme.transparency("Divider"),
-				BorderSizePixel = 0,
-				Size = UDim2.new(1,0,0,1),
-				Position = UDim2.new(0,0,1,0),
-				AnchorPoint = Vector2.new(0,1),
+				Name = "PageTitleHeader",
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 1, 0),
+				LayoutOrder = 0,
 				Parent = this.HubBar,
+				ZIndex = this.Shield.ZIndex + 1,
+			}
+
+			Create'UIPadding'
+			{
+				PaddingLeft = UDim.new(0, 12),
+				PaddingRight = UDim.new(0, 12),
+				Parent = this.PageTitleHeader,
+			}
+
+			this.PageTitleLabel = Create'TextLabel'
+			{
+				Name = "Title",
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, -36, 0, 0),
+				Position = UDim2.new(0, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Text = "",
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextColor3 = Color3.new(1, 1, 1),
+				Font = Theme.font(Enum.Font.SourceSansBold, "Confirmation"),
+				FontSize = Theme.fontSize(Enum.FontSize.Size36, "Confirmation"),
+				Parent = this.PageTitleHeader,
 			}
 		end
 
@@ -1567,7 +1682,7 @@ local function CreateSettingsHub()
 					{
 						AppStyleProvider = Roact.createElement(AppStyleProvider, {
 							style = {
-								themeName = DarkTheme,
+								themeName = DarkColorMode,
 							} ,
 						}, {
 							ButtonsFrame = Roact.createElement("Frame", {
@@ -1597,7 +1712,7 @@ local function CreateSettingsHub()
 					}, {
 						AppStyleProvider = Roact.createElement(AppStyleProvider, {
 							style = {
-								themeName = DarkTheme,
+								themeName = DarkColorMode,
 							} ,
 						}, {
 							BackButton = Roact.createElement(MenuBackButton,{BackBarRef=this.BackBarRef, HubBar=this.HubBar}),
@@ -1702,13 +1817,11 @@ local function CreateSettingsHub()
 			ClipsDescendants = true,
 			LayoutOrder = 1,
 			Parent = menuParent,
-
-			Create'ImageButton'{
-				Name = 'InputCapture',
-				BackgroundTransparency = 1,
-				Size = UDim2.new(1, 0, 1, 0),
-				Image = ''
-			}
+			SelectionGroup = true ,
+			SelectionBehaviorLeft = Enum.SelectionBehavior.Stop ,
+			SelectionBehaviorRight = Enum.SelectionBehavior.Stop ,
+			SelectionBehaviorDown = Enum.SelectionBehavior.Escape ,
+			SelectionBehaviorUp = Enum.SelectionBehavior.Escape ,
 		}
 
 
@@ -1744,33 +1857,6 @@ local function CreateSettingsHub()
 			Parent = this.PageViewClipper,
 		};
 		this.PageView.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-
-		this.lastPageViewCanvasPosition = this.PageView.CanvasPosition
-		this.handelPageViewScroll = function()
-			local lastPosY = math.clamp(this.lastPageViewCanvasPosition.Y, 0, this.PageView.MaxCanvasPosition.Y)
-			local newPosY = math.clamp(this.PageView.CanvasPosition.Y, 0, this.PageView.MaxCanvasPosition.Y)
-			local diffY = lastPosY - newPosY
-			if math.abs(diffY) > 5 then
-				if diffY < 0 then
-					-- User is scrolling down
-					this:animateOutBottomBar()
-				else
-					-- User is scrolling up
-					this:animateInBottomBar()
-				end
-				this.lastPageViewCanvasPosition = Vector2.new(this.PageView.CanvasPosition.x, newPosY)
-			end
-		end
-
-		this.pageViewScrollChangeCon = nil
-		if Theme.UseStickyBar() then
-			this.PageView.AutomaticCanvasSize = Enum.AutomaticSize.Y
-			if utility:IsPortrait() == false then
-				this.defaultPageViewClipperSize = nil
-				this.showStickyBottomBar = true
-				this.pageViewScrollChangeCon = this.PageView:GetPropertyChangedSignal("CanvasPosition"):connect(this.handelPageViewScroll)
-			end
-		end
 
 		this.PageViewInnerFrame = Create'Frame'
 		{
@@ -1811,20 +1897,6 @@ local function CreateSettingsHub()
 			Parent = this.PageViewInnerFrame
 		}
 
-		if Theme.UseStickyBar() then
-			this.PageView.AutomaticCanvasSize = Enum.AutomaticSize.Y
-			Create'UIListLayout'
-			{
-				FillDirection = Enum.FillDirection.Vertical,
-				VerticalAlignment = Enum.VerticalAlignment.Top,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Parent = this.PageView,
-			}
-			this.PageViewInnerFrame.AutomaticSize = Enum.AutomaticSize.Y
-			this.PageViewInnerFrame.ClipsDescendants = false
-		end
-
 		if UserInputService.MouseEnabled then
 			this.PageViewClipper.Size = UDim2.new(this.HubBar.Size.X.Scale,this.HubBar.Size.X.Offset,
 				0.5, -(this.HubBar.Position.Y.Offset - this.HubBar.Size.Y.Offset))
@@ -1839,18 +1911,15 @@ local function CreateSettingsHub()
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 			Parent = menuParent,
-			Selectable = if Flags.FFlagIEMFocusNavToButtons then false else nil,
-			SelectionGroup = if Flags.FFlagIEMFocusNavToButtons then true else nil,
-			SelectionBehaviorLeft = if Flags.FFlagIEMFocusNavToButtons then Enum.SelectionBehavior.Stop else nil,
-			SelectionBehaviorRight = if Flags.FFlagIEMFocusNavToButtons then Enum.SelectionBehavior.Stop else nil,
-			SelectionBehaviorDown = if Flags.FFlagIEMFocusNavToButtons then Enum.SelectionBehavior.Stop else nil,
+			Selectable = false ,
+			SelectionGroup = true ,
+			SelectionBehaviorLeft = Enum.SelectionBehavior.Stop ,
+			SelectionBehaviorRight = Enum.SelectionBehavior.Stop ,
+			SelectionBehaviorDown = Enum.SelectionBehavior.Stop ,
 		};
-
-		if Flags.FFlagTraversalPerfFixes then
-			this.BottomButtonFrame:GetPropertyChangedSignal("Visible"):Connect(function()
-				this.setShowBottomBarSignal(this.BottomButtonFrame.Visible)
-			end)
-		end
+		this.BottomButtonFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+			this.setShowBottomBarSignal(this.BottomButtonFrame.Visible)
+		end)
 
 		local resumeFunc = function(source)
 			if Flags.FFlagAddUILessMode then
@@ -1873,11 +1942,32 @@ local function CreateSettingsHub()
 					universeid = tostring(game.GameId) ,
 				}
 			)
-			if Flags.FFlagIEMResumeButtonPressBugfix then
 				GuiService.SelectedCoreObject = nil
-			end
 		end
 
+		if isSideSheetEnabled then
+			this.PageTitleCloseButton = utility:MakeStyledImageButton(
+				"PageTitleClose",
+				"rbxasset://textures/ui/InspectMenu/x.png",
+				UDim2.new(0, 40, 0, 40),
+				UDim2.new(0, 16, 0, 16),
+				function()
+					resumeFunc(Constants.AnalyticsResumeXButtonSource)
+				end,
+				nil,
+				this,
+				"DefaultButton"
+			)
+			this.PageTitleCloseButton.AnchorPoint = Vector2.new(1, 0.5)
+			this.PageTitleCloseButton.Position = UDim2.new(1, 0, 0.5, 0)
+			
+			local border = this.PageTitleCloseButton:FindFirstChild("Border")
+			if border then
+				border.Parent = nil
+			end
+
+			this.PageTitleCloseButton.Parent = this.PageTitleHeader
+		end
 
 		if not Flags.FFlagMenuButtonsMountWithIEM then
 			if Flags.FFlagRelocateMobileMenuButtons and (Flags.FIntRelocateMobileMenuButtonsVariant == 1 or Flags.FIntRelocateMobileMenuButtonsVariant == 3 or (Flags.FIntRelocateMobileMenuButtonsVariant == 2 and not utility:IsSmallTouchScreen())) then
@@ -2013,7 +2103,7 @@ local function CreateSettingsHub()
 						VerticalAlignment = Enum.VerticalAlignment.Center,
 					}),
 					React.createElement(FoundationProvider, {
-						theme = Foundation.Enums.Theme.Dark,
+						colorMode = Foundation.Enums.ColorMode.Dark,
 						device = SettingsUtils.getDeviceType(),
 					}, {
 						["SwitchTabHint" .. props.keycode.Name] = React.createElement(SwitchTabHint, {
@@ -2028,6 +2118,7 @@ local function CreateSettingsHub()
 				BackgroundTransparency = 1,
 				Size = UDim2.fromScale(1, 1),
 				Parent = this.HubBar,
+				Visible = not isSideSheetEnabled,
 			}
 
 			this.TabHeaderContainerListLayout = Create "UIListLayout" {
@@ -2057,72 +2148,19 @@ local function CreateSettingsHub()
 				BorderSizePixel = 0,
 				BackgroundColor3 = Theme.color("HubBarContainer"),
 				BackgroundTransparency = Theme.transparency("HubBarContainerTransparency"),
-				Size = if Theme.ShowHomeButton then UDim2.new(1, -70, 1, 0) else UDim2.new(1, 0, 1, 0),
-				Position = if Theme.ShowHomeButton then UDim2.new(0, 70, 0, 0) else UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(1, 0, 1, 0),
+				Position = UDim2.new(0, 0, 0, 0),
 				Parent = if Flags.FFlagAddSwitchTabHintsToIEM then this.TabHeaderContainer else this.HubBar,
+				Selectable = if Flags.FFlagIEMTabFocusNav then false else nil,
+				SelectionGroup = if Flags.FFlagIEMTabFocusNav then true else nil,
+				SelectionBehaviorUp = if Flags.FFlagIEMTabFocusNav then Enum.SelectionBehavior.Stop else nil,
+				SelectionBehaviorLeft = if Flags.FFlagIEMTabFocusNav then Enum.SelectionBehavior.Stop else nil,
+				SelectionBehaviorRight = if Flags.FFlagIEMTabFocusNav then Enum.SelectionBehavior.Stop else nil,
 			}
 
 			this.HubBar.ImageTransparency = 1
 			this.HubBarListLayout.Parent = this.HubBarContainer
 
-			if Theme.ShowHomeButton then
-				this.HubBarHomeButton = Create'ImageButton'
-				{
-					Name = "HubBarHomeButton",
-					ZIndex = this.Shield.ZIndex + 2,
-					BorderSizePixel = 0,
-					AutoButtonColor = false,
-					BackgroundColor3 = Theme.color("HubBarHomeButton"),
-					BackgroundTransparency = Theme.transparency("HubBarHomeButtonTransparency"),
-					Size = UDim2.new(1, 0, 1, 0),
-					Position = UDim2.new(0, 0, 0, 0),
-					Parent = this.HubBar
-				}
-				Create'UICorner'
-				{
-					CornerRadius = Theme.DefaultCornerRadius,
-					Parent = this.HubBarHomeButton,
-				}
-				this.HubBarHomeButtonAspectRatio = Create'UIAspectRatioConstraint'
-				{
-					AspectRatio = 1,
-					DominantAxis = Enum.DominantAxis.Height,
-					Parent = this.HubBarHomeButton
-				}
-				this.HubBarHomeButtonIcon = Create'ImageLabel'
-				{
-					Name = "HubBarHomeButtonIcon",
-					ZIndex = this.Shield.ZIndex + 3,
-					BorderSizePixel = 0,
-					BackgroundTransparency = 1,
-					Image = "rbxasset://textures/ui/Settings/MenuBarIcons/HomeTab.png",
-					Size = UDim2.new(0.7,0,0.7,0),
-					Position = UDim2.new(0.16,0,0.18,0),
-					Parent = this.HubBarHomeButton
-				}
-				this.HubBarHomeButton:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					local newWidth = this.HubBarHomeButton.AbsoluteSize.X + 10
-					this.HubBarContainer.Size = UDim2.new(1, -newWidth, 1, 0)
-					this.HubBarContainer.Position = UDim2.new(0, newWidth, 0, 0)
-				end)
-				this.HubBarHomeButton.MouseEnter:Connect(function()
-					this.HubBarHomeButton.BackgroundColor3 = Theme.color("HubBarHomeButtonHover")
-					this.HubBarHomeButton.BackgroundTransparency = Theme.transparency("HubBarHomeButtonTransparencyHover")
-				end)
-				this.HubBarHomeButton.MouseLeave:Connect(function()
-					this.HubBarHomeButton.BackgroundColor3 = Theme.color("HubBarHomeButton")
-					this.HubBarHomeButton.BackgroundTransparency = Theme.transparency("HubBarHomeButtonTransparency")
-				end)
-
-				local leaveToHomeFunc = function()
-					this:AddToMenuStack(this.Pages.CurrentPage)
-					this.HubBar.Visible = false
-					removeBottomBarBindings()
-					this:SwitchToPage(this.LeaveGameToHomePage, nil, 1, true)
-				end
-
-				this.HubBarHomeButton.Activated:Connect(leaveToHomeFunc)
-			end
 		end
 
 		if isSubjectToDesktopPolicies() then
@@ -2168,6 +2206,114 @@ local function CreateSettingsHub()
 				this[buttonName].Size = UDim2.fromOffset(maxButtonWidth, this[button[1]].Size.Y.Offset)
 			end
 		end
+	end
+
+	local SIDE_SHEET_MIN_MENU_WIDTH = 150
+
+	-- Whether the side sheet brought the People page up with it, which is only the case on a screen
+	-- wide enough to hold both. Everything the pairing changes about the menu keys off this, so a
+	-- narrower screen keeps the stand-alone menu even while it happens to show the People page.
+	local function isSideSheetPairedWithPeoplePage(): boolean
+		return FFlagSideSheetOpenPeoplePage and getDidSideSheetOpenWithPeoplePage()
+	end
+
+	-- Android back reaches the menu directly, which beside the sheet would bring up half the pair.
+	-- Route it through the sheet instead whenever the screen has room for the page, and whenever a
+	-- sheet is already up, since that one has to be closed through the sheet either way.
+	local function shouldAndroidBackUseSideSheet(): boolean
+		return FFlagSideSheetOpenPeoplePage and (getSideSheetVisibility() or getHasRoomForPeoplePage())
+	end
+
+	local function shouldUseSideSheetPeoplePageLayout(): boolean
+		return isSideSheetPairedWithPeoplePage() and getSideSheetVisibility() and getIsPeoplePageOpen()
+	end
+
+	local function shouldShowSettingsHubModal(): boolean
+		return this.Visible and not shouldUseSideSheetPeoplePageLayout()
+	end
+
+	-- The People page animates alongside the side sheet, so both directions borrow the sheet's
+	-- duration to land at the same time instead of using the stand-alone menu timing. The two
+	-- read different state because of when they run: opening lays out before the menu switches
+	-- to the People page, and closing happens after the sheet has already been hidden.
+	local function getShieldOpenTweenTime(defaultTweenTime: number): number
+		if not isSideSheetPairedWithPeoplePage() or not getSideSheetVisibility() then
+			return defaultTweenTime
+		end
+
+		return getSideSheetAnimationDuration()
+	end
+
+	-- Closing the menu takes the sheet and the People page down partway through, so the parts of the
+	-- close that run after that read the state the close started with rather than the live one.
+	-- Reading it live would put the background fade and the shield movement on different curves
+	-- within the same close, and leave the shield behind the sheet it is supposed to move with.
+	local function shouldCloseShieldWithSideSheet(wasPeoplePageOpenWithSideSheet: boolean?): boolean
+		if wasPeoplePageOpenWithSideSheet ~= nil then
+			return wasPeoplePageOpenWithSideSheet
+		end
+
+		return shouldUseSideSheetPeoplePageLayout()
+	end
+
+	local function getShieldCloseTweenTime(defaultTweenTime: number, wasPeoplePageOpenWithSideSheet: boolean?): number
+		if not shouldCloseShieldWithSideSheet(wasPeoplePageOpenWithSideSheet) then
+			return defaultTweenTime
+		end
+
+		return getSideSheetAnimationDuration()
+	end
+
+	-- Width of the side sheet, or 0 when the menu should keep its stand-alone layout.
+	local function getSideSheetMenuInset(): number
+		if not shouldUseSideSheetPeoplePageLayout() then
+			return 0
+		end
+
+		return getSideSheetDrawerWidth()
+	end
+
+	local function constrainMenuWidthForSideSheet(defaultWidth: number): number
+		local drawerWidth = getSideSheetMenuInset()
+		if drawerWidth <= 0 then
+			return defaultWidth
+		end
+
+		-- The menu's own padding sits outside the hub bar this width is for, so leaving it in
+		-- would push the page that much past the margin it is meant to keep from the screen.
+		local padding = Theme.HubPadding()
+		local availableWidth = getSideSheetMenuPageWidth(
+			RobloxGui.AbsoluteSize.X,
+			drawerWidth,
+			padding.PaddingLeft.Offset + padding.PaddingRight.Offset
+		)
+
+		return math.max(SIDE_SHEET_MIN_MENU_WIDTH, math.min(defaultWidth, availableWidth))
+	end
+
+	-- Height the menu gives up to the hub bar and its own padding, which the page beside the
+	-- sheet cannot use.
+	local function getSideSheetMenuReservedHeight(barSize: number, extraTopPadding: number): number
+		local padding = Theme.HubPadding()
+		return barSize + padding.PaddingTop.Offset + padding.PaddingBottom.Offset + extraTopPadding
+	end
+
+	local function applySideSheetLayoutToMenuContainer(basePosition: UDim2, baseAnchorPoint: Vector2): (UDim2, Vector2)
+		local drawerWidth = getSideSheetMenuInset()
+		if drawerWidth <= 0 then
+			return basePosition, baseAnchorPoint
+		end
+
+		-- The menu is centered on the screen, so centering it in the space beside the sheet is
+		-- a shift of half the sheet's width. Deriving this from HubBar.AbsoluteSize instead would
+		-- read a width that is a frame stale, which pushes the menu off the right of the screen.
+		local horizontalOffset = drawerWidth / 2
+
+		-- Centering vertically is what turns the height reserved for the margins into an equal
+		-- gap above and below. On its own the menu hugs the bottom of small touch screens, which
+		-- would hand the whole reservation to the top.
+		return UDim2.new(basePosition.X.Scale, basePosition.X.Offset + horizontalOffset, 0.5, 0),
+			Vector2.new(baseAnchorPoint.X, 0.5)
 	end
 
 	local function onScreenSizeChanged()
@@ -2227,15 +2373,11 @@ local function CreateSettingsHub()
 			bufferSize = 0
 		end
 
-		if Flags.FFlagAddNextUpContainer then
-			if this.Pages.CurrentPage and this.Pages.CurrentPage.DisableTopPadding and this.Pages.CurrentPage.MaintainVerticalSize then
-				largestPageSize += this.HubBar.AbsoluteSize.Y
-			end
-		end
-
+		local menuContainerPosition, menuContainerAnchorPoint =
+			applySideSheetLayoutToMenuContainer(menuPos.Position, menuPos.AnchorPoint)
 		this.MenuContainer.Size = menuPos.Size
-		this.MenuContainer.Position = menuPos.Position
-		this.MenuContainer.AnchorPoint = menuPos.AnchorPoint
+		this.MenuContainer.Position = menuContainerPosition
+		this.MenuContainer.AnchorPoint = menuContainerAnchorPoint
 
 		local barSize = this.HubBar.Size.Y.Offset
 		local extraSpace = bufferSize*2+barSize*2
@@ -2251,43 +2393,24 @@ local function CreateSettingsHub()
 			end
 		end
 
-		if Theme.EnableVerticalBottomBar then
-			this.VerticalMenu.Visible = false
-			this.VerticalMenuDivider.Visible = false
-			for i = 1, #this.BottomBarButtonsComponents do
-				local button = this.BottomBarButtonsComponents[i]
-				button.Parent = this.BottomButtonFrame
-			end
-		end
-
 		if isPortrait then
 			this.HubBar.Position = UDim2.new(0.5, 0, 0, 10)
-			this.HubBar.Size = UDim2.new(0, RobloxGui.AbsoluteSize.X-40, 0, 54)
+			this.HubBar.Size = UDim2.new(0, constrainMenuWidthForSideSheet(RobloxGui.AbsoluteSize.X-40), 0, 54)
 		else
 			if isTenFootInterface then
 				this.HubBar.Size = UDim2.new(0, 1200, 0, 100)
 			elseif utility:IsSmallTouchScreen() then
-				if Theme.EnableVerticalBottomBar then
-					this.VerticalMenu.Visible = true
-					this.VerticalMenuDivider.Visible = true
-					for i = 1, #this.BottomBarButtonsComponents do
-						local button = this.BottomBarButtonsComponents[i]
-						button.Parent = this.VerticalMenu
-					end
-					this.HubBar.Size = UDim2.new(0, RobloxGui.AbsoluteSize.X-60-Theme.VerticalMenuWidth, 0, 52)
-				else
-					this.HubBar.Size = UDim2.new(0, RobloxGui.AbsoluteSize.X-60, 0, 52)
-				end
+				this.HubBar.Size = UDim2.new(0, constrainMenuWidthForSideSheet(RobloxGui.AbsoluteSize.X-60), 0, 52)
 			else
 				if Flags.isInExperienceUIVREnabled then
-					this.HubBar.Size = UDim2.new(0, this.SettingsUIDelegate:getHubBarSize(), 0, 60)
+					this.HubBar.Size = UDim2.new(0, constrainMenuWidthForSideSheet(this.SettingsUIDelegate:getHubBarSize()), 0, 60)
 				else
-					this.HubBar.Size = UDim2.new(0, 800, 0, 60)
+					this.HubBar.Size = UDim2.new(0, constrainMenuWidthForSideSheet(800), 0, 60)
 				end
 			end
 		end
 
-		if not Theme.AlwaysShowBottomBar() then
+		if isSideSheetEnabled or not Theme.AlwaysShowBottomBar() then
 			barSize = this.HubBar.Size.Y.Offset
 		else
 			barSize = this.HubBar.Size.Y.Offset + this.BottomButtonFrame.Size.Y.Offset
@@ -2304,15 +2427,11 @@ local function CreateSettingsHub()
 		--This is in the same frame, so the delay should be very minimal.
 		--Maybe in the future we need to have a way to force AbsoluteSize
 		--to update, or we can just avoid using it so soon.
-		if not Flags.FFlagAddNextUpContainer then
-			RunService.Heartbeat:wait()
-		end
+		RunService.Heartbeat:wait()
 
 		if shouldShowBottomBar() then
 			setBottomBarBindings()
-			if Flags.FFlagIEMFocusNavToButtons then
-				setBottomBarSelection(this.Pages.CurrentPage)
-			end
+			setBottomBarSelection(this.Pages.CurrentPage)
 		else
 			removeBottomBarBindings()
 		end
@@ -2328,6 +2447,32 @@ local function CreateSettingsHub()
 				usableScreenHeight -= Theme.ExtraHubBottomPaddingMobile
 			end
 		end
+		if shouldUseSideSheetPeoplePageLayout() then
+			-- Beside the sheet the menu sits the same distance from the top and bottom of the
+			-- screen as it does from the sheet. The stand-alone reservation leaves the menu's own
+			-- padding out and scales with the screen, which on a short landscape screen sizes the
+			-- page taller than it can be and strands the leftover space above it. The shield is
+			-- what the menu is centered in, and it covers the strip the top bar sits in that the
+			-- screen size above leaves out, so measuring against anything else hands that strip
+			-- back as margin the sheet beside the page does not have.
+			usableScreenHeight = getSideSheetMenuPageHeight(
+				this.Shield.AbsoluteSize.Y,
+				getSideSheetMenuReservedHeight(barSize, extraTopPadding)
+			)
+		end
+
+		if FFlagSideSheetOpenPeoplePage then
+			-- Holding the gutter open whether or not the bar is up keeps the page width from
+			-- changing as the page starts and stops scrolling. The People page sizes its cards
+			-- from that width and their height follows their width, so a page landing within a
+			-- scrollbar's width of the view would otherwise grow past it, take the bar, shrink
+			-- back under it, and lose the bar again on every frame. Only the page beside the
+			-- sheet pays for the gutter, since every other page would just show an empty strip.
+			this.PageView.VerticalScrollBarInset = if shouldUseSideSheetPeoplePageLayout()
+				then Enum.ScrollBarInset.Always
+				else Enum.ScrollBarInset.ScrollBar
+		end
+
 		local minimumPageSize = 150
 		local usePageSize = nil
 
@@ -2429,18 +2574,6 @@ local function CreateSettingsHub()
 			end
 		end
 
-		if Flags.FFlagAddNextUpContainer then
-			if this.Pages.CurrentPage and this.Pages.CurrentPage.ShrinkwrapPageViewClipper and not utility:IsSmallTouchScreen() then
-				local pageSize = this.Pages.CurrentPage:GetSize()
-				newPageViewClipperSize = UDim2.new(
-					newPageViewClipperSize.X.Scale,
-					newPageViewClipperSize.X.Offset,
-					newPageViewClipperSize.Y.Scale,
-					math.min(pageSize.Y - this.PageView.Size.Y.Offset, usePageSize)
-				)
-			end
-		end
-
 		-- Set React page size to match the size of the entire menu
 		local padding = Theme.HubPadding()
 		local paddingX = padding.PaddingLeft.Offset + padding.PaddingRight.Offset
@@ -2448,7 +2581,6 @@ local function CreateSettingsHub()
 		this.ReactPage.Size = UDim2.new(0, this.HubBar.AbsoluteSize.X + paddingX, 0, usePageSize + barSize + paddingY)
 
 		this.PageViewClipper.Size = newPageViewClipperSize
-		this.defaultPageViewClipperSize = newPageViewClipperSize
 		if not isPortrait then
 			this.PageViewClipper.Position = UDim2.new(
 				this.PageViewClipper.Position.X.Scale,
@@ -2460,24 +2592,49 @@ local function CreateSettingsHub()
 			this.PageViewClipper.Position = UDim2.new(0.5, 0, 0, this.HubBar.Position.Y.Offset + this.HubBar.AbsoluteSize.Y)
 		end
 
-		if this.VerticalMenu then
-			this.VerticalMenuDivider.Size = UDim2.new(0, 1, 0, usePageSize + this.HubBar.Size.Y.Offset)
-			this.VerticalMenu.Size = UDim2.new(0, Theme.VerticalMenuWidth, 0, usePageSize + this.HubBar.Size.Y.Offset)
-		end
+	end
 
-		if Theme.UseStickyBar() then
-			this.resetPageViewClipperSize = true
-			this.showStickyBottomBar = true
-			if this.pageViewScrollChangeCon then
-				this.pageViewScrollChangeCon:disconnect()
-				this.pageViewScrollChangeCon = nil
-			end
-			if not isPortrait then
-				this.pageViewScrollChangeCon = this.PageView:GetPropertyChangedSignal("CanvasPosition"):connect(this.handelPageViewScroll)
+	if FFlagSideSheetOpenPeoplePage then
+		local function scheduleSideSheetPeoplePageLayoutRefresh()
+			-- The People page always comes down with the sheet, so while the sheet is gone but the
+			-- page is still up the page is mid-dismissal. Restoring the stand-alone layout here
+			-- would stretch it back to full screen for the length of its close animation.
+			if isSideSheetPairedWithPeoplePage() and not getSideSheetVisibility() and getIsPeoplePageOpen() then
+				return
 			end
 
-			resizeBottomBarButtons()
+			local selectionBehaviorLeft = if shouldUseSideSheetPeoplePageLayout()
+				then Enum.SelectionBehavior.Escape
+				else Enum.SelectionBehavior.Stop
+			if this.Modal then
+				this.Modal.Visible = shouldShowSettingsHubModal()
+			end
+			if this.Page then
+				this.Page.SelectionBehaviorLeft = selectionBehaviorLeft
+			end
+			if this.PageViewClipper then
+				this.PageViewClipper.SelectionBehaviorLeft = selectionBehaviorLeft
+			end
+			if this._sideSheetLayoutRefreshScheduled then
+				return
+			end
+
+			this._sideSheetLayoutRefreshScheduled = true
+			task.defer(function()
+				this._sideSheetLayoutRefreshScheduled = false
+				if this.Visible and this.MenuContainer then
+					onScreenSizeChanged()
+				end
+			end)
 		end
+
+		this._sideSheetLayoutEffectDispose = Signals.createEffect(function(scope)
+			getSideSheetVisibility(scope)
+			getSideSheetDrawerWidth(scope)
+			getIsPeoplePageOpen(scope)
+			getDidSideSheetOpenWithPeoplePage(scope)
+			scheduleSideSheetPeoplePageLayoutRefresh()
+		end)
 	end
 
 	local function onPreferredTransparencyChanged()
@@ -2689,9 +2846,14 @@ local function CreateSettingsHub()
 		this.Pages.PageTable[pageToAdd] = true
 		AddHeader(pageToAdd:GetTabHeader(), pageToAdd)
 		pageToAdd.Page.Position = UDim2.new(pageToAdd.TabPosition - 1,0,0,0)
-		if Flags.FFlagIEMFocusNavToButtons then
-			pageToAdd.LastSelectableObjectsUpdated:connect(function()
-				setBottomBarSelection(pageToAdd)
+		pageToAdd.LastSelectableObjectsUpdated:connect(function()
+			setBottomBarSelection(pageToAdd)
+		end)
+		if Flags.FFlagIEMTabFocusNav then
+			setTabHeaderSelection(pageToAdd)
+			updateTabHeaderWrapping()
+			pageToAdd.FirstSelectableObjectsUpdated:connect(function()
+				setTabHeaderSelection(pageToAdd)
 			end)
 		end
 	end
@@ -2699,101 +2861,11 @@ local function CreateSettingsHub()
 	function this:RemovePage(pageToRemove)
 		this.Pages.PageTable[pageToRemove] = nil
 		RemoveHeader(pageToRemove:GetTabHeader())
-		if Flags.FFlagIEMFocusNavToButtons then
-			pageToRemove.LastSelectableObjectsUpdated:disconnect()
+		pageToRemove.LastSelectableObjectsUpdated:disconnect()
+		if Flags.FFlagIEMTabFocusNav then
+			pageToRemove.FirstSelectableObjectsUpdated:disconnect()
+			updateTabHeaderWrapping()
 		end
-	end
-
-	this.bottomBarAnimating = false
-	this.defaultPageViewClipperSize = this.PageViewClipper.Size
-	this.showStickyBottomBar = true
-	this.resetPageViewClipperSize = false
-
-	function animateBottomBarComplete()
-		-- If a resize happened in between a tween, reset the PageViewClipperSize
-		if this.resetPageViewClipperSize then
-			this.PageViewClipper.Size = this.defaultPageViewClipperSize
-			this.resetPageViewClipperSize = false
-		end
-		this.bottomBarAnimating = false
-	end
-
-	function this:animateInBottomBar()
-		if this.bottomBarAnimating or this.showStickyBottomBar == true then
-			return
-		end
-
-		this.bottomBarAnimating = true
-		this.showStickyBottomBar = true
-		this.resetPageViewClipperSize = false
-
-		local targetSize = UDim2.new(
-			this.defaultPageViewClipperSize.X.Scale,
-			this.defaultPageViewClipperSize.X.Offset,
-			this.defaultPageViewClipperSize.Y.Scale,
-			this.defaultPageViewClipperSize.Y.Offset
-		)
-
-		local movementTime = 0.3
-		if featureDeprecateOldGuiObjectProperties then
-			this.PageViewClipper:TweenSizeInternal(
-				targetSize,
-				Enum.EasingDirection.InOut,
-				Enum.EasingStyle.Quart,
-				movementTime,
-				true,
-				animateBottomBarComplete
-			)
-		else
-			this.PageViewClipper:TweenSize(
-				targetSize,
-				Enum.EasingDirection.InOut,
-				Enum.EasingStyle.Quart,
-				movementTime,
-				true,
-				animateBottomBarComplete
-			)
-		end
-		return
-	end
-
-	function this:animateOutBottomBar()
-		if this.bottomBarAnimating or this.showStickyBottomBar == false then
-			return
-		end
-
-		this.bottomBarAnimating = true
-		this.showStickyBottomBar = false
-		this.resetPageViewClipperSize = false
-
-		local targetSize = UDim2.new(
-			this.defaultPageViewClipperSize.X.Scale,
-			this.defaultPageViewClipperSize.X.Offset,
-			this.defaultPageViewClipperSize.Y.Scale,
-			this.defaultPageViewClipperSize.Y.Offset + BOTTOM_BUTTON_BAR_HEIGHT
-		)
-
-		local movementTime = 0.3
-		if featureDeprecateOldGuiObjectProperties then
-			this.PageViewClipper:TweenSizeInternal(
-				targetSize,
-				Enum.EasingDirection.InOut,
-				Enum.EasingStyle.Quart,
-				movementTime,
-				true,
-				animateBottomBarComplete
-			)
-		else
-			this.PageViewClipper:TweenSize(
-				targetSize,
-				Enum.EasingDirection.InOut,
-				Enum.EasingStyle.Quart,
-				movementTime,
-				true,
-				animateBottomBarComplete
-			)
-		end
-		return
 	end
 
 	function this:HideBar()
@@ -2809,9 +2881,7 @@ local function CreateSettingsHub()
 		this.PageViewClipper.Visible = true
 		if this.BottomButtonFrame and shouldShowBottomBar() then
 			setBottomBarBindings()
-			if Flags.FFlagIEMFocusNavToButtons then
-				setBottomBarSelection(this.Pages.CurrentPage)
-			end
+			setBottomBarSelection(this.Pages.CurrentPage)
 		end
 	end
 
@@ -2871,9 +2941,7 @@ local function CreateSettingsHub()
 			if this.BottomButtonFrame then
 				if shouldShowBottomBar(pageToSwitchTo) then
 					setBottomBarBindings()
-					if Flags.FFlagIEMFocusNavToButtons then
-						setBottomBarSelection(pageToSwitchTo)
-					end
+					setBottomBarSelection(pageToSwitchTo)
 				else
 					this.BottomButtonFrame.Visible = false
 				end
@@ -2887,25 +2955,25 @@ local function CreateSettingsHub()
 		this.PageViewClipper.ClipsDescendants = isClipped
 		this.PageView.ClipsDescendants = isClipped
 
-		if Theme.UseStickyBar() == false then
-			this.PageViewInnerFrame.ClipsDescendants = isClipped
-		end
+		this.PageViewInnerFrame.ClipsDescendants = isClipped
 
 		this.Pages.CurrentPage = pageToSwitchTo
 		this.Pages.CurrentPage.Active = true
 		this.CurrentPageSignal:fire(this.Pages.CurrentPage and this.Pages.CurrentPage.Page.Name or nil)
 
-		if Theme.UseStickyBar() == false then
-			local pageSize = this.Pages.CurrentPage:GetSize()
-			this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
-
-			pageChangeCon = this.Pages.CurrentPage.Page.Changed:connect(function(prop)
-				if prop == "AbsoluteSize" then
-					local pageSize = this.Pages.CurrentPage:GetSize()
-					this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
-				end
-			end)
+		if isSideSheetEnabled then
+			updatePageTitleHeader(this.Pages.CurrentPage)
 		end
+
+		local pageSize = this.Pages.CurrentPage:GetSize()
+		this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
+
+		pageChangeCon = this.Pages.CurrentPage.Page.Changed:connect(function(prop)
+			if prop == "AbsoluteSize" then
+				local pageSize = this.Pages.CurrentPage:GetSize()
+				this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
+			end
+		end)
 	end
 
 	function this:SwitchToPage(pageToSwitchTo, ignoreStack, direction, skipAnimation, invisibly, eventData)
@@ -2934,8 +3002,10 @@ local function CreateSettingsHub()
 			topExtra = UDim.new(0, this.HubBar.AbsoluteSize.Y)
 		end
 
-		if this.BottomButtonFrame and hasBottomButtons and not shouldShowBottomBar(pageToSwitchTo) and not (Flags.FFlagAddNextUpContainer and pageToSwitchTo.ShrinkwrapPageViewClipper) then
-			bottomExtra = UDim.new(0, this.BottomButtonFrame.AbsoluteSize.Y)
+		if not isSideSheetEnabled then
+			if this.BottomButtonFrame and hasBottomButtons and not shouldShowBottomBar(pageToSwitchTo) then
+				bottomExtra = UDim.new(0, this.BottomButtonFrame.AbsoluteSize.Y)
+			end
 		end
 
 		local pad = Theme.HubPadding()
@@ -2945,26 +3015,11 @@ local function CreateSettingsHub()
 		this.MenuContainerPadding.PaddingTop = pad.PaddingTop + topExtra
 
 		local menuPos = Theme.MenuContainerPosition(this.SettingsUIDelegate)
-		this.MenuContainer.Position = menuPos.Position
+		local menuContainerPosition, menuContainerAnchorPoint =
+			applySideSheetLayoutToMenuContainer(menuPos.Position, menuPos.AnchorPoint)
+		this.MenuContainer.Position = menuContainerPosition
 		this.MenuContainer.Size = menuPos.Size
-		this.MenuContainer.AnchorPoint = menuPos.AnchorPoint
-
-		if this.VerticalMenu and not utility:IsPortrait() and utility:IsSmallTouchScreen() then
-			local visible = shouldShowHubBar(pageToSwitchTo)
-			this.VerticalMenu.Visible = visible
-			this.VerticalMenuDivider.Visible = visible
-			if visible then
-				this.HubBar.Size = UDim2.new(0, RobloxGui.AbsoluteSize.X-60-Theme.VerticalMenuWidth, 0, 52)
-			else
-				this.HubBar.Size = UDim2.new(0, RobloxGui.AbsoluteSize.X-60, 0, 52)
-			end
-			local cs = this.PageViewClipper.Size
-			this.PageViewClipper.Size = UDim2.new(cs.X.Scale, this.HubBar.Size.X.Offset, cs.Y.Scale, cs.Y.Offset)
-		elseif Flags.FFlagAddNextUpContainer and pageToSwitchTo.ShrinkwrapPageViewClipper then
-			local cs = this.PageViewClipper.Size
-			local pageSize = pageToSwitchTo:GetSize()
-			this.PageViewClipper.Size = UDim2.new(cs.X.Scale, this.HubBar.Size.X.Offset, cs.Y.Scale, pageSize.Y)
-		end
+		this.MenuContainer.AnchorPoint = menuContainerAnchorPoint
 
 		-- detect direction
 		if direction == nil then
@@ -2982,6 +3037,11 @@ local function CreateSettingsHub()
 			this.Pages.CurrentPage.Active = false
 		end
 
+		if Flags.FFlagFixDisabledScrollOnIos and pageViewCanvasLock ~= nil then
+			pageViewCanvasLock:Disconnect()
+			pageViewCanvasLock = nil
+		end
+
 		-- make sure all pages are in right position
 		local newPagePos = pageToSwitchTo.TabPosition
 		for page, _ in pairs(this.Pages.PageTable) do
@@ -2994,14 +3054,15 @@ local function CreateSettingsHub()
 		if this.BottomButtonFrame then
 			if shouldShowBottomBar(pageToSwitchTo) then
 				setBottomBarBindings()
-				if Flags.FFlagIEMFocusNavToButtons then
-					setBottomBarSelection(pageToSwitchTo)
-				end
+				setBottomBarSelection(pageToSwitchTo)
 			else
 				this.BottomButtonFrame.Visible = false
 			end
 
 			this.HubBar.Visible = shouldShowHubBar(pageToSwitchTo)
+		end
+		if Flags.FFlagIEMTabFocusNav then
+			setTabHeaderSelection(pageToSwitchTo)
 		end
 
 		-- set whether the page should be clipped
@@ -3016,35 +3077,45 @@ local function CreateSettingsHub()
 		this.Pages.CurrentPage.Active = true
 		this.CurrentPageSignal:fire(this.Pages.CurrentPage and this.Pages.CurrentPage.Page.Name or nil)
 
-		if Theme.UseStickyBar() == false then
-			local pageSize = this.Pages.CurrentPage:GetSize()
-			this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
-
-			pageChangeCon = this.Pages.CurrentPage.Page.Changed:connect(function(prop)
-				if prop == "AbsoluteSize" then
-					local pageSize = this.Pages.CurrentPage:GetSize()
-					this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
-
-					if Flags.FFlagAddNextUpContainer then
-						if this.Pages.CurrentPage.ShrinkwrapPageViewClipper then
-							onScreenSizeChanged()
-						end
-					end
-				end
-			end)
-
-			if this.MenuStack[#this.MenuStack] ~= this.Pages.CurrentPage and not ignoreStack then
-				this.MenuStack[#this.MenuStack + 1] = this.Pages.CurrentPage
-			end
+		if isSideSheetEnabled then
+			updatePageTitleHeader(this.Pages.CurrentPage)
 		end
 
-		if Flags.FFlagAddNextUpContainer then
-			onScreenSizeChanged()
-		else
-			-- When switching page, we want to call this to expand PageViewClipper size if needed by TopPadding being disabled
-			if pageToSwitchTo.DisableTopPadding then
-				onScreenSizeChanged()
+		-- Disable outer scrolling for any page that doesn't need it
+		if shouldDisableDefaultScroll() then
+			this.PageView.ScrollBarThickness = 0
+			this.PageView.ScrollingEnabled = false
+			this.PageView.CanvasPosition = Vector2.new(0, 0)
+			this.PageView.CanvasSize = UDim2.new(1, 0, 1, 0)
+			-- Prevents iOS UIScrollView from scrolling despite ScrollingEnabled=false
+			if Flags.FFlagFixDisabledScrollOnIos then
+				pageViewCanvasLock = this.PageView:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+					if this.PageView.CanvasPosition.Magnitude > 0 then
+						this.PageView.CanvasPosition = Vector2.new(0, 0)
+					end
+				end)
 			end
+		else
+			this.PageView.ScrollBarThickness = Theme.DefaultScrollBarThickness
+			this.PageView.ScrollingEnabled = true
+			local pageSize = this.Pages.CurrentPage:GetSize()
+			this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
+		end
+
+		pageChangeCon = this.Pages.CurrentPage.Page.Changed:connect(function(prop)
+			if prop == "AbsoluteSize" and not shouldDisableDefaultScroll() then
+				local pageSize = this.Pages.CurrentPage:GetSize()
+				this.PageView.CanvasSize = UDim2.new(0,0, 0,pageSize.Y)
+			end
+		end)
+
+		if this.MenuStack[#this.MenuStack] ~= this.Pages.CurrentPage and not ignoreStack then
+			this.MenuStack[#this.MenuStack + 1] = this.Pages.CurrentPage
+		end
+
+		-- When switching page, we want to call this to expand PageViewClipper size if needed by TopPadding being disabled
+		if pageToSwitchTo.DisableTopPadding then
+			onScreenSizeChanged()
 		end
 
 		local eventTable = {}
@@ -3083,7 +3154,10 @@ local function CreateSettingsHub()
 			ExperienceMenuSessionManagerInstance:CloseOpenedMenuTab()
 		end
 
-
+		if Flags.FFlagAddTraversalHistory and Flags.FFlagIntegrateTraversalHistoryInSideSheet then
+			local reactPageSignal = ReactPageSignal(false)
+			reactPageSignal.setCurrentReactPage(nil)
+		end
 	end
 
 	function this:SetActive(active)
@@ -3148,7 +3222,7 @@ local function CreateSettingsHub()
 	end
 	local setBackgroundVisibilityInternal = nil
 	if Flags.FFlagSettingsHubIndependentBackgroundVisibility then
-		setBackgroundVisibilityInternal = function(visible, noAnimation)
+		setBackgroundVisibilityInternal = function(visible, noAnimation, wasPeoplePageOpenWithSideSheet)
 			if not this.DarkenBackground then
 				return
 			end
@@ -3163,14 +3237,17 @@ local function CreateSettingsHub()
 			local easingStyle = Enum.EasingStyle.Quart
 			local movementTime = 0
 
-			movementTime = if Constants then Constants.ShieldCloseAnimationTweenTime else 0.4
+			movementTime = getShieldCloseTweenTime(
+				if Constants then Constants.ShieldCloseAnimationTweenTime else 0.4,
+				wasPeoplePageOpenWithSideSheet
+			)
 
 			if visible then
 				goalTransparency = if Flags.isInExperienceUIVREnabled
 					then this.SettingsUIDelegate:getDarkBackgroundTheme().Transparency
 					else Theme.transparency("DarkenBackground")
 				easingStyle = Enum.EasingStyle.Quad
-				movementTime = if Constants then Constants.ShieldOpenAnimationTweenTime else 0.5
+				movementTime = getShieldOpenTweenTime(if Constants then Constants.ShieldOpenAnimationTweenTime else 0.5)
 			end
 
 			if noAnimation then
@@ -3196,6 +3273,18 @@ local function CreateSettingsHub()
 		end
 	end
 	function setVisibilityInternal(visible, providedNoAnimation, customStartPage, switchedFromGamepadInput, analyticsContext)
+		-- Read before anything below takes the sheet and the People page down, since the close
+		-- animation is timed against the paired surface the menu is leaving rather than whatever is
+		-- left once it is gone. A People page the sheet is not up beside keeps the menu's own timing.
+		local wasPeoplePageOpenWithSideSheet = shouldUseSideSheetPeoplePageLayout()
+
+		if isSideSheetPairedWithPeoplePage() and not visible and this.Visible then
+			-- The sheet and the page beside it are one surface, so whatever closes the menu closes
+			-- the sheet as well. Callers that go straight to the menu, such as examining an avatar
+			-- from the People page, never had a chance to dismiss the sheet themselves.
+			toggleSideSheet(false)
+		end
+
 		local noAnimation
 		if Flags.isInExperienceUIVREnabled then
 			noAnimation = providedNoAnimation or not this.SettingsUIDelegate:isOpenCloseAnimationAllowed()
@@ -3231,7 +3320,7 @@ local function CreateSettingsHub()
 			this.PreferredTransparencyChangedConnection = nil
 		end
 
-		this.Modal.Visible = this.Visible
+		this.Modal.Visible = if FFlagSideSheetOpenPeoplePage then shouldShowSettingsHubModal() else this.Visible
 
 		if this.TabConnection then
 			this.TabConnection:disconnect()
@@ -3241,7 +3330,7 @@ local function CreateSettingsHub()
 		local playerList = require(RobloxGui.Modules.PlayerList.PlayerListManager)
 
 		if Flags.FFlagSettingsHubIndependentBackgroundVisibility then
-			setBackgroundVisibilityInternal(this.Visible, noAnimation)
+			setBackgroundVisibilityInternal(this.Visible, noAnimation, wasPeoplePageOpenWithSideSheet)
 		end
 
 		if this.Visible then
@@ -3301,7 +3390,7 @@ local function CreateSettingsHub()
 					end
 				end
 			else
-				local movementTime: number = if Constants then Constants.ShieldOpenAnimationTweenTime else 0.5
+				local movementTime: number = getShieldOpenTweenTime(if Constants then Constants.ShieldOpenAnimationTweenTime else 0.5)
 
 				if GameSettings.ReducedMotion then
 
@@ -3339,33 +3428,18 @@ local function CreateSettingsHub()
 						PerfUtils.menuOpenComplete()
 					end
 				else
-					if featureDeprecateOldGuiObjectProperties then
-						this.Shield:TweenPositionInternal(
-							UDim2.new(0, 0, 0, 0),
-							Enum.EasingDirection.InOut,
-							Enum.EasingStyle.Quart,
-							movementTime,
-							true,
-							function ()
-								if Flags.FFlagEnableInGameMenuDurationLogger then
-									PerfUtils.menuOpenComplete()
-								end
+					this.Shield:TweenPositionInternal(
+						UDim2.new(0, 0, 0, 0),
+						Enum.EasingDirection.InOut,
+						Enum.EasingStyle.Quart,
+						movementTime,
+						true,
+						function ()
+							if Flags.FFlagEnableInGameMenuDurationLogger then
+								PerfUtils.menuOpenComplete()
 							end
-						)
-					else
-						this.Shield:TweenPosition(
-							UDim2.new(0, 0, 0, 0),
-							Enum.EasingDirection.InOut,
-							Enum.EasingStyle.Quart,
-							movementTime,
-							true,
-							function ()
-								if Flags.FFlagEnableInGameMenuDurationLogger then
-									PerfUtils.menuOpenComplete()
-								end
-							end
-						)
-					end
+						end
+					)
 				end
 
 				if not Flags.FFlagSettingsHubIndependentBackgroundVisibility then
@@ -3405,13 +3479,13 @@ local function CreateSettingsHub()
 				Enum.UserInputType.Gamepad1, Enum.UserInputType.Gamepad2, Enum.UserInputType.Gamepad3, Enum.UserInputType.Gamepad4
 			)
 
-			ContextActionService:BindCoreAction("RbxSettingsHubSwitchTab", switchTabFromBumpers, false, Enum.KeyCode.ButtonR1, Enum.KeyCode.ButtonL1)
+			if not isSideSheetEnabled then
+				ContextActionService:BindCoreAction("RbxSettingsHubSwitchTab", switchTabFromBumpers, false, Enum.KeyCode.ButtonR1, Enum.KeyCode.ButtonL1)
+			end
 			ContextActionService:BindCoreAction("RbxSettingsScrollHotkey", scrollHotkeyFunc, false, Enum.KeyCode.PageUp, Enum.KeyCode.PageDown)
 			if shouldShowBottomBar() then
 				setBottomBarBindings()
-				if Flags.FFlagIEMFocusNavToButtons then
-					setBottomBarSelection(this.Pages.CurrentPage)
-				end
+				setBottomBarSelection(this.Pages.CurrentPage)
 			end
 
 			if Flags.ChromeEnabled and Flags.FFlagEnableConsoleExpControls then
@@ -3420,7 +3494,9 @@ local function CreateSettingsHub()
 				ChromeService:setShortcutBar(ChromeConstants.TILTMENU_SHORTCUTBAR_ID)
 			end
 
-			this.TabConnection = UserInputService.InputBegan:connect(switchTabFromKeyboard)
+			if not isSideSheetEnabled then
+				this.TabConnection = UserInputService.InputBegan:connect(switchTabFromKeyboard)
+			end
 
 			setOverrideMouseIconBehavior()
 			lastInputChangedCon = UserInputService.LastInputTypeChanged:connect(setOverrideMouseIconBehavior)
@@ -3504,12 +3580,7 @@ local function CreateSettingsHub()
 
 			if Flags.ChromeEnabled and Flags.FFlagEnableConsoleExpControls then
 				local ChromeService = require(RobloxGui.Modules.Chrome.Service)
-				if Flags.FFlagSetUnibarShortcutOnTopBarFocus then
 					ChromeService:setShortcutBar(nil)
-				else
-					local ChromeConstants = require(RobloxGui.Modules.Chrome.ChromeShared.Unibar.Constants)
-					ChromeService:setShortcutBar(ChromeConstants.UNIBAR_SHORTCUTBAR_ID)
-				end
 			end
 
 			if Flags.GetFFlagEnableAppChatInExperience() and connectWasVisible then
@@ -3544,7 +3615,10 @@ local function CreateSettingsHub()
 					end
 				end
 			else
-				local movementTime: number = if Constants then Constants.ShieldCloseAnimationTweenTime else 0.4
+				local movementTime: number = getShieldCloseTweenTime(
+					if Constants then Constants.ShieldCloseAnimationTweenTime else 0.4,
+					wasPeoplePageOpenWithSideSheet
+				)
 
 				local function handleShieldClose()
 					if not Flags.FFlagAddTraversalBackButton then
@@ -3597,38 +3671,30 @@ local function CreateSettingsHub()
 				else
 					if Flags.ChromeEnabled and Flags.FFlagEnableConsoleExpControls then
 						local ChromeService = require(RobloxGui.Modules.Chrome.Service)
-						if Flags.FFlagSetUnibarShortcutOnTopBarFocus then
 							ChromeService:setShortcutBar(nil)
-						else
-							local ChromeConstants = require(RobloxGui.Modules.Chrome.ChromeShared.Unibar.Constants)
-							ChromeService:setShortcutBar(ChromeConstants.UNIBAR_SHORTCUTBAR_ID)
+					end
+					local closeEasingDirection = Enum.EasingDirection.In
+					local closeEasingStyle = Enum.EasingStyle.Quad
+
+					if shouldCloseShieldWithSideSheet(wasPeoplePageOpenWithSideSheet) then
+						-- The side sheet slides out on a decelerating curve. Leaving the menu on the
+						-- default accelerating one makes the two surfaces move out of step even when
+						-- they finish together, which reads as the sheet lagging behind.
+						closeEasingDirection = Enum.EasingDirection.Out
+						closeEasingStyle = Enum.EasingStyle.Quart
+					end
+
+					this.Shield:TweenPositionInternal(
+						SETTINGS_SHIELD_INACTIVE_POSITION,
+						closeEasingDirection,
+						closeEasingStyle,
+						movementTime,
+						true,
+						function()
+							this.Shield.Visible = this.Visible
+							handleShieldClose()
 						end
-					end
-					if featureDeprecateOldGuiObjectProperties then
-						this.Shield:TweenPositionInternal(
-							SETTINGS_SHIELD_INACTIVE_POSITION,
-							Enum.EasingDirection.In,
-							Enum.EasingStyle.Quad,
-							movementTime,
-							true,
-							function()
-								this.Shield.Visible = this.Visible
-								handleShieldClose()
-							end
-						)
-					else
-						this.Shield:TweenPosition(
-							SETTINGS_SHIELD_INACTIVE_POSITION,
-							Enum.EasingDirection.In,
-							Enum.EasingStyle.Quad,
-							movementTime,
-							true,
-							function()
-								this.Shield.Visible = this.Visible
-								handleShieldClose()
-							end
-						)
-					end
+					)
 				end
 
 				if not Flags.FFlagSettingsHubIndependentBackgroundVisibility then
@@ -3652,13 +3718,6 @@ local function CreateSettingsHub()
 				lastInputChangedCon:disconnect()
 			end
 
-			if Theme.UseStickyBar() then
-				if this.pageViewScrollChangeCon then
-					this.pageViewScrollChangeCon:disconnect()
-					this.pageViewScrollChangeCon = nil
-				end
-			end
-
 			if Flags.isInExperienceUIVREnabled then
 				if not Flags.InExperienceUIVRIXP:isMovePanelToCenter() and not VRService.VREnabled then
 					playerList:HideTemp('SettingsMenu', false)
@@ -3679,7 +3738,9 @@ local function CreateSettingsHub()
 
 			clearMenuStack()
 
-			ContextActionService:UnbindCoreAction("RbxSettingsHubSwitchTab")
+			if not isSideSheetEnabled then
+				ContextActionService:UnbindCoreAction("RbxSettingsHubSwitchTab")
+			end
 			ContextActionService:UnbindCoreAction("RbxSettingsHubStopCharacter")
 			ContextActionService:UnbindCoreAction("RbxSettingsScrollHotkey")
 
@@ -3754,7 +3815,9 @@ local function CreateSettingsHub()
 				PlatformService:PopupGameInviteUI()
 			end
 		elseif newGameInviteModalEnabled then
-			this:ToggleVisibility()
+			if not Flags.FFlagAddInviteFriendsIntegration or this.Visible then
+				this:ToggleVisibility()
+			end
 			GameInviteModalManager:openModal({
 				trigger = GameInviteConstants.Triggers.GameMenu
 			})
@@ -3765,6 +3828,14 @@ local function CreateSettingsHub()
 		else
 			this:AddToMenuStack(this.Pages.CurrentPage)
 			this:SwitchToPage(this.ShareGamePage, nil, 1, true)
+		end
+
+		if isSideSheetPairedWithPeoplePage() then
+			-- Every branch above takes over from the People page, whether by replacing it in the
+			-- menu, covering it with a modal, or handing off to a platform UI, so the side sheet
+			-- it was paired with has to come down as well. This runs last because the page swap
+			-- needs the menu still open.
+			toggleSideSheet(false)
 		end
 	end
 
@@ -3829,23 +3900,18 @@ local function CreateSettingsHub()
 		if this.reactPage then
 			this.reactPageAnalytics:closePage(this.reactPage.name)
 		end
-		local reactPageVisible
-		if Flags.FFlagFixFocusNavToButtonsWithIEMReact then
-			reactPageVisible = this.ReactPage.Visible
-		end
+		local reactPageVisible = this.ReactPage.Visible
 		this.ReactPage.Visible = false
 		this.Page.Visible = true
-		if Flags.FFlagCreateInExperienceMenuReact and Flags.FFlagIEMFocusNavToButtons and this.Pages.CurrentPage then
-			if not Flags.FFlagFixFocusNavToButtonsWithIEMReact or (reactPageVisible and this.Visible) then
+		if this.Pages.CurrentPage then
+			if reactPageVisible and this.Visible then
 				this.Pages.CurrentPage:SelectARow(true)
 			end
 		end
 	end
 
 	function this:MountReactPage()
-		if Flags.FFlagCreateInExperienceMenuReact then
 			ReactPageSignal(false).setCurrentReactPage(nil) -- clear any portalled pages
-		end
 		if this.reactPageRoot then
 			this:UnmountReactPage()
 		end
@@ -3865,7 +3931,7 @@ local function CreateSettingsHub()
 	end
 
 	function this:SwitchToReactPage(page: ReactPage?, props: any, willPortal: boolean?)
-		if Flags.FFlagCreateInExperienceMenuReact and willPortal then
+		if willPortal then
 			this:UnmountReactPage()
 		elseif page then
 			this.reactPage = page
@@ -3977,13 +4043,11 @@ local function CreateSettingsHub()
 	this.GameSettingsPage = require(RobloxGui.Modules.Settings.Pages.GameSettingsWrapper)
 	this.GameSettingsPage:SetHub(this)
 
-	this.ReportAbusePage = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuNewContainerPage)
+	this.ReportAbusePage = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuContainerPage)
 	this.ReportAbusePage:SetHub(this)
 
-	if Flags.GetFFlagAbuseReportEnableReportSentPage() then
-		this.ReportSentPage = require(RobloxGui.Modules.Settings.Pages.ReportSentPage)
-		this.ReportSentPage:SetHub(this)
-	end
+	this.ReportSentPage = require(RobloxGui.Modules.Settings.Pages.ReportSentPage)
+	this.ReportSentPage:SetHub(this)
 
 	this.ReportSentPageV2 = require(RobloxGui.Modules.Settings.Pages.ReportSentPageV2)
 	this.ReportSentPageV2:SetHub(this)
@@ -4017,7 +4081,8 @@ local function CreateSettingsHub()
 		this.PlayerProfilePage = require(RobloxGui.Modules.Settings.Pages.PlayerProfile)
 	end
 
-	if isSubjectToDesktopPolicies() then
+	if not Flags.isExitModalRemoved and isSubjectToDesktopPolicies() then
+		-- TODO: cleanup ExitModal file when flag is removed as true
 		this.ExitModalPage = require(RobloxGui.Modules.Settings.Pages.ExitModal)
 		this.ExitModalPage:SetHub(this)
 	end
@@ -4076,6 +4141,11 @@ local function CreateSettingsHub()
 		this.CapturesPage:ConnectHubToApp(this, this.PageViewClipper, this.CapturesApp)
 	end
 
+	if Flags.FFlagIntegrateTraversalHistoryInSideSheet then
+		this.TraversalHistoryPage = require(RobloxGui.Modules.Settings.Pages.TraversalHistoryWrapper)()
+		this.TraversalHistoryPage:SetHub(this)
+	end
+
 	-- page registration
 	if this.PlayersPage then
 		this:AddPage(this.PlayersPage)
@@ -4113,12 +4183,16 @@ local function CreateSettingsHub()
 			this:AddPage(this.RecordPage)
 		end
 	end
-	if this.ExitModalPage then
+	if not Flags.isExitModalRemoved and this.ExitModalPage then
 		this:AddPage(this.ExitModalPage)
 	end
 
 	if this.LeaveGameToHomePage then
 		this:AddPage(this.LeaveGameToHomePage)
+	end
+
+	if this.TraversalHistoryPage then
+		this:AddPage(this.TraversalHistoryPage)
 	end
 
 	this:InitInPage(this:GetFirstPageWithTabHeader())
@@ -4128,10 +4202,40 @@ local function CreateSettingsHub()
 			if not Flags.FFlagAddUILessMode or Flags.FIntAddUILessModeVariant == 0 then
 				local closeMenuFunc = function(name, inputState, input)
 					if inputState ~= Enum.UserInputState.Begin then return end
-					if Flags.FFlagAddUILessMode then
-						this:PopMenu(false, true, Constants.AnalyticsMenuOpenTypes.Keyboard)
+					-- switch server confirmation dialog is open, let escape dismiss it
+					if
+						(Flags.FFlagShowSwitchServerButton or isPioneerLaunch())
+						and GetSwitchServerStore(false).isConfirmationOpen(false)
+					then
+						return
+					end
+					if isSideSheetEnabled then
+						if getSideSheetVisibility() then
+							if isSideSheetPairedWithPeoplePage() and getIsPeoplePageOpen() then
+								-- Close the paired page in this frame. The side sheet takes it down
+								-- on its own, but only once React has re-rendered, which leaves the
+								-- sheet visibly leading the page out.
+								this:SetVisibility(false)
+							else
+								toggleSideSheet(false)
+							end
+						else
+							if this.MenuStack and #this.MenuStack > 0 then
+								if Flags.FFlagAddUILessMode then
+									this:PopMenu(false, true, Constants.AnalyticsMenuOpenTypes.Keyboard)
+								else
+									this:PopMenu(false, true)
+								end
+							else
+								toggleSideSheet(true)
+							end
+						end
 					else
-						this:PopMenu(false, true)
+						if Flags.FFlagAddUILessMode then
+							this:PopMenu(false, true, Constants.AnalyticsMenuOpenTypes.Keyboard)
+						else
+							this:PopMenu(false, true)
+						end
 					end
 				end
 				ContextActionService:BindCoreAction("RBXEscapeMainMenu", closeMenuFunc, false, Enum.KeyCode.Escape)
@@ -4142,11 +4246,25 @@ local function CreateSettingsHub()
 
 	-- connect back button on android
 	GuiService.ShowLeaveConfirmation:connect(function()
-		if #this.MenuStack == 0 then
-			this:SetVisibility(true, nil, nil, nil, Constants.AnalyticsMenuOpenTypes.GamepadLeaveGame)
-			this:SwitchToPage(this:GetFirstPageWithTabHeader(), nil, 1)
+		if isSideSheetEnabled and (Flags.FFlagSideSheetAndroidBack or shouldAndroidBackUseSideSheet()) then
+			if getSideSheetVisibility() then
+				if isSideSheetPairedWithPeoplePage() and getIsPeoplePageOpen() then
+					this:SetVisibility(false)
+				else
+					toggleSideSheet(false)
+				end
+			elseif #this.MenuStack > 0 then
+				this:PopMenu(false, true)
+			else
+				toggleSideSheet(true)
+			end
 		else
-			this:PopMenu(false, true)
+			if #this.MenuStack == 0 then
+				this:SetVisibility(true, nil, nil, nil, Constants.AnalyticsMenuOpenTypes.GamepadLeaveGame)
+				this:SwitchToPage(this:GetFirstPageWithTabHeader(), nil, 1)
+			else
+				this:PopMenu(false, true)
+			end
 		end
 	end)
 
@@ -4180,8 +4298,38 @@ local function CreateSettingsHub()
 	end)
 
 	-- DUA: connect exit signal
-	if this.ExitModalPage then
+	local exitModalIXPExposureLogged = false
+	local function logExitModalIXPExposureOnce()
+		if exitModalIXPExposureLogged then
+			return
+		end
+		exitModalIXPExposureLogged = true
+		IXPServiceWrapper:LogFlagLinkedUserLayerExposure(Flags.GetFStringExitModalIXPLayer())
+	end
+
+	if Flags.isExitModalRemoved and isSubjectToDesktopPolicies() then
+		game:GetService("GuiService").NativeClose:Connect(function()
+			if Flags.FFlagEnableExitModalExposure then
+				logExitModalIXPExposureOnce()
+			end
+			leaveGame(false, { shouldNativeExit = true })
+		end)
+
+		if this.FullScreenTitleBar then
+			this.FullScreenTitleBar = SettingsFullScreenTitleBar.update(this.FullScreenTitleBar, {
+				onClose = function()
+					if Flags.FFlagEnableExitModalExposure then
+						logExitModalIXPExposureOnce()
+					end
+					leaveGame(false, { shouldNativeExit = true })
+				end,
+			})
+		end
+	elseif this.ExitModalPage then
 		local function showExitModal()
+			if Flags.FFlagEnableExitModalExposure then
+				logExitModalIXPExposureOnce()
+			end
 			this.HubBar.Visible = false
 			removeBottomBarBindings()
 			if this:GetVisibility() then
@@ -4235,8 +4383,6 @@ local function CreateSettingsHub()
 			end
 		end)
 	end
-
-	if Flags.FFlagCreateInExperienceMenuReact then
 		this.InExperienceMenuReact = Create "Folder" {
 			Name = "InExperienceMenuReact",
 			Parent = this.ClippingShield
@@ -4250,9 +4396,7 @@ local function CreateSettingsHub()
 			leaveGameButton = this["LeaveGameButton"]
 		end
 
-		local TraversalHistoryMenuContainer
-		if Flags.FFlagTraversalPerfFixes then
-			TraversalHistoryMenuContainer = function(props)
+		local TraversalHistoryMenuContainer = function(props)
 				local mounted, setMounted = React.useState(props.showSignal(false) and this.Visible)
 				React.useEffect(function()
 					local disposeShowSignal = Signals.createEffect(function(scope)
@@ -4279,7 +4423,6 @@ local function CreateSettingsHub()
 					}),
 				})
 			end
-		end
 
 		local InExperienceMenuReactRoot = ReactRoblox.createRoot(this.InExperienceMenuReact)
 		InExperienceMenuReactRoot:render(React.createElement(InExperienceMenuReact, nil, {
@@ -4291,40 +4434,21 @@ local function CreateSettingsHub()
 				end,
 				mountTo = this.ReactPage :: GuiObject,
 			}),
-			TraversalHistoryMenuBottomBar = if Flags.FFlagTraversalPerfFixes then React.createElement(TraversalHistoryMenuContainer, {
+			TraversalHistoryMenuBottomBar = React.createElement(TraversalHistoryMenuContainer, {
 				showSignal = this.showBottomBarSignal,
 				parent = leaveGameButton,
 				menuSide = Foundation.Enums.PopoverSide.Top,
 				currentPageChangeSignal = this.CurrentPageSignal,
-			}) else Flags.FFlagAddTraversalHistory and not (Flags.isInExperienceUIVREnabled and isSpatial()) and leaveGameButton
-				and React.createElement(PortalWithFoundationStylelink, {
-					parent = leaveGameButton,
-				}, {
-					TraversalHistoryMenu = React.createElement(TraversalHistoryMenu, {
-						anchorParent = leaveGameButton,
-						idleButtonStateIsDown = true,
-						currentPageChangeSignal = this.CurrentPageSignal,
-					}),
-				}),
-			TraversalHistoryMenuMobileButton = if Flags.FFlagTraversalPerfFixes then React.createElement(TraversalHistoryMenuContainer, {
+			}) ,
+			TraversalHistoryMenuMobileButton = React.createElement(TraversalHistoryMenuContainer, {
 				showSignal = Signals.createComputed(function(scope)
 					return not this.showBottomBarSignal(scope)
 				end),
 				parent = leaveButtonMobile,
 				menuSide = Foundation.Enums.PopoverSide.Bottom,
 				currentPageChangeSignal = this.CurrentPageSignal,
-			}) else Flags.FFlagAddTraversalHistory and not (Flags.isInExperienceUIVREnabled and isSpatial()) and leaveButtonMobile
-				and React.createElement(PortalWithFoundationStylelink, {
-				parent = leaveButtonMobile,
-			}, {
-				TraversalHistoryMenu = React.createElement(TraversalHistoryMenu, {
-					anchorParent = leaveButtonMobile,
-					idleButtonStateIsDown = if Flags.FFlagTraversalLeaveArrowDown then true else false,
-					currentPageChangeSignal = this.CurrentPageSignal,
-				}),
-			}),
+			}) ,
 		}))
-	end
 
 	return this
 end
@@ -4351,6 +4475,11 @@ VRHub.ModuleOpened.Event:connect(function(moduleName)
 end)
 
 local SettingsHubInstance = CreateSettingsHub()
+
+if FFlagSideSheetOpenPeoplePage then
+	setupPeoplePageOpenTracking(SettingsHubInstance)
+	setupInGameMenuPeoplePageActions(SettingsHubInstance)
+end
 
 function moduleApiTable:GetExperienceControlStore()
 	return SettingsHubInstance:GetExperienceControlStore()
@@ -4400,6 +4529,12 @@ end
 
 function moduleApiTable:SwitchToReactPage(page, props, willPortal)
 	SettingsHubInstance:SwitchToReactPage(page, props, willPortal)
+end
+
+if Flags.FFlagAddInviteFriendsIntegration then
+	function moduleApiTable:InviteToGame()
+		SettingsHubInstance:InviteToGame()
+	end
 end
 
 moduleApiTable.RespawnBehaviourChangedEvent = SettingsHubInstance.RespawnBehaviourChangedEvent

@@ -2,23 +2,10 @@ local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
 local Constants = require(Foundation.Constants)
-local Wrappers = require(Foundation.Utility.Wrappers)
-
-local CoreGui = Wrappers.Services.CoreGui
-local RunService = Wrappers.Services.RunService
-local Players = Wrappers.Services.Players
 
 local Flags = require(Foundation.Utility.Flags)
 
-local PlayerGui
-if not Flags.FoundationUseMainGuiUtility then
-	PlayerGui = if Players.LocalPlayer and RunService:IsRunning()
-		then Players.LocalPlayer:WaitForChild("PlayerGui", 3)
-		else nil
-end
-
 local getMainGui = require(Foundation.Utility.getMainGui)
-local isPluginSecurity = require(Foundation.Utility.isPluginSecurity)
 local withDefaults = require(Foundation.Utility.withDefaults)
 local useStyleSheet = require(Foundation.Providers.Style.StyleSheetContext).useStyleSheet
 local Types = require(Foundation.Components.Types)
@@ -38,20 +25,14 @@ local defaultProps = {
 	DisplayOrder = Constants.MAX_LAYOUT_ORDER - 1,
 }
 
-local mainGui = if Flags.FoundationUseMainGuiUtility
-	then getMainGui()
-	else if isPluginSecurity() then CoreGui else PlayerGui
+local moduleMainGui = if Flags.FoundationOverlayResilientMainGui then nil else getMainGui()
 
 local function OverlayProvider(overlayProps: Props)
-	local props = if Flags.FoundationOverlayDisplayOrder then withDefaults(overlayProps, defaultProps) else overlayProps
+	local props = withDefaults(overlayProps, defaultProps)
 	local overlay: GuiBase2d?, setOverlay = React.useState(props.gui)
 	local shouldMountOverlay, setShouldMountOverlay = React.useState(false)
-	local screen = if Flags.FoundationOverlayKeyboardAwarenessHardened and not props.gui
-		then overlay and overlay.Parent :: GuiBase2d?
-		else nil
-	local safeAreaSize = if Flags.FoundationOverlayKeyboardAwareness
-		then useKeyboardAwareSize(if Flags.FoundationOverlayKeyboardAwarenessHardened then screen else overlay)
-		else nil
+	local screen = if not props.gui then overlay and overlay.Parent :: GuiBase2d? else nil
+	local safeAreaSize = useKeyboardAwareSize(screen)
 	local styleSheet = useStyleSheet()
 
 	local requestOverlay = React.useCallback(function()
@@ -60,42 +41,50 @@ local function OverlayProvider(overlayProps: Props)
 		end
 	end, { props.gui })
 
+	local mainGui: Instance? = if Flags.FoundationOverlayResilientMainGui
+		then if props.gui == nil and shouldMountOverlay then getMainGui() else nil
+		else moduleMainGui
+
 	local shouldRender = props.gui == nil and mainGui ~= nil and shouldMountOverlay
 	local overlayInstance = if props.gui ~= nil then props.gui else overlay
-	local screenInstance
-	if Flags.FoundationOverlayKeyboardAwarenessHardened then
-		screenInstance = if props.gui ~= nil then props.gui else screen
-	end
+	local screenInstance = if props.gui ~= nil then props.gui else screen
+
+	local contextValue = if Flags.FoundationStableContextValues
+		then React.useMemo(function()
+			return {
+				requestOverlay = requestOverlay,
+				instance = overlayInstance,
+				screen = screenInstance,
+			}
+		end, { requestOverlay, overlayInstance, screenInstance } :: { unknown })
+		else nil
 
 	return React.createElement(OverlayContext.Provider, {
-		value = {
-			requestOverlay = requestOverlay,
-			instance = overlayInstance,
-			screen = screenInstance,
-		},
+		value = if Flags.FoundationStableContextValues
+			then contextValue
+			else {
+				requestOverlay = requestOverlay,
+				instance = overlayInstance,
+				screen = screenInstance,
+			},
 	}, {
 		FoundationOverlay = if shouldRender
 			then ReactRoblox.createPortal(
 				React.createElement("ScreenGui", {
 					Enabled = true,
 					-- Biggest DisplayOrder allowed. Don't try math.huge, it causes an overflow
-					DisplayOrder = if Flags.FoundationOverlayDisplayOrder
-						then props.DisplayOrder
-						else Constants.MAX_LAYOUT_ORDER - 1,
+					DisplayOrder = props.DisplayOrder,
 					ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 					ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets,
 					SafeAreaCompatibility = Enum.SafeAreaCompatibility.None,
 					ClipToDeviceSafeArea = false,
-					ref = if not Flags.FoundationOverlayKeyboardAwareness then setOverlay else nil,
 				}, {
-					SafeAreaFrame = if Flags.FoundationOverlayKeyboardAwareness
-						then React.createElement("Frame", {
-							Size = safeAreaSize,
-							BackgroundTransparency = 1,
-							BorderSizePixel = 0,
-							ref = setOverlay,
-						})
-						else nil,
+					SafeAreaFrame = React.createElement("Frame", {
+						Size = safeAreaSize,
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						ref = setOverlay,
+					}),
 					FoundationStyleLink = React.createElement("StyleLink", {
 						StyleSheet = styleSheet,
 					}),

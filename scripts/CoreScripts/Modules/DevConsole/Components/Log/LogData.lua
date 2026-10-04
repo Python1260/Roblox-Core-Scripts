@@ -22,9 +22,18 @@ local convertTimeStamp = require(script.Parent.Parent.Parent.Util.convertTimeSta
 local LogData = {}
 LogData.__index = LogData
 
-local function messageEntry(msg, timeAsStr, type)
-	local fmtMessage
-	local charCount = #msg
+export type MessageEntry = {
+	Message: string,
+	CharCount: number,
+	Type: number,
+	Dims: Vector2,
+	Context: { [string]: any }?,
+	Expanded: boolean,
+}
+
+local function messageEntry(msg: string, timeAsStr: string, type: number, context: { [string]: any }?): MessageEntry
+	local fmtMessage: string
+	local charCount: number = #msg
 	if charCount < MAX_STRING_SIZE then
 		fmtMessage = string.format("%s -- %s", timeAsStr, msg)
 	else
@@ -33,11 +42,17 @@ local function messageEntry(msg, timeAsStr, type)
 
 	local dims = TextService:GetTextSize(fmtMessage, FONT_SIZE, FONT, Vector2.new())
 
+	if context and next(context) == nil then
+		context = nil
+	end
+
 	return {
 		Message = fmtMessage,
 		CharCount = charCount,
 		Type = type,
 		Dims = dims,
+		Context = context,
+		Expanded = false,
 	}
 end
 
@@ -273,7 +288,8 @@ function LogData:start()
 					local message = messageEntry(
 						msg.message or "[DevConsole Error 1]",
 						convertTimeStamp(msg.timestamp),
-						msg.messageType.Value
+						msg.messageType.Value,
+						msg.context
 					)
 					if not ignoreWarningMessageOnAdd(message) then
 						self:checkErrorWarningCounter(msg.messageType.Value)
@@ -283,11 +299,12 @@ function LogData:start()
 			end
 		end
 
-		self._connection = LogService.MessageOut:connect(function(text, messageType)
+		self._connection = LogService.MessageOut:connect(function(text, messageType, context)
 			local message = messageEntry(
 				text or "[DevConsole Error 2]",
 				convertTimeStamp(os.time()),
-				messageType.Value
+				messageType.Value,
+				context
 			)
 
 			if not ignoreWarningMessageOnAdd(message) then
@@ -305,11 +322,12 @@ function LogData:start()
 			end
 		end)
 	else
-		self._connection = LogService.ServerMessageOut:connect(function(text, messageType, timestamp)
+		self._connection = LogService.ServerMessageOut:connect(function(text, messageType, timestamp, context)
 			local message = messageEntry(
 				text or "[DevConsole Error 3]",
 				convertTimeStamp(timestamp),
-				messageType.Value
+				messageType.Value,
+				context
 			)
 
 			if not ignoreWarningMessageOnAdd(message) then
@@ -326,6 +344,37 @@ function LogData:start()
 			end
 		end)
 
+		pcall(function()
+			self._variantConnection = LogService.ServerContextOut:connect(function(data)
+				if type(data) == "table" and data["_structuredContext"] then
+					local text = data["_message"] or ""
+					local msgType = data["_messageType"] or 0
+					local timestamp = data["_timestamp"] or 0
+					local context = data["_structuredContext"]
+
+					local message = messageEntry(
+						text,
+						convertTimeStamp(timestamp),
+						msgType,
+						context
+					)
+
+					if not ignoreWarningMessageOnAdd(message) then
+						self._logData:push_back(message)
+
+						if #self._logDataSearched:getData() > 0 then
+							if isMessageFiltered(message, self._filters, self._searchTerm) then
+								self._logDataSearched:push_back(message)
+								self._logDataUpdate:Fire(self._logDataSearched)
+							end
+						else
+							self._logDataUpdate:Fire(self._logData)
+						end
+					end
+				end
+			end)
+		end)
+
 		LogService:RequestServerOutput()
 	end
 	
@@ -338,6 +387,9 @@ function LogData:stop()
 
 	if self._connection then
 		self._connection:Disconnect()
+	end
+	if self._variantConnection then
+		self._variantConnection:Disconnect()
 	end
 end
 

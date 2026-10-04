@@ -1,11 +1,10 @@
 local Foundation = script:FindFirstAncestor("Foundation")
-local Flags = require(Foundation.Utility.Flags)
 local Types = require(Foundation.Components.Types)
 type PartialColorHSV = Types.PartialColorHSV
 
 -- For partial HSV, uses 100 for missing S/V. Callers use isPartialHSV when they need to treat partial as "no color".
 local function toColor3(value: Color3 | PartialColorHSV): Color3
-	if not Flags.FoundationColorPickerPartialHSV or typeof(value) == "Color3" then
+	if typeof(value) == "Color3" then
 		return value :: Color3
 	end
 
@@ -16,7 +15,7 @@ local function toColor3(value: Color3 | PartialColorHSV): Color3
 end
 
 local function isPartialHSV(value: Color3 | PartialColorHSV): boolean
-	if not Flags.FoundationColorPickerPartialHSV or typeof(value) == "Color3" then
+	if typeof(value) == "Color3" then
 		return false
 	end
 	local hsv = value :: PartialColorHSV

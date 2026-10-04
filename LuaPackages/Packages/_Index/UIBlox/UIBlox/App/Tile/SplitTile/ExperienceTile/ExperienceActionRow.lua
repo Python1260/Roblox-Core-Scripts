@@ -42,6 +42,11 @@ export type Props = {
 	feedbackType: string?,
 	-- ButtonType override for the button
 	buttonType: string?,
+	-- Whether the button should show a loading state
+	buttonLoading: boolean?,
+	-- Force UIBlox button render regardless of the useFoundationButton config flag.
+	-- DO NOT USE: internal escape hatch, not intended for external consumers.
+	DO_NOT_USE_useUIBloxButton: boolean?,
 }
 
 local function ExperienceActionRow(props: Props)
@@ -78,7 +83,9 @@ local function ExperienceActionRow(props: Props)
 			userInteractionEnabled = isActionable,
 			onActivated = props.onPlayPressed or NOOP,
 			isDisabled = not isActionable,
+			isLoading = props.buttonLoading,
 			feedbackType = props.feedbackType,
+			DO_NOT_USE_useUIBloxButton = props.DO_NOT_USE_useUIBloxButton,
 		})
 	end
 end

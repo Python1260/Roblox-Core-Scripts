@@ -19,25 +19,33 @@ local function getPlayerGui(): Instance?
 	return Players.LocalPlayer:WaitForChild("PlayerGui", 3)
 end
 
-local function getMainGui(): Instance
-	if not Flags.FoundationUseMainGuiUtility then
-		error("FoundationUseMainGuiUtility is not enabled")
-	end
-
+local function getMainGui(): Instance?
 	if isPluginSecurity() then
 		return CoreGui
 	end
 
-	if not gotPlayerGui then
-		playerGui = getPlayerGui()
-		gotPlayerGui = true
-	end
+	if Flags.FoundationOverlayResilientMainGui then
+		if playerGui == nil then
+			playerGui = getPlayerGui()
+		end
 
-	if playerGui then
+		-- It's possible a LayerCollector has not been resolved by this point.
+		-- Previously, we would throw an error but that would crash use cases that
+		-- don't have a LayerCollector, like Luau Execution sessions (rocale-cli) or
+		-- user-level plugins, like Flipbook.
 		return playerGui
-	end
+	else
+		if not gotPlayerGui then
+			playerGui = getPlayerGui()
+			gotPlayerGui = true
+		end
 
-	error("PlayerGui not found")
+		if playerGui then
+			return playerGui
+		end
+
+		error("PlayerGui not found")
+	end
 end
 
 return getMainGui

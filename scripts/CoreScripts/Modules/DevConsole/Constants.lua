@@ -1,4 +1,5 @@
 local FFlagDevConsoleDownArrowIconFix = game:DefineFastFlag("DevConsoleDownArrowIconFix", false)
+local FFlagSlimDevConsole = game:DefineFastFlag("SlimDevConsole2", false)
 
 local Constants = {
 	MainWindowInit = {
@@ -85,6 +86,7 @@ local Constants = {
 		MainWindowHeader = Enum.Font.SourceSansBold,
 		Log = Enum.Font.Code,
 		Search = Enum.Font.Code,
+		Mono = Enum.Font.Code,
 	},
 	GeneralFormatting = {
 		NoResultSearchStr = "Did not find results for \"%s.\"",
@@ -265,7 +267,7 @@ local Constants = {
 
 	DebugVisualizationsFormatting = {
 		ChartHeaderNames = {"Name", "Toggle", "Draw Type", "Tags"},
-		ChartCellWidths = {60, 80}, -- width of cells 2-4; cell 1 fills remainder
+		ChartCellWidths = {if FFlagSlimDevConsole then 170 else 60, 80}, -- width of cells 2-4; cell 1 fills remainder
 		CellPadding = 16,
 		ExpandArrowPadding = 12,
 		HeaderFrameHeight = 20,

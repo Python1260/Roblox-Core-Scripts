@@ -11,8 +11,11 @@
 
 local inputContexts = script.Parent.Parent:WaitForChild("InputContexts")
 local vehicleContext = inputContexts:WaitForChild("VehicleContext")
-local throttleAction = vehicleContext:WaitForChild("Throttle") :: InputAction
-local steerAction = vehicleContext:WaitForChild("Steer") :: InputAction
+local throttleAction = vehicleContext:WaitForChild("ThrottleAction") :: InputAction
+local steerAction = vehicleContext:WaitForChild("SteerAction") :: InputAction
+
+local CommonUtils = require(script.Parent.Parent:WaitForChild("CommonUtils"))
+local FlagUtil = CommonUtils.get("FlagUtil")
 
 local VehicleController = {}
 VehicleController.__index = VehicleController
@@ -56,7 +59,9 @@ function VehicleController:Update(moveVector: Vector3, cameraRelative: boolean)
 		-- This is the default steering mode
 		local throttle = throttleAction:GetState()
 		local steer = steerAction:GetState()
-		moveVector = moveVector + Vector3.new(steer, 0, throttle)
+
+		moveVector = moveVector + Vector3.new(steer, 0, -throttle)
+
 		self.vehicleSeat.ThrottleFloat = -moveVector.Z
 		self.vehicleSeat.SteerFloat = moveVector.X
 

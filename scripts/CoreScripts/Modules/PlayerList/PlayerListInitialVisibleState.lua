@@ -15,23 +15,59 @@ local FFlagPlayerListPersistVisibility = require(PlayerList.Flags.FFlagPlayerLis
 local FStringPlayerListOverrideType = require(PlayerList.Flags.FStringPlayerListOverrideType)
 local FFlagEnableMobilePlayerListOnConsole = PlayerListPackage.Flags.FFlagEnableMobilePlayerListOnConsole
 local FFlagPlayerListUseMobileOnSmallDisplay = PlayerListPackage.Flags.FFlagPlayerListUseMobileOnSmallDisplay
+local FFlagPlayerListReskin = PlayerListPackage.Flags.FFlagPlayerListReskin
+local FFlagLuaSupportMicroGamepadPreferredInput =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagLuaSupportMicroGamepadPreferredInput
+
+local function isTouchOrGamepad(): boolean
+	return UserInputService.PreferredInput == Enum.PreferredInput.Touch
+		or UserInputService.PreferredInput == Enum.PreferredInput.Gamepad
+		or (
+			FFlagLuaSupportMicroGamepadPreferredInput
+			and UserInputService.PreferredInput == Enum.PreferredInput.MicroGamepad
+		)
+end
+
+-- Reskin console-mobile routing kicks in only when the device would otherwise be a
+-- TenFoot user — Large display AND touch/gamepad input. Display size alone can
+-- misclassify a desktop on a very large monitor (APPEXP-3482 established this on the
+-- Small side; the Large side needs the symmetric check). Uses ViewportDisplaySize
+-- rather than TenFootInterface — the latter is being retired across PlayerList (see
+-- APPEXP-3354). Also requires FFlagEnableMobilePlayerListOnConsole so a PC user
+-- with a gamepad is not treated as console.
+local function isReskinConsoleMobileRoute(): boolean
+	return FFlagPlayerListReskin
+		and FFlagEnableMobilePlayerListOnConsole
+		and GuiService.ViewportDisplaySize == Enum.DisplaySize.Large
+		and isTouchOrGamepad()
+end
 
 local function isSmallTouchScreen()
 	if _G.__TESTEZ_RUNNING_TEST__ then
 		return false
 	end
-	local isSmallDisplaySize = if FFlagPlayerListUseMobileOnSmallDisplay then GuiService.ViewportDisplaySize == Enum.DisplaySize.Small else false
-	local isLargeDisplaySize = if FFlagEnableMobilePlayerListOnConsole then GuiService.ViewportDisplaySize == Enum.DisplaySize.Large else false
-	local isTouchOrGamepad = if FFlagEnableMobilePlayerListOnConsole or FFlagPlayerListUseMobileOnSmallDisplay then UserInputService.PreferredInput == Enum.PreferredInput.Touch or UserInputService.PreferredInput == Enum.PreferredInput.Gamepad else false
-	return SettingsUtil:IsSmallTouchScreen() 
-		or (FFlagEnableMobilePlayerListOnConsole and isLargeDisplaySize and isTouchOrGamepad) 
-		or (FFlagPlayerListUseMobileOnSmallDisplay and isSmallDisplaySize and isTouchOrGamepad) 
+	if isReskinConsoleMobileRoute() then
+		return true
+	end
+	local isSmallDisplaySize = if FFlagPlayerListUseMobileOnSmallDisplay
+		then GuiService.ViewportDisplaySize == Enum.DisplaySize.Small
+		else false
+	local isLargeDisplaySize = if FFlagEnableMobilePlayerListOnConsole
+		then GuiService.ViewportDisplaySize == Enum.DisplaySize.Large
+		else false
+	local isTouchOrGamepadForFallback = if FFlagEnableMobilePlayerListOnConsole
+			or FFlagPlayerListUseMobileOnSmallDisplay
+		then isTouchOrGamepad()
+		else false
+	return SettingsUtil:IsSmallTouchScreen()
+		or (FFlagEnableMobilePlayerListOnConsole and isLargeDisplaySize and isTouchOrGamepadForFallback)
+		or (FFlagPlayerListUseMobileOnSmallDisplay and isSmallDisplaySize and isTouchOrGamepadForFallback)
 		or (FStringPlayerListOverrideType == "mobile")
 end
 
 return function()
-	return not isSmallTouchScreen() 
-		and not VRService.VREnabled 
-		and (FFlagEnableMobilePlayerListOnConsole or not TenFootInterface:IsEnabled()) 
+	return not isSmallTouchScreen()
+		and not VRService.VREnabled
+		and (isReskinConsoleMobileRoute() or FFlagEnableMobilePlayerListOnConsole or not TenFootInterface:IsEnabled())
 		and (if FFlagPlayerListPersistVisibility then UserSettings().GameSettings.PlayerListVisible else true)
 end

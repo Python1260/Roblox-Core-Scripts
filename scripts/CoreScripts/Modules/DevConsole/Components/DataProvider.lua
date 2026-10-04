@@ -16,11 +16,14 @@ local ServerJobsData = require(Components.ServerJobs.ServerJobsData)
 local DebugVisualizationsData = require(Components.DebugVisualizations.DebugVisualizationsData)
 local LuauHeapData = require(Components.LuauHeap.LuauHeapData)
 local VoiceChatData = require(Components.VoiceChat.VoiceChatData)
+local VoiceDebugData = require(Components.VoiceDebug.VoiceDebugData)
+local getFFlagVoiceDebugConsoleV2 = require(Components.VoiceDebug.GetFFlagVoiceDebugConsoleV2)
 local DataContext = require(Components.DataContext)
 
 local DataProvider = Roact.Component:extend("DataProvider")
 
 local VoiceChatDevConsoleEngineFeatureEnabled = game:GetEngineFeature("VoiceChatDevConsoleTabEnabled")
+local FFlagDevConsoleStartDataOnMount = game:DefineFastFlag("DevConsoleStartDataOnMount", false)
 
 function DataProvider:init()
 	self:setState({
@@ -38,7 +41,12 @@ function DataProvider:init()
 			ServerJobsData = ServerJobsData.new(),
 			DebugVisualizationsData = DebugVisualizationsData.new(),
 			LuauHeapData = LuauHeapData.new(),
-			VoiceChatData = if VoiceChatDevConsoleEngineFeatureEnabled then VoiceChatData.new() else nil,
+			VoiceChatData = if VoiceChatDevConsoleEngineFeatureEnabled and not getFFlagVoiceDebugConsoleV2()
+				then VoiceChatData.new()
+				else nil,
+			VoiceDebugData = if VoiceChatDevConsoleEngineFeatureEnabled and getFFlagVoiceDebugConsoleV2()
+				then VoiceDebugData.new()
+				else nil,
 		},
 	})
 end
@@ -46,9 +54,21 @@ end
 function DataProvider:didMount()
 	self.state.DevConsoleData.ClientLogData:start()
 	self.state.DevConsoleData.ClientMemoryData:start()
-	
+
 	if VoiceChatDevConsoleEngineFeatureEnabled then
-		self.state.DevConsoleData.VoiceChatData:start()
+		if getFFlagVoiceDebugConsoleV2() then
+			self.state.DevConsoleData.VoiceDebugData:start()
+		else
+			self.state.DevConsoleData.VoiceChatData:start()
+		end
+	end
+
+	if FFlagDevConsoleStartDataOnMount and self.props.isDeveloperView then
+		for _, dataProvider in pairs(self.state.DevConsoleData) do
+			if not dataProvider:isRunning() then
+				dataProvider:start()
+			end
+		end
 	end
 end
 

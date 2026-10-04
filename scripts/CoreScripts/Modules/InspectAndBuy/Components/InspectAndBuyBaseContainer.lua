@@ -8,15 +8,17 @@ local GuiService = game:GetService("GuiService")
 local CoreGui = game:GetService("CoreGui")
 local InspectAndBuyFolder = script.Parent.Parent
 local React = require(CorePackages.Packages.React)
-local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local AvatarExperienceFlags = require(CorePackages.Workspace.Packages.AvatarExperienceFlags)
 local AvatarViewport = require(InspectAndBuyFolder.Components.AvatarViewport)
 local AvatarExperienceInspectAndBuy = require(CorePackages.Workspace.Packages.AvatarExperienceInspectAndBuy)
+local AvatarExperienceTimedOptions = require(CorePackages.Workspace.Packages.AvatarExperienceTimedOptions)
+local PopoverFocusRestorationContext = AvatarExperienceTimedOptions.PopoverFocusRestorationContext
 local useViewBreakpoints = AvatarExperienceInspectAndBuy.Hooks.useViewBreakpoints
 local ResponsivePanelLayout = AvatarExperienceInspectAndBuy.Components.ResponsivePanelLayout
 local useResponsivePanelLayoutProps = AvatarExperienceInspectAndBuy.Hooks.useResponsivePanelLayoutProps
 local applyTryOnItemToHumanoidDescription = AvatarExperienceInspectAndBuy.Utils.applyTryOnItemToHumanoidDescription
 local useInspectAndBuyFocusNavigation = AvatarExperienceInspectAndBuy.Hooks.useInspectAndBuyFocusNavigation
+local buildBulkPurchaseAnalyticsPayload = AvatarExperienceInspectAndBuy.Utils.buildBulkPurchaseAnalyticsPayload
 
 local UpdateBulkPuchaseResults = require(InspectAndBuyFolder.Actions.UpdateBulkPuchaseResults)
 local GetProductInfo = require(InspectAndBuyFolder.Thunks.GetProductInfo)
@@ -30,7 +32,10 @@ local PromptPurchase = require(InspectAndBuyFolder.Thunks.PromptPurchase)
 local GetItemDetails = require(InspectAndBuyFolder.Thunks.GetItemDetails)
 local RoactUtils = require(CorePackages.Workspace.Packages.RoactUtils)
 local useDispatch = RoactUtils.Hooks.RoactRodux.useDispatch
-local ItemTypeEnum = require(CorePackages.Workspace.Packages.AvatarExperienceCommon).Enums.ItemTypeEnum
+local useSelector = RoactUtils.Hooks.RoactRodux.useSelector
+local AvatarExperienceModel = require(CorePackages.Workspace.Packages.AvatarExperienceModel)
+local ItemTypeEnum = AvatarExperienceModel.Enums.ItemTypeEnum
+type ItemType = AvatarExperienceModel.ItemType
 local OpenOverlay = require(InspectAndBuyFolder.Actions.OpenOverlay)
 local OverlayEnum = require(InspectAndBuyFolder.Enums.Overlay)
 local Overlay = require(InspectAndBuyFolder.Components.Overlay)
@@ -38,34 +43,63 @@ local Overlay = require(InspectAndBuyFolder.Components.Overlay)
 local useUnifiedEventListenerInExperience =
 	require(CorePackages.Workspace.Packages.AvatarExperienceAnalytics).useUnifiedEventListener.useUnifiedEventListenerInExperience
 
+local SignalsReact = require(CorePackages.Packages.SignalsReact)
+local useSignalState = SignalsReact.useSignalState
+
 local Foundation = require(CorePackages.Packages.Foundation)
 local useTokens = Foundation.Hooks.useTokens
 local Modules = CoreGui.RobloxGui.Modules
 local Theme = require(Modules.Settings.Theme)
 local TopBarConstants = require(Modules.TopBar.Constants)
+local tutils = require(CorePackages.Packages.tutils)
 
 type PromptBulkPurchaseFinishedResult = AvatarExperienceInspectAndBuy.PromptBulkPurchaseFinishedResult
 type AvatarItem = AvatarExperienceInspectAndBuy.AvatarItem
 type TryOnItem = AvatarExperienceInspectAndBuy.TryOnItem
 type LocalPlayerModel = AvatarExperienceInspectAndBuy.LocalPlayerModel
+type PriceStatus = AvatarExperienceInspectAndBuy.PriceStatus
+type AssetInfo = AvatarExperienceInspectAndBuy.AssetInfo
+type ItemData = AvatarExperienceInspectAndBuy.ItemData
+type InspectAndBuyState = AvatarExperienceInspectAndBuy.InspectAndBuyState
 
 -- this flag controls whether the avatar model rotates when the user is not interacting with it
 local FFlagEnableAvatarViewportAutoRotation = game:DefineFastFlag("EnableAvatarViewportAutoRotation", false)
 -- this fint controls the zoom of the viewport camera
 local FIntViewportCameraFieldOfView = game:DefineFastInt("AXViewportCameraFieldOfView", 68)
-local FFlagIBV2Attribution = SharedFlags.FFlagIBV2Attribution
 local FFlagAXEnableBatchItemDetailsFetchV2 = AvatarExperienceFlags.FFlagAXEnableBatchItemDetailsFetchV2
 local FFlagAXEnableInspectAndBuyFocusNavigation = AvatarExperienceFlags.FFlagAXEnableInspectAndBuyFocusNavigation
+local ItemSelectionStoreContext = AvatarExperienceInspectAndBuy.Contexts.ItemSelectionStoreContext
+local ItemSelectionStoreProvider = ItemSelectionStoreContext.Provider
+local useItemSelectionStore = ItemSelectionStoreContext.useItemSelectionStore
 
 export type InspectAndBuyBaseContainerProps = {
 	localPlayerModel: LocalPlayerModel?,
 	analytics: any, -- Analytics service instance
 }
 
+local getAssetsMap = function(state: InspectAndBuyState)
+	return state.assets
+end
+
+local getCollectibleResellableInstances = function(state: InspectAndBuyState)
+	return state.collectibleResellableInstances
+end
+
+local getBundlesMap = function(state: InspectAndBuyState)
+	return state.bundles
+end
+
 local function InspectAndBuyBaseContainer(props)
 	local viewBreakpoints = useViewBreakpoints(TopBarConstants.TopBarHeight)
 	local tokens = useTokens()
 	local dispatch = useDispatch()
+
+	local itemSelectionStore = useItemSelectionStore()
+	local itemDataMap = useSignalState(itemSelectionStore.getItemDataMap)
+
+	local assetsMap = useSelector(getAssetsMap, tutils.deepEqual)
+	local collectibleResellableInstances = useSelector(getCollectibleResellableInstances, tutils.deepEqual)
+	local bundlesMap = useSelector(getBundlesMap, tutils.deepEqual)
 
 	--[[
 		Close and unmount the inspect and buy menu
@@ -77,23 +111,44 @@ local function InspectAndBuyBaseContainer(props)
 	--[[
 		When a bulk purchase is finished, update the bulk purchase results (owndership status)
 	]]
-	local onBulkPurchaseFinished = React.useCallback(function(player, status, result: PromptBulkPurchaseFinishedResult)
-		dispatch(UpdateBulkPuchaseResults(result))
+	local onBulkPurchaseFinished = React.useCallback(
+		function(player, status, result: PromptBulkPurchaseFinishedResult)
+			dispatch(UpdateBulkPuchaseResults(result))
 
-		-- refresh the item card price line content (mainly for resale items)
-		for _, item in result.Items do
-			-- only report purchase success if the item was purchased successfully
-			if item.status == Enum.MarketplaceItemPurchaseStatus.Success then
-				if item.type == Enum.MarketplaceProductType.AvatarAsset then
-					props.analytics.reportPurchaseSuccess(ItemTypeEnum.Asset, item.id)
-					dispatch(GetItemDetails(item.id, Enum.AvatarItemType.Asset))
-				elseif item.type == Enum.MarketplaceProductType.AvatarBundle then
-					props.analytics.reportPurchaseSuccess(ItemTypeEnum.Bundle, item.id)
-					dispatch(GetItemDetails(item.id, Enum.AvatarItemType.Bundle))
+			-- refresh the item card price line content (mainly for resale items)
+			for _, item in result.Items do
+				-- only report purchase success if the item was purchased successfully
+				if item.status == Enum.MarketplaceItemPurchaseStatus.Success then
+					local isAsset = item.type == Enum.MarketplaceProductType.AvatarAsset
+					local itemId = item.id
+					local itemAvatarType = if isAsset then Enum.AvatarItemType.Asset else Enum.AvatarItemType.Bundle
+					local itemTypeEnum: ItemType = if isAsset then ItemTypeEnum.Asset else ItemTypeEnum.Bundle
+
+					local storedData = itemDataMap[tostring(itemId)]
+					local payload = buildBulkPurchaseAnalyticsPayload({
+						itemId = tostring(itemId),
+						itemType = itemTypeEnum,
+						assetsMap = assetsMap,
+						bundlesMap = bundlesMap,
+						collectibleResellableInstances = collectibleResellableInstances,
+						storedData = storedData,
+					})
+					if payload then
+						props.analytics.reportPurchaseSuccessUnifiedEvent(itemTypeEnum, itemId, payload)
+					end
+					dispatch(GetItemDetails(itemId, itemAvatarType))
 				end
 			end
-		end
-	end, { dispatch })
+		end,
+		{
+			dispatch,
+			assetsMap,
+			bundlesMap,
+			collectibleResellableInstances,
+			itemDataMap,
+			props.analytics.reportPurchaseSuccessUnifiedEvent,
+		} :: { any }
+	)
 
 	--[[
 		when item details is opened, we need to call additional APIs to get more information
@@ -110,7 +165,7 @@ local function InspectAndBuyBaseContainer(props)
 			dispatch(GetFavoriteForAsset(item.id))
 			dispatch(GetProductInfo(item.id))
 
-			if FFlagIBV2Attribution and FFlagAXEnableBatchItemDetailsFetchV2 then
+			if FFlagAXEnableBatchItemDetailsFetchV2 then
 				-- IEC attribution currently only supported for assets.
 				dispatch(GetItemDetails(item.id, Enum.AvatarItemType.Asset))
 			end
@@ -138,11 +193,9 @@ local function InspectAndBuyBaseContainer(props)
 		end
 	end, { dispatch })
 
-	local openAttributionOverlay = if FFlagIBV2Attribution
-		then React.useCallback(function(experienceInfo)
-			dispatch(OpenOverlay(OverlayEnum.AttributionTraversal, experienceInfo))
-		end, { dispatch })
-		else nil
+	local openAttributionOverlay = React.useCallback(function(experienceInfo)
+		dispatch(OpenOverlay(OverlayEnum.AttributionTraversal, experienceInfo))
+	end, { dispatch })
 
 	--[[
 	Prompts a purchase for a single item.
@@ -228,7 +281,7 @@ local function InspectAndBuyBaseContainer(props)
 		onBulkPurchaseFinished = onBulkPurchaseFinished,
 		onItemDetailsOpened = onItemDetailsOpened,
 		onToggleFavorite = onToggleFavorite,
-		openAttributionOverlay = if FFlagIBV2Attribution then openAttributionOverlay else nil,
+		openAttributionOverlay = openAttributionOverlay,
 		onPromptPurchase = onPromptPurchase,
 		renderTryOnViewport = renderTryOnViewport,
 		localPlayerModel = props.localPlayerModel :: LocalPlayerModel,
@@ -241,7 +294,7 @@ local function InspectAndBuyBaseContainer(props)
 		-- Focus navigation (handles purchase modal detection and auto-focus)
 		local focusNavigationConfig = useInspectAndBuyFocusNavigation()
 
-		return React.createElement("Frame", {
+		local focusNavigationFrame = React.createElement("Frame", {
 			ref = focusNavigationConfig.setFocusRef,
 			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
@@ -282,9 +335,18 @@ local function InspectAndBuyBaseContainer(props)
 					}),
 					ResponsivePanelLayout = React.createElement(ResponsivePanelLayout, responsivePanelLayoutProps),
 				}),
-				Overlay = if FFlagIBV2Attribution then React.createElement(Overlay) else nil,
+				Overlay = React.createElement(Overlay),
 			}),
 		})
+
+		-- Opt this CoreScripts subtree into manual popover-anchor focus restoration:
+		-- useGlobalFocusHandler is not mounted here, so timed-options popovers cannot
+		-- rely on it + SelectionGroup memory to return focus to the trigger on close.
+		return React.createElement(PopoverFocusRestorationContext.Provider, {
+			value = true,
+		}, {
+			InspectAndBuyContent = focusNavigationFrame,
+		}) :: React.ReactElement<any, any>
 	else
 		return React.createElement(Foundation.View, {
 			Size = viewBreakpoints.OverlaySize,
@@ -316,9 +378,15 @@ local function InspectAndBuyBaseContainer(props)
 				}),
 				ResponsivePanelLayout = React.createElement(ResponsivePanelLayout, responsivePanelLayoutProps),
 			}),
-			Overlay = if FFlagIBV2Attribution then React.createElement(Overlay) else nil,
+			Overlay = React.createElement(Overlay),
 		}) :: any
 	end
 end
 
-return InspectAndBuyBaseContainer
+local function InspectAndBuyBaseContainerWithSignalsProvider(props)
+	return React.createElement(ItemSelectionStoreProvider :: any, {}, {
+		Inner = React.createElement(InspectAndBuyBaseContainer, props),
+	})
+end
+
+return InspectAndBuyBaseContainerWithSignalsProvider

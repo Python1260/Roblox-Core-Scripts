@@ -36,6 +36,8 @@ export type MenuProps = {
 	size: InputSize?,
 	-- Width of the component. If not specified, the menu is sized based on the content.
 	width: UDim?,
+	-- Maximum height after which the menu starts scrolling
+	maxHeight: number?,
 	-- The side the popover should be anchored to
 	side: PopoverSide?,
 	-- The alignment of the popover relative to the anchor
@@ -85,7 +87,7 @@ local function Menu(menuProps: MenuProps, ref: React.Ref<GuiObject>?)
 				align = props.align,
 				hasArrow = false,
 				onPressedOutside = props.onPressedOutside,
-				backgroundStyle = tokens.Color.Surface.Surface_100,
+				backgroundStyle = tokens.Color.Surface.Surface_200,
 				radius = Radius.Medium,
 				ref = ref,
 				selection = props.selection,
@@ -96,7 +98,9 @@ local function Menu(menuProps: MenuProps, ref: React.Ref<GuiObject>?)
 					items = props.items,
 					size = props.size,
 					width = props.width,
+					maxHeight = props.maxHeight,
 					onActivated = props.onActivated,
+					onNestedLeafActivated = props.onPressedOutside,
 					radius = Radius.Medium,
 				}),
 			})

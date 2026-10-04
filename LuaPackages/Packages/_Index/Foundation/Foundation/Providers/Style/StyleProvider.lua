@@ -1,85 +1,88 @@
 local Style = script.Parent
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
-local Dash = require(Packages.Dash)
 local React = require(Packages.React)
 
+local ColorMode = require(Foundation.Enums.ColorMode)
 local Device = require(Foundation.Enums.Device)
-local Flags = require(Foundation.Utility.Flags)
-local StyleSheet = require(Foundation.StyleSheet)
 local StyleSheetContext = require(Style.StyleSheetContext)
 local TagsContext = require(Style.TagsContext)
 local TextSizeOffsetContext = require(Style.TextSizeOffsetContext)
-local Theme = require(Foundation.Enums.Theme)
+local ThemeName = require(Foundation.Enums.ThemeName)
 local Tokens = require(Style.Tokens)
 local TokensContext = require(Style.TokensContext)
 local VariantsContext = require(Style.VariantsContext)
 local getTextSizeOffset = require(Foundation.Utility.getTextSizeOffset)
 local usePreferences = require(Foundation.Providers.Preferences.usePreferences)
-local useTagsState = require(Style.useTagsState)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
 local getTokens = Tokens.getTokens
 
 export type StyleProviderProps = {
-	theme: Theme,
+	-- The app-level theme (e.g. Default, Kids) to resolve tokens and styles for.
+	themeName: ThemeName?,
+	-- The color mode (Light/Dark) to resolve tokens and styles for.
+	-- Takes precedence over `theme` when both are provided.
+	colorMode: ColorMode?,
+	-- **Deprecated**. Use `colorMode` instead. Kept for backward compatibility.
+	theme: ColorMode?,
 	device: Device?,
 	scale: number?,
 	-- **Deprecated**. Use useStyleSheet hook insteads to derive the Foundation styles.
 	-- Ignored when FoundationDisableStyleProviderDerives is enabled.
 	derives: { StyleSheet }?,
+	-- Partial token overrides to apply on top of the base tokens.
+	-- Allows remapping token values (e.g., Color.Surface.Surface_0 to a different color path).
+	-- With FoundationTokenOverrides: map values are source paths (strings) or literals; both are validated against the target token shape.
+	-- Only available when FoundationTokenOverrides flag is enabled.
+	tokenOverrides: Tokens.TokenOverrides?,
 	children: React.ReactNode,
 }
 
-type Theme = Theme.Theme
+type ColorMode = ColorMode.ColorMode
 type Device = Device.Device
+type ThemeName = ThemeName.ThemeName
 type Tokens = Tokens.Tokens
+type TokenOverrides = Tokens.TokenOverrides
 
-local useRegistryStyleSheet = if Flags.FoundationUseStyleSheetRegistry
-	then require(Style.useRegistryStyleSheet)
-	else nil :: never
+local useRegistryStyleSheet = require(Style.useRegistryStyleSheet)
 
 -- After join, there are no optional values
 local defaultStyle = {
-	theme = Theme.Dark :: Theme,
+	themeName = ThemeName.Default,
+	colorMode = ColorMode.Dark :: ColorMode,
 	device = Device.Desktop :: Device,
 	scale = 1,
 }
 
-function StyleSheetContextWrapper(props: {
-	setStyleSheetRef: { current: ((StyleSheet?) -> ()) | nil }?,
-	children: React.ReactNode,
-})
-	local styleSheet, setStyleSheet = React.useState(nil :: StyleSheet?)
-	if props.setStyleSheetRef and props.setStyleSheetRef.current ~= setStyleSheet then
-		props.setStyleSheetRef.current = setStyleSheet
-	end
-
-	return React.createElement(StyleSheetContext.Provider, {
-		value = styleSheet or Dash.None,
-	}, props.children)
-end
-
 local function StyleProvider(styleProviderProps: StyleProviderProps)
 	local props = withDefaults({
-		theme = styleProviderProps.theme,
+		themeName = styleProviderProps.themeName,
+		colorMode = styleProviderProps.colorMode or styleProviderProps.theme,
 		device = styleProviderProps.device,
 		scale = styleProviderProps.scale,
 	}, defaultStyle)
 
-	-- Hack to update the sibling node, without rerendering the parent
-	local setStyleSheetRef = if not Flags.FoundationUseStyleSheetRegistry
-		then React.useRef(nil :: ((StyleSheet?) -> ())?)
-		else nil
-	local tags, addTags
-	if not Flags.FoundationUseStyleSheetRegistry then
-		tags, addTags = useTagsState()
-	end
 	local useVariants = VariantsContext.useVariantsState()
 
-	local tokens: Tokens = React.useMemo(function()
-		return getTokens(props.device, props.theme, props.scale)
-	end, { props.device, props.theme, props.scale } :: { unknown })
+	local tokens: Tokens = React.useMemo(
+		function()
+			return getTokens(
+				props.colorMode,
+				props.device,
+				props.scale,
+				styleProviderProps.tokenOverrides,
+				props.themeName
+			)
+		end,
+		{
+			props.colorMode,
+			props.device,
+			props.scale,
+			styleProviderProps.tokenOverrides,
+			props.themeName,
+		} :: { unknown }
+	)
 
 	local preferences = usePreferences()
 	local preferredTextSize = preferences.preferredTextSize
@@ -88,10 +91,13 @@ local function StyleProvider(styleProviderProps: StyleProviderProps)
 		return getTextSizeOffset() or 0
 	end, { preferredTextSize })
 
-	local registryStyleSheet, addStyleTags
-	if Flags.FoundationUseStyleSheetRegistry then
-		registryStyleSheet, addStyleTags = useRegistryStyleSheet(props.theme, props.device, props.scale)
-	end
+	local registryStyleSheet, addStyleTags = useRegistryStyleSheet(
+		props.themeName,
+		props.colorMode,
+		props.device,
+		props.scale,
+		styleProviderProps.tokenOverrides
+	)
 
 	return React.createElement(TokensContext.Provider, {
 		value = tokens,
@@ -105,28 +111,15 @@ local function StyleProvider(styleProviderProps: StyleProviderProps)
 				TagsContext = React.createElement(
 					TagsContext.Provider,
 					{
-						value = if Flags.FoundationUseStyleSheetRegistry then addStyleTags else addTags,
+						value = addStyleTags,
 					},
-					if Flags.FoundationUseStyleSheetRegistry
-						then React.createElement(StyleSheetContext.Provider, {
-							value = registryStyleSheet,
-						}, styleProviderProps.children)
-						else React.createElement(StyleSheetContextWrapper, {
-							setStyleSheetRef = setStyleSheetRef,
-						}, styleProviderProps.children)
+					React.createElement(StyleSheetContext.Provider, {
+						value = registryStyleSheet,
+					}, styleProviderProps.children)
 				),
-				StyleSheet = if Flags.FoundationUseStyleSheetRegistry
-					then React.createElement("StyleLink", {
-						StyleSheet = registryStyleSheet,
-					})
-					else React.createElement(StyleSheet, {
-						theme = props.theme :: Theme,
-						device = props.device :: Device,
-						scale = props.scale,
-						tags = tags,
-						derives = styleProviderProps.derives,
-						setStyleSheetRef = setStyleSheetRef,
-					}),
+				StyleSheet = React.createElement("StyleLink", {
+					StyleSheet = registryStyleSheet,
+				}),
 			}),
 		}),
 	})

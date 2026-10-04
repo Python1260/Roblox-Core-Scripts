@@ -1,6 +1,12 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
+local BuilderIcons = require(Packages.BuilderIcons)
+type IconVariant = BuilderIcons.IconVariant
+
+local BadgeVariant = require(Foundation.Enums.BadgeVariant)
+type BadgeVariant = BadgeVariant.BadgeVariant
+
 local StateLayerAffordance = require(Foundation.Enums.StateLayerAffordance)
 type StateLayerAffordance = StateLayerAffordance.StateLayerAffordance
 
@@ -17,8 +23,47 @@ export type StateChangedCallback = (newState: ControlState) -> ()
 local ButtonVariant = require(Foundation.Enums.ButtonVariant)
 type ButtonVariant = ButtonVariant.ButtonVariant
 
+local InputFocusBehavior = require(Foundation.Enums.InputFocusBehavior)
+type InputFocusBehavior = InputFocusBehavior.InputFocusBehavior
+
 local InputSize = require(Foundation.Enums.InputSize)
 type InputSize = InputSize.InputSize
+
+local InputPlacement = require(Foundation.Enums.InputPlacement)
+type InputPlacement = InputPlacement.InputPlacement
+
+export type InputGroupSize = typeof(InputSize.XSmall) | typeof(InputSize.Small) | typeof(InputSize.Medium)
+
+local InputVariant = require(Foundation.Enums.InputVariant)
+type InputVariant = InputVariant.InputVariant
+
+export type IconConfig = string | {
+	name: string,
+	variant: IconVariant?,
+}
+
+export type IconAccessoryConfig = {
+	type: nil,
+	iconName: string,
+	iconVariant: IconVariant?,
+}
+
+export type AvatarAccessoryConfig = {
+	type: "Avatar",
+	userId: number,
+}
+
+export type HintAccessoryConfig = {
+	type: "Hint",
+	text: string,
+}
+
+export type BadgeAccessoryConfig = {
+	type: "Badge",
+	text: string?,
+	icon: string?,
+	variant: BadgeVariant?,
+}
 
 export type ActionProps = {
 	onActivated: () -> (),
@@ -143,7 +188,6 @@ export type BaseInteractableProps = {
 	-- A callback that is called when the element is activated with the primary input object.
 	onActivated: ((self: GuiObject, inputObject: InputObject, clickCount: number) -> ())?,
 	-- A callback that is called when the element is activated with the secondary input object.
-	-- Currently, this is only used for right-click. When SecondaryActivated is enabled, this will be used for left-click.
 	onSecondaryActivated: ((self: GuiObject, inputObject: InputObject) -> ())?,
 	-- A callback that is called when the state of the element changes.
 	onStateChanged: StateChangedCallback?,
@@ -153,7 +197,7 @@ export type BaseInteractableProps = {
 
 export type BaseGuiObjectProps = {
 	aspectRatio: AspectRatio?,
-	cornerRadius: Bindable<UDim>?,
+	cornerRadius: CornerRadius?,
 	flexItem: FlexItem?,
 	layout: ListLayout?,
 	padding: Padding?,
@@ -190,29 +234,47 @@ export type TextInputCommonProps = {
 	text: Bindable<string>,
 	-- Ran when the input text changes
 	onChanged: (text: string) -> (),
-	-- The label shown alongside the TextArea
+	-- The label shown alongside the text input
 	label: string,
 	-- Subcaption shown below the text input, red on error
 	hint: string?,
-	-- The size of the TextArea input
+	-- The size of the text input
 	size: InputSize?,
-	-- Defined width of the TextArea by default
+	-- Style variant of the text input
+	variant: InputVariant?,
+	-- Defined width of the text input by default
 	width: UDim?,
-	-- What text should be shown in the TextArea when there is no user input
+	-- What text should be shown in the input when there is no user input
 	placeholder: string?,
-	-- Whether the TextArea should be disabled to input
+	-- Whether the text input should be disabled
 	isDisabled: boolean?,
-	-- Whether the input is required, true for "*", false for " (optional)", nil for nothing
+	-- Whether the text input is required, true for "*", false for " (optional)", nil for nothing
 	isRequired: boolean?,
-	-- Whether to show the TextArea input as erroneous
+	-- Whether to show the text input as erroneous
 	hasError: boolean?,
+	-- Whether the input has a clear button
+	hasClearButton: boolean?,
+	-- Behavior of the text input when focused. Mobile does not yet support Highlight behavior.
+	focusBehavior: InputFocusBehavior?,
 	-- Partial TextBox ref exposed via imperative handle
 	textBoxRef: React.Ref<TextInputRef>?,
 	-- Ran when textbox focus is gained
 	onFocusGained: (() -> ())?,
 	-- Ran when textbox focus is lost. The InputObject that caused focus to be lost is passed if available.
 	onFocusLost: ((inputObject: InputObject?) -> ())?,
+	-- Ref to the outermost container element of the internal text input
+	inputRef: React.Ref<GuiObject>?,
 }
+
+export type InternalInputGroupProps = {
+	-- Optional label rendered above the grouped inputs
+	legend: string?,
+	-- Size applied to the group and inherited by its inputs
+	size: InputGroupSize?,
+	-- Where the input sits relative to its label
+	placement: InputPlacement?,
+	children: React.ReactNode?,
+} & CommonProps
 
 export type AspectRatioTable = {
 	AspectRatio: Bindable<number>,
@@ -221,6 +283,17 @@ export type AspectRatioTable = {
 }
 
 export type AspectRatio = Bindable<number> | AspectRatioTable
+
+export type CornerRadiusValue = Bindable<number | UDim>
+
+export type CornerRadiusTable = {
+	topLeft: CornerRadiusValue?,
+	topRight: CornerRadiusValue?,
+	bottomRight: CornerRadiusValue?,
+	bottomLeft: CornerRadiusValue?,
+}
+
+export type CornerRadius = Bindable<UDim> | number | CornerRadiusTable
 
 export type PaddingTable = {
 	top: Bindable<UDim>?,
@@ -261,7 +334,6 @@ export type InternalTextInputRef = {
 	getIsFocused: () -> boolean,
 	focus: () -> (),
 	releaseFocus: () -> (),
-	setHover: (isHovering: boolean) -> (),
 	getSelectionStart: () -> number,
 	getCursorPosition: () -> number,
 	setSelectionStart: (position: number) -> (),
@@ -272,6 +344,10 @@ export type TextInputRef = {
 	getIsFocused: () -> boolean,
 	focus: () -> (),
 	releaseFocus: () -> (),
+	getSelectionStart: () -> number,
+	getCursorPosition: () -> number,
+	setSelectionStart: (position: number) -> (),
+	setCursorPosition: (position: number) -> (),
 }
 
 export type PopoverAnchor = GuiObject | MeasurableObject

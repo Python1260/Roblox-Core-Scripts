@@ -19,6 +19,9 @@ local withDefaults = require(Foundation.Utility.withDefaults)
 local InputSize = require(Foundation.Enums.InputSize)
 type InputSize = InputSize.InputSize
 
+local InputVariant = require(Foundation.Enums.InputVariant)
+type InputVariant = InputVariant.InputVariant
+
 local getInputTextSize = require(Foundation.Utility.getInputTextSize)
 
 local ControlState = require(Foundation.Enums.ControlState)
@@ -38,7 +41,7 @@ export type TextInputProps = {
 	textInputType: Enum.TextInputType?,
 	-- Ran when return is pressed within the TextInput
 	onReturnPressed: (() -> ())?,
-} & Types.TextInputCommonProps & Types.CommonProps
+} & Types.TextInputCommonProps & Types.SelectionProps & Types.CommonProps
 
 local defaultProps = {
 	size = InputSize.Large,
@@ -48,7 +51,7 @@ local defaultProps = {
 local function TextInput(textInputProps: TextInputProps, ref: React.Ref<GuiObject>?)
 	local props = withDefaults(textInputProps, defaultProps)
 	local tokens = useTokens()
-	local variantProps = useTextInputVariants(tokens, props.size)
+	local variantProps = useTextInputVariants(tokens, props.size, props.variant)
 
 	return React.createElement(
 		InputField,
@@ -58,20 +61,30 @@ local function TextInput(textInputProps: TextInputProps, ref: React.Ref<GuiObjec
 			label = props.label,
 			size = getInputTextSize(props.size),
 			isRequired = props.isRequired,
+			isDisabled = props.isDisabled,
 			hasError = props.hasError,
 			hint = props.hint,
 			textBoxRef = props.textBoxRef,
 			input = function(inputRef)
 				return React.createElement(InternalTextInput, {
 					ref = inputRef,
+					inputRef = props.inputRef,
 					hasError = props.hasError,
 					isDisabled = props.isDisabled,
+					hasClearButton = props.hasClearButton,
 					text = props.text,
 					textInputType = props.textInputType,
+					focusBehavior = props.focusBehavior,
 					size = props.size,
+					variant = props.variant,
+					Selectable = props.Selectable,
+					NextSelectionUp = props.NextSelectionUp,
+					NextSelectionDown = props.NextSelectionDown,
+					NextSelectionLeft = props.NextSelectionLeft,
+					NextSelectionRight = props.NextSelectionRight,
 					horizontalPadding = {
-						left = variantProps.innerContainer.horizontalPadding,
-						right = variantProps.innerContainer.horizontalPadding,
+						left = variantProps.container.horizontalPadding,
+						right = variantProps.container.horizontalPadding,
 					},
 					onChanged = props.onChanged,
 					onFocus = props.onFocusGained,

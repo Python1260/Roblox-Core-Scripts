@@ -5,28 +5,13 @@ local React = require(Packages.React)
 
 local Content = require(script.Parent.Content)
 local ContentPlugin = require(script.Parent.ContentPlugin)
-local Flags = require(Foundation.Utility.Flags)
+local isPluginSecurity = require(Foundation.Utility.isPluginSecurity)
 local usePlugin = require(Foundation.Providers.Plugin.usePlugin)
 
 export type PopoverContentProps = Content.PopoverContentProps
 
 local function PopoverContentProxy(props: PopoverContentProps, forwardedRef: React.Ref<GuiObject>?): React.ReactNode
-	local plugin = usePlugin()
-	local isPluginSupported = React.useMemo(function()
-		if plugin == nil then
-			return false
-		end
-
-		--[[
-			Our plugin path requires the Panels component to be available.
-			Currently, this is only available to internal plugins.
-		]]
-		local success, _ = pcall(function()
-			return plugin:GetPluginComponent("Panels")
-		end)
-
-		return success
-	end, { plugin })
+	local _plugin, isPluginElevated = usePlugin()
 
 	local resolvedProps = props
 	if forwardedRef then
@@ -34,7 +19,7 @@ local function PopoverContentProxy(props: PopoverContentProps, forwardedRef: Rea
 		(resolvedProps :: any).ref = forwardedRef
 	end
 
-	if Flags.FoundationPopoverPluginSupport and isPluginSupported then
+	if isPluginSecurity() and isPluginElevated then
 		return React.createElement(ContentPlugin, resolvedProps)
 	end
 	return React.createElement(Content, resolvedProps)

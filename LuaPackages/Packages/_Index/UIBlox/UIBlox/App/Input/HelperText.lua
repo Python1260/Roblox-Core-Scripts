@@ -4,8 +4,13 @@ local UIBlox = App.Parent
 local Packages = UIBlox.Parent
 
 local React = require(Packages.React)
+local Foundation = require(Packages.Foundation)
+local normalizeFontFace = Foundation.Utility.normalizeFontFace
 
 local useStyle = require(UIBlox.Core.Style.useStyle)
+local UIBloxConfig = require(UIBlox.UIBloxConfig)
+
+local FFlagFoundationFontFaceMigration = Foundation.Utility.Flags.FoundationFontFaceMigration
 
 type HelperTextProps = {
 	-- Determines the string rendered by the UI element
@@ -18,9 +23,16 @@ type HelperTextProps = {
 local function HelperText(props: HelperTextProps)
 	local style = useStyle()
 
-	local helperTextStyle = style.Tokens.Component.HelperText
-	local typography = helperTextStyle.Base.Typography
-	local textColor = if props.error then helperTextStyle.Error.ContentColor else helperTextStyle.Base.ContentColor
+	local typography = if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+		then style.Tokens.Typography.CaptionSmall
+		else style.Tokens.Component.HelperText.Base.Typography
+	local textColor = if props.error
+		then (if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+			then style.Tokens.Color.ActionAlert.Foreground
+			else style.Tokens.Component.HelperText.Error.ContentColor)
+		else (if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+			then style.Tokens.Color.Content.Default
+			else style.Tokens.Component.HelperText.Base.ContentColor)
 
 	return React.createElement("TextLabel", {
 		Text = props.text,
@@ -30,7 +42,8 @@ local function HelperText(props: HelperTextProps)
 		TextWrapped = true,
 		BackgroundTransparency = 1,
 		TextColor3 = textColor.Color3,
-		Font = typography.Font,
+		Font = if FFlagFoundationFontFaceMigration then nil else typography.Font,
+		FontFace = if FFlagFoundationFontFaceMigration then normalizeFontFace(typography.Font) else nil,
 		TextSize = typography.FontSize,
 		LineHeight = typography.LineHeight,
 		Size = UDim2.new(1, 0, 0, 0),

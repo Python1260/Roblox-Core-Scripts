@@ -1,6 +1,6 @@
 [package]
 name = "SocialLibraries"
-version = "4.1.1"
+version = "4.4.0"
 readme = "README.md"
 content_root = "src"
 files = [
@@ -14,13 +14,13 @@ authors = ["Roblox"]
 target = "https://github.com/roblox/cryo"
 version = "^1.0"
 
+[dependencies.Foundation]
+target = "https://github.com/roblox/foundation"
+version = "^1.111.0"
+
 [dependencies.GenericPagination]
 target = "https://github.com/roblox/genericpagination"
 version = "^0.1.0"
-
-[dependencies.LazyRequire]
-target = "https://github.com/roblox/lua-lazy-require"
-version = "^0.1.4"
 
 [dependencies.LuauPolyfill]
 target = "https://github.com/roblox/luau-polyfill"
@@ -49,8 +49,7 @@ package = "RoactCompat"
 version = "^17.0.1-rc.12"
 
 [dependencies.RoactFitComponents]
-target = "https://github.com/roblox/roact-fit-components"
-version = "^2.0"
+version = "^2.1.0"
 
 [dependencies.RoactNavigation]
 target = "https://github.com/roblox/roact-navigation"

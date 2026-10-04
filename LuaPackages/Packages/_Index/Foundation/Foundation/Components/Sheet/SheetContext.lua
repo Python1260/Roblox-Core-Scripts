@@ -27,6 +27,7 @@ return React.createContext({
 	bottomPadding = nil :: number?,
 	innerScrollingEnabled = nil :: React.Binding<boolean>?,
 	innerScrollY = nil :: React.Binding<number>?,
+	innerScrollingRef = nil :: React.Ref<ScrollingFrame>?,
 	setInnerScrollY = function(_: number)
 		error("No SheetContext available")
 	end,
@@ -34,6 +35,12 @@ return React.createContext({
 	setHasHeader = function(_: boolean)
 		error("No SheetContext available")
 	end,
+	hasFullBleed = false,
+	fullBleedHeight = nil :: React.Binding<number>?,
+	setFullBleedHeight = function(_: number)
+		error("No SheetContext available")
+	end,
+	hasRadius = true :: boolean,
 	closeSheet = nil :: (() -> ())?,
 	sheetType = nil :: SheetType?,
 	innerSurface = nil :: GuiObject?,
@@ -41,6 +48,7 @@ return React.createContext({
 	closeAffordanceRef = nil :: React.Ref<GuiObject>?,
 	contentStartRef = nil :: React.Ref<GuiObject>?,
 	setContentStartRef = function(_ref: React.Ref<GuiObject>) end,
+	isVerticalSheetGesture = nil :: boolean?,
 } :: {
 	sheetHeightAvailable: React.Binding<number>?,
 	setSheetHeightAvailable: ((number) -> nil)?,
@@ -54,9 +62,14 @@ return React.createContext({
 	bottomPadding: number?,
 	innerScrollingEnabled: React.Binding<boolean>?,
 	innerScrollY: React.Binding<number>?,
+	innerScrollingRef: React.Ref<ScrollingFrame>?,
 	setInnerScrollY: ((number) -> nil)?,
 	hasHeader: React.Binding<boolean>?,
 	setHasHeader: ((boolean) -> nil)?,
+	hasFullBleed: boolean,
+	fullBleedHeight: React.Binding<number>?,
+	setFullBleedHeight: ((number) -> nil)?,
+	hasRadius: boolean,
 	closeSheet: (() -> ())?,
 	sheetType: SheetType?,
 	innerSurface: GuiObject?,
@@ -64,4 +77,5 @@ return React.createContext({
 	closeAffordanceRef: React.Ref<GuiObject>?,
 	contentStartRef: React.Ref<GuiObject>?,
 	setContentStartRef: ((React.Ref<GuiObject>) -> ())?,
+	isVerticalSheetGesture: boolean?,
 })

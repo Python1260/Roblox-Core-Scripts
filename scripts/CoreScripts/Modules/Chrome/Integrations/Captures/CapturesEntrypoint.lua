@@ -14,6 +14,9 @@ local CommonIcon = require(Chrome.Integrations.CommonIcon)
 local MappedSignal = ChromeUtils.MappedSignal
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 
+local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
+local SideSheetPlacement = ChromePackage.Enums.SideSheetPlacement
+
 local initialAvailability = ChromeService.AvailabilitySignal.Available
 if StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.All) or StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.Captures) then
 	initialAvailability = ChromeService.AvailabilitySignal.Available
@@ -29,12 +32,11 @@ local capturesEntrypointIntegration = ChromeService:register({
 	initialAvailability = initialAvailability,
 	id = "camera_entrypoint",
 	label = "Feature.SettingsHub.Label.Captures",
+	sideSheetPlacement = SideSheetPlacement.BelowFold,
 	activated = function(self)
 		CapturesApp.onToggleActivationFromChrome()
 	end,
-	isActivated = function()
-		return isActive:get()
-	end,
+	isActivated = isActive,
 	components = {
 		Icon = function(props)
 			return CommonIcon("icons/controls/cameraOff", "icons/controls/cameraOn", isActive)

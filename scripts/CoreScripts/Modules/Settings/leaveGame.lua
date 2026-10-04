@@ -14,12 +14,18 @@ local Players = game:GetService("Players")
 -------------- Flags ----------------------------------------------------------
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local FFlagEnableGameLeftMessage = SharedFlags.FFlagEnableGameLeftMessage
+local FFlagSurvBloxEventTypeEnabled = SharedFlags.FFlagSurvBloxEventTypeEnabled
 local EngineFeatureRbxAnalyticsServiceExposePlaySessionId = game:GetEngineFeature("RbxAnalyticsServiceExposePlaySessionId")
+local isExitModalRemoved = require(RobloxGui.Modules.Settings.Flags.isExitModalRemoved)
+local FFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry =
+	require(CorePackages.Workspace.Packages.VoiceChatCore).Flags.GetFFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry()
 
 ----------- UTILITIES --------------
 local PerfUtils = require(RobloxGui.Modules.Common.PerfUtils)
 local Cryo = require(CorePackages.Packages.Cryo)
 local MessageBus = require(CorePackages.Workspace.Packages.MessageBus).MessageBus
+local SurveyEventPublisher = require(CorePackages.Workspace.Packages.OnPlatformSurveys.SurveyEventPublisher)
+local WebViewEventType = require(CorePackages.Workspace.Packages.OnPlatformSurveys.WebViewEventType)
 local coreGuiFinalStateAnalytics = require(script:FindFirstAncestor("Settings").Analytics.CoreGuiFinalStateAnalytics).new()
 
 ------------ Variables -------------------
@@ -32,13 +38,19 @@ local GetDefaultQualityLevel = require(CorePackages.Workspace.Packages.AppCommon
 
 local Constants = require(RobloxGui.Modules:WaitForChild("InGameMenu"):WaitForChild("Resources"):WaitForChild("Constants"))
 local ReactSchedulingTracker = require(RobloxGui.Modules.Common.ReactSchedulingTracker)
+local VoiceChatServiceManager = if FFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry
+	then require(RobloxGui.Modules.VoiceChat.VoiceChatServiceManager).default
+	else nil
 
 export type LeaveGameProps = {
 	telemetryFields: { [string] : any},
+    shouldNativeExit: boolean?,
+    inhibitAppRating: boolean?,
+    telemetryContext: string?,
 }
 
 local leaveGame = function(publishSurveyMessage: boolean, props: LeaveGameProps?)
-    if FFlagEnableGameLeftMessage then
+    if FFlagEnableGameLeftMessage and not (props and props.inhibitAppRating) then
         MessageBus.publish(Constants.OnAppRatingPromptEventDescriptor, {gameTime = game:getGameTime()})
     end
 
@@ -70,21 +82,31 @@ local leaveGame = function(publishSurveyMessage: boolean, props: LeaveGameProps?
 	end
     AnalyticsService:SetRBXEventStream(
         Constants.AnalyticsTargetName,
-        Constants.AnalyticsInGameMenuName,
+        if props and props.telemetryContext then props.telemetryContext else Constants.AnalyticsInGameMenuName,
         Constants.AnalyticsLeaveGameName,
 		customTelemetryFields
     )
 
     if publishSurveyMessage then
-        -- TODO APPEXP-1879: Remove code passing chromeSeenCount/customProps to survey receiver by flagging it off, now that it is unused.
-        local chromeSeenCount = tostring(0)
-        local customProps = { chromeSeenCount = chromeSeenCount }
+        if FFlagSurvBloxEventTypeEnabled then
+            SurveyEventPublisher.publishSurveyEvent(WebViewEventType.LeaveButtonClick)
+        else
+            -- TODO APPEXP-1879: Remove legacy customProps publish path after migration.
+            local chromeSeenCount = tostring(0)
+            local customProps = { chromeSeenCount = chromeSeenCount }
 
-        local localUserId = tostring(Players.LocalPlayer.UserId)
-        MessageBus.publish(Constants.OnSurveyEventDescriptor, {eventType = Constants.SurveyEventType, userId = localUserId, customProps = customProps})
+            local localUserId = tostring(Players.LocalPlayer.UserId)
+            MessageBus.publish(
+                Constants.OnSurveyEventDescriptor,
+                { eventType = Constants.SurveyEventType, userId = localUserId, customProps = customProps }
+            )
+        end
     end
 	
 	coreGuiFinalStateAnalytics:sendCoreGuiFinalAnalytic()
+	if FFlagVoiceVolumeControlsEnableVoiceVolumeImpressionsTelemetry then
+		VoiceChatServiceManager:ReportVoiceVolumeImpressionsIfNeeded()
+	end
 
     -- need to wait for render frames so on slower devices the leave button highlight will update
     -- otherwise, since on slow devices it takes so long to leave you are left wondering if you pressed the button
@@ -92,9 +114,17 @@ local leaveGame = function(publishSurveyMessage: boolean, props: LeaveGameProps?
         RunService.RenderStepped:wait()
     end
 
-    game:Shutdown()
+    -- return to app by default, unless shouldNativeExit is true then native exit
+    if not isExitModalRemoved or (not props or not props.shouldNativeExit) then
+        game:Shutdown()
+    end
 
     settings().Rendering.QualityLevel = GetDefaultQualityLevel()
+
+    if isExitModalRemoved and props and props.shouldNativeExit then
+        local NotificationType = GuiService:GetNotificationTypeList()
+        GuiService:BroadcastNotification("", NotificationType.NATIVE_EXIT)
+    end
 end
 
 return leaveGame

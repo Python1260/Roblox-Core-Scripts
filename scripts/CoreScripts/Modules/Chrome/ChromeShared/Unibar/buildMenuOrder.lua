@@ -1,0 +1,124 @@
+local Chrome = script:FindFirstAncestor("Chrome")
+
+local CorePackages = game:GetService("CorePackages")
+
+local Constants = require(script.Parent.Constants)
+local SideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet)
+
+local isConnectDropdownEnabled = require(Chrome.Integrations.Connect.isConnectDropdownEnabled)
+local isSpatial = require(CorePackages.Workspace.Packages.AppCommonLib).isSpatial
+local isTenFootInterface = require(CorePackages.Workspace.Packages.AppCommonLib).isTenFootInterface
+local isInExperienceUIVREnabled =
+	require(CorePackages.Workspace.Packages.SharedExperimentDefinition).isInExperienceUIVREnabled
+local ArgoPartyExperimentation = require(CorePackages.Workspace.Packages.SocialExperiments).ArgoPartyExperimentation
+
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagEnableInExperienceAvatarSwitcher = SharedFlags.FFlagEnableInExperienceAvatarSwitcher
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local FFlagAddInviteFriendsIntegration = SharedFlags.FFlagAddInviteFriendsIntegration
+local FFlagIntegrateTraversalHistoryInSideSheet = SharedFlags.FFlagIntegrateTraversalHistoryInSideSheet
+local FFlagEnableInExperienceShop = SharedFlags.FFlagEnableInExperienceShop
+local FFlagRemoveFriendsChatUnibarEntrypoints = SharedFlags.FFlagRemoveFriendsChatUnibarEntrypoints
+local FFlagExpChatCanShowFriendsTab = SharedFlags.FFlagExpChatCanShowFriendsTab
+local FFlagShowSwitchServerButton = SharedFlags.FFlagShowSwitchServerButton
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
+local FFlagEnableSideSheetRobuxWidget = require(Chrome.Flags.FFlagEnableSideSheetRobuxWidget)
+
+local Traversal = if FFlagIntegrateTraversalHistoryInSideSheet
+	then require(CorePackages.Workspace.Packages.CoreScriptsRoactCommon).Traversal
+	else nil
+local FFlagAddTraversalHistory = if Traversal then Traversal.Flags.FFlagAddTraversalHistory else false
+
+type Array<T> = { [number]: T }
+
+-- reorder menu item to new placement only if it is available in map
+local function reorder(menuMap: { [string]: number? }, id: string, placement: number)
+	if menuMap[id] ~= nil then
+		menuMap[id] = placement
+	end
+end
+
+-- Build a map of menu items to their placement in the side sheet or nine-dot menu.
+local function buildMenuOrder(): Array<string>
+	local connectDropdownVisible = isConnectDropdownEnabled()
+		and not (
+			FFlagRemoveFriendsChatUnibarEntrypoints
+			and ArgoPartyExperimentation.getIsRenameEnabled()
+			and FFlagExpChatCanShowFriendsTab
+		)
+
+	-- TO-DO: Replace GuiService:IsTenFootInterface() once APPEXP-2014 has been merged
+	local isNotVROrConsole = not isSpatial() and not isTenFootInterface()
+	local notVRControlsOrNotSpatial = not isInExperienceUIVREnabled or not isSpatial()
+	local traversalEnabled = FFlagAddTraversalHistory and FFlagIntegrateTraversalHistoryInSideSheet
+
+	local menuMap: { [string]: number? } = {
+		-- Side-sheet-only widget rendered before the standard menu entries.
+		RobuxWidget = if FFlagEnableSideSheetRobuxWidget and isSideSheetEnabled then 5 else nil,
+		invite_friends = if FFlagAddInviteFriendsIntegration then 10 else nil,
+		people = 20,
+		settings = 30,
+		trust_and_safety = 40,
+		connect_dropdown = if connectDropdownVisible then 50 else nil,
+		[Constants.AVATAR_SWITCHER_ID] = if FFlagEnableInExperienceAvatarSwitcher then 60 else nil,
+		[Constants.SWITCH_SERVER_ID] = if FFlagShowSwitchServerButton or isPioneerLaunch() then 65 else nil,
+		[Constants.IN_EXPERIENCE_SHOP_ID] = if FFlagEnableInExperienceShop then 70 else nil,
+		leaderboard = 80,
+		emotes = 90,
+		backpack = 100,
+		traversal_history = if traversalEnabled then 110 else nil,
+		help = 120,
+		camera_entrypoint = if notVRControlsOrNotSpatial then 130 else nil,
+		gallery = 140,
+		selfie_view = if notVRControlsOrNotSpatial then 150 else nil,
+		music_entrypoint = if isNotVROrConsole then 160 else nil,
+		-- AccountUpsell is side-sheet-only, rendered before the action bindings
+		AccountUpsell = if isPioneerLaunch() then 170 else nil,
+		[SideSheet.Enums.ActionBinding.Leave] = 180,
+		[SideSheet.Enums.ActionBinding.Respawn] = 190,
+	}
+
+	if isPioneerLaunch() then
+		menuMap.connect_dropdown = nil
+		menuMap[Constants.AVATAR_SWITCHER_ID] = nil
+		menuMap.emotes = nil
+		menuMap.traversal_history = nil
+		menuMap.camera_entrypoint = nil
+		menuMap.gallery = nil
+		reorder(menuMap, Constants.SWITCH_SERVER_ID, 200)
+	elseif not isSideSheetEnabled then
+		reorder(menuMap, "connect_dropdown", 10)
+		reorder(menuMap, Constants.IN_EXPERIENCE_SHOP_ID, 20)
+		reorder(menuMap, "selfie_view", 30)
+		reorder(menuMap, Constants.AVATAR_SWITCHER_ID, 40)
+		reorder(menuMap, "music_entrypoint", 50)
+		reorder(menuMap, "camera_entrypoint", 60)
+		reorder(menuMap, "trust_and_safety", 70)
+
+		-- respawn is not in the base map; it only exists in the legacy layout.
+		menuMap.respawn = 110
+
+		-- Side-sheet-only items are hidden in the legacy nine-dot layout.
+		menuMap.invite_friends = nil
+		menuMap.people = nil
+		menuMap.settings = nil
+		menuMap.traversal_history = nil
+		menuMap.help = nil
+		menuMap.gallery = nil
+		menuMap[SideSheet.Enums.ActionBinding.Leave] = nil
+		menuMap[SideSheet.Enums.ActionBinding.Respawn] = nil
+		menuMap[Constants.SWITCH_SERVER_ID] = nil
+	end
+
+	local ordered: Array<string> = {}
+	for id in menuMap do
+		table.insert(ordered, id)
+	end
+	table.sort(ordered, function(a, b)
+		return (menuMap[a] :: number) < (menuMap[b] :: number)
+	end)
+
+	return ordered
+end
+
+return buildMenuOrder

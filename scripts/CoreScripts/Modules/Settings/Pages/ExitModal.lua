@@ -38,6 +38,12 @@ local SharedFlags = CorePackages.Workspace.Packages.SharedFlags
 local GetFFlagGateEducationalPopupVisibilityViaGUAC = require(SharedFlags).GetFFlagGateEducationalPopupVisibilityViaGUAC
 local InExperienceCapabilities =
 	require(CorePackages.Workspace.Packages.InExperienceCapabilities).InExperienceCapabilities
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local FFlagSurvBloxEventTypeEnabled = require(SharedFlags).FFlagSurvBloxEventTypeEnabled
+local toggleSideSheet
+if isSideSheetEnabled then
+	toggleSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet).toggleSideSheet
+end
 
 local NotificationType = GuiService:GetNotificationTypeList()
 local Roact = require(CorePackages.Packages.Roact)
@@ -46,6 +52,8 @@ local Localization = require(CorePackages.Workspace.Packages.InExperienceLocales
 local SendAnalytics = require(RobloxGui.Modules.InGameMenu.Utility.SendAnalytics)
 local UserLocalStore = require(RobloxGui.Modules.InGameMenu.Utility.UserLocalStore)
 local GetDefaultQualityLevel = require(CorePackages.Workspace.Packages.AppCommonLib).GetDefaultQualityLevel
+local SurveyEventPublisher = require(CorePackages.Workspace.Packages.OnPlatformSurveys.SurveyEventPublisher)
+local WebViewEventType = require(CorePackages.Workspace.Packages.OnPlatformSurveys.WebViewEventType)
 local MessageBus = require(CorePackages.Workspace.Packages.MessageBus).MessageBus
 
 ----------- COMPONENTS --------------
@@ -170,6 +178,7 @@ local function Initialize()
 
 	local localization = Localization.new(LocalizationService.RobloxLocaleId)
 
+	-- lute-lint-ignore(noNestedReactDefinitions)
 	local function ExitModal()
 		localization:SetLocale(LocalizationService.RobloxLocaleId)
 		local localized = {
@@ -198,7 +207,7 @@ local function Initialize()
 				confirmText = localized.actionHome,
 				doNotShowText = localized.optionDontShow,
 				titleBackgroundImageProps = {
-					image = "rbxasset://textures/ui/LuaApp/graphic/Auth/GridBackground.jpg",
+					image = "rbxasset://textures/ui/LuaApp/graphic/Auth/GridBackground_05202026.jpg",
 					imageHeight = 200,
 					text = [[<font face="GothamBlack" size="42">]]
 						.. localized.title
@@ -220,16 +229,20 @@ local function Initialize()
 						this.DontShowAgain()
 					end
 					this.LeaveGameFunc(false)
-					
-					-- TODO APPEXP-1879: Remove code passing chromeSeenCount/customProps to survey receiver by flagging it off, now that it is unused.
-					local chromeSeenCount = tostring(0)
-					local customProps = { chromeSeenCount = chromeSeenCount }
 
-					local localUserId = tostring(Players.LocalPlayer.UserId)
-					MessageBus.publish(
-						Constants.OnSurveyEventDescriptor,
-						{ eventType = Constants.SurveyEventType, userId = localUserId, customProps = customProps }
-					)
+					if FFlagSurvBloxEventTypeEnabled then
+						SurveyEventPublisher.publishSurveyEvent(WebViewEventType.LeaveButtonClick)
+					else
+						-- TODO APPEXP-1879: Remove legacy customProps publish path after migration.
+						local chromeSeenCount = tostring(0)
+						local customProps = { chromeSeenCount = chromeSeenCount }
+
+						local localUserId = tostring(Players.LocalPlayer.UserId)
+						MessageBus.publish(
+							Constants.OnSurveyEventDescriptor,
+							{ eventType = Constants.SurveyEventType, userId = localUserId, customProps = customProps }
+						)
+					end
 				end,
 			}),
 		}
@@ -278,6 +291,10 @@ PageInstance.Displayed.Event:connect(function()
 		false,
 		Enum.KeyCode.ButtonB
 	)
+
+	if isSideSheetEnabled then
+		toggleSideSheet(false)
+	end
 end)
 
 PageInstance.Hidden.Event:connect(function()

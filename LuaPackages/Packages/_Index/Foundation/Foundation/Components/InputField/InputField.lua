@@ -53,12 +53,6 @@ local function InputField(inputFieldProps: InputFieldProps, ref: React.Ref<GuiOb
 		end
 	end, {})
 
-	local onLabelHover = React.useCallback(function(isHovered)
-		if textBoxRef.current then
-			textBoxRef.current.setHover(isHovered)
-		end
-	end, {})
-
 	React.useImperativeHandle(props.textBoxRef, function(): TextInputRef?
 		if not textBoxRef.current then
 			return nil
@@ -90,8 +84,8 @@ local function InputField(inputFieldProps: InputFieldProps, ref: React.Ref<GuiOb
 					Text = props.label,
 					size = props.size,
 					isRequired = props.isRequired,
+					isDisabled = props.isDisabled,
 					onActivated = focusTextBox,
-					onHover = onLabelHover,
 					LayoutOrder = 1,
 					testId = `{props.testId}--label`,
 				})
@@ -107,6 +101,7 @@ local function InputField(inputFieldProps: InputFieldProps, ref: React.Ref<GuiOb
 				then React.createElement(HintText, {
 					text = props.hint,
 					hasError = props.hasError,
+					isDisabled = props.isDisabled,
 					LayoutOrder = 3,
 					testId = `{props.testId}--hint`,
 				})

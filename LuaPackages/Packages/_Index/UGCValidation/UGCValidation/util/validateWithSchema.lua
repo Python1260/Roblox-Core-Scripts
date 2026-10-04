@@ -1,10 +1,4 @@
 --!nonstrict
-local root = script.Parent.Parent
-
-local getFFlagUGCValidationEnableFolderStructure = require(root.flags.getFFlagUGCValidationEnableFolderStructure)
-local getFFlagUGCValidationCombineEntrypointResults = require(root.flags.getFFlagUGCValidationCombineEntrypointResults)
-local getFFlagUGCValidationExtendSchemaToIgnoreDescendants =
-	require(root.flags.getFFlagUGCValidationExtendSchemaToIgnoreDescendants)
 
 local function checkName(nameList, instanceName)
 	if type(nameList) == "table" then
@@ -34,19 +28,17 @@ local function validateWithSchemaHelper(schema, instance, authorizedSet)
 		return { success = false }
 	end
 
-	if getFFlagUGCValidationExtendSchemaToIgnoreDescendants() then
-		if schema._ignoreDescendants then
-			assert(
-				not schema._children,
-				"if _ignoreDescendants is true, there should be no descendants in the schema as they would be ignored anyway"
-			)
-			for _, descendant in instance:GetDescendants() do
-				authorizedSet[descendant] = true
-			end
-
-			authorizedSet[instance] = true
-			return { success = true }
+	if schema._ignoreDescendants then
+		assert(
+			not schema._children,
+			"if _ignoreDescendants is true, there should be no descendants in the schema as they would be ignored anyway"
+		)
+		for _, descendant in instance:GetDescendants() do
+			authorizedSet[descendant] = true
 		end
+
+		authorizedSet[instance] = true
+		return { success = true }
 	end
 
 	-- validate children
@@ -55,10 +47,8 @@ local function validateWithSchemaHelper(schema, instance, authorizedSet)
 			local found = false
 			local mostRecentFailure
 			for _, child in pairs(instance:GetChildren()) do
-				if getFFlagUGCValidationExtendSchemaToIgnoreDescendants() then
-					if authorizedSet[child] then -- don't want a single Instance to fit into two different child schema spots
-						continue
-					end
+				if authorizedSet[child] then -- don't want a single Instance to fit into two different child schema spots
+					continue
 				end
 
 				local result = validateWithSchemaHelper(childSchema, child, authorizedSet)
@@ -105,11 +95,7 @@ local function validateWithSchema(schema, instance, _validationContext)
 	local result = validateWithSchemaHelper(schema, instance, authorizedSet)
 
 	if not result.success then
-		if getFFlagUGCValidationEnableFolderStructure() and getFFlagUGCValidationCombineEntrypointResults() then
-			return { success = false, message = "" }
-		end
-
-		return result
+		return { success = false, message = "" }
 	end
 
 	-- check for extra descendants
@@ -121,14 +107,7 @@ local function validateWithSchema(schema, instance, _validationContext)
 	end
 
 	if #unauthorizedDescendantPaths > 0 then
-		if getFFlagUGCValidationEnableFolderStructure() and getFFlagUGCValidationCombineEntrypointResults() then
-			return { success = false, message = "" }
-		end
-
-		return {
-			success = false,
-			message = "Unexpected Descendants:\n" .. table.concat(unauthorizedDescendantPaths, "\n"),
-		}
+		return { success = false, message = "" }
 	end
 
 	return { success = true }

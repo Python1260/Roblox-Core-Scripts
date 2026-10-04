@@ -14,7 +14,6 @@ local Constants = require(Chrome.ChromeShared.Unibar.Constants)
 local VOICE_JOIN_PROGRESS = VoiceConstants.VOICE_JOIN_PROGRESS
 local VoiceChatPromptType = require(RobloxGui.Modules.VoiceChatPrompt.PromptType)
 local observeCurrentContextId = require(CorePackages.Workspace.Packages.CrossExperience).Utils.observeCurrentContextId
-local VoiceChatConstants = require(CorePackages.Workspace.Packages.VoiceChatCore).Constants
 local GetIcon = require(CorePackages.Workspace.Packages.VoiceChat).Utils.GetIcon
 local CEV_CONTEXT_ID =
 	require(CorePackages.Workspace.Packages.CrossExperience).Constants.AUDIO_FOCUS_MANAGEMENT.CEV.CONTEXT_ID
@@ -39,17 +38,16 @@ local FFlagEnableChromeJoinVoiceTooltip = game:DefineFastFlag("EnableChromeJoinV
 local ChromeService = require(Chrome.Service)
 local UnibarStyle = require(CorePackages.Workspace.Packages.Chrome).UnibarStyle
 
+local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
+local SideSheetPlacement = ChromePackage.Enums.SideSheetPlacement
+
 local isPrivateVoiceFocused = false
 local wasJoinVoiceSeenInThisPlaySession = false
 local lastKnownIntegrationAvailability: number = ChromeService.AvailabilitySignal.Unavailable
 
 function getShouldShowJoinVoiceTooltip(): boolean
-	local likelySpeakingBubblesRemoved = VoiceChatServiceManager:HasSeamlessVoiceFeature(
-		VoiceChatConstants.SeamlessVoiceFeatures.LikelySpeakingBubblesRemoved
-	)
 	local ageVerificationOverlay = VoiceChatServiceManager:FetchAgeVerificationOverlay()
 	local shouldShow = not wasJoinVoiceSeenInThisPlaySession
-		and likelySpeakingBubblesRemoved
 		and ageVerificationOverlay
 		and ageVerificationOverlay.showJoinVoiceUpsellTooltip
 	wasJoinVoiceSeenInThisPlaySession = true
@@ -61,10 +59,12 @@ joinVoice = ChromeService:register({
 	initialAvailability = ChromeService.AvailabilitySignal.Unavailable,
 	id = "join_voice",
 	label = "CoreScripts.TopBar.JoinVoice",
+	sideSheetPlacement = SideSheetPlacement.Unibar,
 	activated = function()
 		local SettingsHub = if GetFFlagIntegratePhoneUpsellJoinVoice()
 			then require(RobloxGui.Modules.Settings.SettingsHub)
 			else nil
+		VoiceChatServiceManager.pendingConnectionSource = VoiceConstants.VOICE_CONNECTION_SOURCE.IN_EXPERIENCE
 		VoiceChatServiceManager:JoinVoice(SettingsHub)
 	end,
 	components = {

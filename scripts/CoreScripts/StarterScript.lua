@@ -36,8 +36,8 @@ local TrustAndSafetyIXPManager = require(CorePackages.Workspace.Packages.TrustAn
 local GetCoreScriptsLayers = require(CoreGuiModules.Experiment.GetCoreScriptsLayers)
 
 local GetFFlagRtMessaging = require(RobloxGui.Modules.Flags.GetFFlagRtMessaging)
-local GetFFlagContactListClientEnabled = require(RobloxGui.Modules.Common.Flags.GetFFlagContactListClientEnabled)
 local FFlagAddPublishAssetPrompt = game:DefineFastFlag("AddPublishAssetPrompt6", false)
+local FFlagEnablePromptAgeCheckListener = game:DefineFastFlag("EnablePromptAgeCheckListener", false)
 local isCharacterNameHandlerEnabled = require(CorePackages.Workspace.Packages.SharedFlags).isCharacterNameHandlerEnabled
 local GetFFlagEnableSocialContextToast =
 	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagEnableSocialContextToast
@@ -45,13 +45,17 @@ local GetFFlagEnableAppChatInExperience =
 	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagEnableAppChatInExperience
 local GetFFlagChromeCentralizedConfiguration =
 	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagChromeCentralizedConfiguration
-local GetFFlagEnableCrossExpVoice =
-	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagEnableCrossExpVoice
-local FStringReactSchedulingContext =
-	require(CorePackages.Workspace.Packages.SharedFlags).FStringReactSchedulingContext
+local GetFFlagEnableCrossExpVoice = require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagEnableCrossExpVoice
+local FStringReactSchedulingContext = require(CorePackages.Workspace.Packages.SharedFlags).FStringReactSchedulingContext
+local FFlagFriendsCallingClientGate_DEV =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagFriendsCallingClientGate_DEV
 
 local FFlagLuaAppEnableToastNotificationsCoreScripts =
 	game:DefineFastFlag("LuaAppEnableToastNotificationsCoreScripts4", false)
+
+local FFlagDisableLuobuWarningToast = game:DefineFastFlag("DisableLuobuWarningToast", false)
+
+local FFlagDebugDisableExperienceChatMain = require(RobloxGui.Modules.Flags.FFlagDebugDisableExperienceChatMain)
 
 local GetFFlagVoiceUserAgency3 = require(RobloxGui.Modules.Flags.GetFFlagVoiceUserAgency3)
 local GetFFlagLuaInExperienceCoreScriptsGameInviteUnification =
@@ -60,8 +64,6 @@ local GetFFlagLuaInExperienceCoreScriptsGameInviteUnification =
 local FFlagEnableSendCameraAccessAnalytics = game:DefineFastFlag("EnableSendCameraAccessAnalytics", false)
 
 local FFlagEnableExperienceNotificationPrompts = game:DefineFastFlag("EnableExperienceNotificationPrompts2", false)
-local FFlagEnablePremiumSponsoredExperienceReporting =
-	game:DefineFastFlag("EnablePremiumSponsoredExperienceReporting", false)
 local FFlagEnableCancelSubscriptionApp = game:GetEngineFeature("EnableCancelSubscriptionApp")
 local FFlagEnableCancelSubscriptionAppLua = game:DefineFastFlag("EnableCancelSubscriptionAppLua", false)
 local AudioFocusManagementEnabled = game:GetEngineFeature("AudioFocusManagement")
@@ -69,17 +71,19 @@ local FFlagEnableExperienceGenericChallengeRenderingOnLoadingScript =
 	game:DefineFastFlag("EnableExperienceGenericChallengeRenderingOnLoadingScript", false)
 local FFlagEnableRobloxCommerce = game:GetEngineFeature("EnableRobloxCommerce")
 local FFlagEnableLinkSharingEvent = game:DefineFastFlag("EnableLinkSharingEvent", false)
+local FFlagEnableShareSheet = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableShareSheet
 local FFlagPlayerFeedbackPromptEnabled = game:GetEngineFeature("PlayerFeedbackEnabled")
 local FFlagLuaAppInExperienceDetailsPrompt =
 	require(CorePackages.Workspace.Packages.SharedFlags).FFlagLuaAppInExperienceDetailsPrompt
 local FFlagEnableSystemScrim = game:DefineFastFlag("EnableSystemScrim", false)
-local FFlagEnableCoreUISystem = game:DefineFastFlag("EnableCoreUISystem", false)
+local FFlagEnableCoreUISystem = game:DefineFastFlag("EnableCoreUISystemV2", false)
 local FFlagEnableNewBackpack = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableNewBackpack
 local FFlagEnableCorescriptsProfiler = game:DefineFastFlag("EnableCorescriptsProfiler", false)
 local FFlagCoreScriptsProfilerTelemetryContext = game:DefineFastFlag("CoreScriptsProfilerTelemetryContext", false)
-local FFlagLuaAppEnableEnhancedVideoScripts = game:DefineFastFlag("LuaAppEnableEnhancedVideoScripts3", false)
-local FFlagLuaAppEnableInExperienceClickoutScripts = game:DefineFastFlag("LuaAppEnableInExperienceClickoutScripts", false)
-local FFlagSelfieFrontendConsoleDesktop = game:DefineFastFlag("SelfieFrontendConsoleDesktop2", false) and game:GetEngineFeature("EnableSelfieQRCode")
+local FFlagSelfieFrontendConsoleDesktop = game:DefineFastFlag("SelfieFrontendConsoleDesktop3", false)
+	and game:GetEngineFeature("EnableSelfieQRCode")
+local GetEngineFeatureEnablePromptRobuxTransfer =
+	require(CorePackages.Workspace.Packages.SharedFlags).GetEngineFeatureEnablePromptRobuxTransfer
 local UIBlox = require(CorePackages.Packages.UIBlox)
 local uiBloxConfig = require(CorePackages.Workspace.Packages.CoreScriptsInitializer).UIBloxInGameConfig
 UIBlox.init(uiBloxConfig)
@@ -93,14 +97,6 @@ local FFlagTopBarRefactor = InExperienceTopBar.Flags.FFlagTopBarRefactor
 
 local ExperimentCacheManager = require(CorePackages.Workspace.Packages.ExperimentCacheManager).ExperimentCacheManager
 ExperimentCacheManager.default:initialize()
-
--- Add a label for internal React telemetry
-local FFlagReactTelemetryEnabled =
-	require(CorePackages.Workspace.Packages.SharedFlags).FFlagReactTelemetryEnabled
-if FFlagReactTelemetryEnabled then
-	local ReactTelemetry = require(CorePackages.Packages.ReactTelemetry)
-	ReactTelemetry.customFields.context = "in_experience"
-end
 
 -- Set up HttpStore
 local FFlagLuaAppUseAppHttpStore = game:DefineFastFlag("LuaAppUseAppHttpStoreInExperience", false)
@@ -117,7 +113,18 @@ if ReactSchedulerConfig then
 	ReactScheduler.unstable_setSchedulerFlags(ReactSchedulerConfig)
 end
 
-local FFlagEnableAEGIS2CommsFAEUpsell = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableAEGIS2CommsFAEUpsell
+local FFlagEnableSchedulerFlagOverrides =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableSchedulerFlagOverrides
+if FFlagEnableSchedulerFlagOverrides then
+	local GetSchedulerFlagOverrides = require(CorePackages.Workspace.Packages.SharedFlags).GetSchedulerFlagOverrides
+	local inExpOverrides = GetSchedulerFlagOverrides.getInExp()
+	if inExpOverrides then
+		ReactScheduler.unstable_setSchedulerFlags(inExpOverrides)
+	end
+end
+
+local FFlagEnableAEGIS2CommsFAEUpsell =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableAEGIS2CommsFAEUpsell
 
 local localPlayer = Players.LocalPlayer
 while not localPlayer do
@@ -133,9 +140,12 @@ if GetFFlagEnableAppChatInExperience() then
 	ScriptContext:AddCoreScriptLocal("CoreScripts/AppChatMain", RobloxGui)
 end
 
+if FFlagFriendsCallingClientGate_DEV then
+	ScriptContext:AddCoreScriptLocal("CoreScripts/FriendsCallingMain", RobloxGui)
+end
+
 if GetFFlagEnableCrossExpVoice() then
-	local CrossExperienceVoiceIXPManager =
-		require(CorePackages.Workspace.Packages.CrossExperienceVoice).IXPManager
+	local CrossExperienceVoiceIXPManager = require(CorePackages.Workspace.Packages.CrossExperienceVoice).IXPManager
 	CrossExperienceVoiceIXPManager.default:initialize()
 end
 
@@ -149,13 +159,6 @@ if ChromeEnabled then
 	ExperienceChat.GlobalFlags.ChromeEnabled = true
 end
 
-local getFFlagDoNotPromptCameraPermissionsOnMount =
-	require(RobloxGui.Modules.Flags.getFFlagDoNotPromptCameraPermissionsOnMount)
-if getFFlagDoNotPromptCameraPermissionsOnMount() then
-	local ExperienceChat = require(CorePackages.Workspace.Packages.ExpChat)
-	ExperienceChat.GlobalFlags.DoNotPromptCameraPermissionsOnMount = true
-end
-
 local GetFFlagJoinWithoutMicPermissions =
 	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagJoinWithoutMicPermissions
 if GetFFlagJoinWithoutMicPermissions() then
@@ -163,28 +166,9 @@ if GetFFlagJoinWithoutMicPermissions() then
 	ExperienceChat.GlobalFlags.JoinWithoutMicPermissions = true
 end
 
-local getFFlagEnableAlwaysAvailableCamera = require(RobloxGui.Modules.Flags.getFFlagEnableAlwaysAvailableCamera)
-if getFFlagEnableAlwaysAvailableCamera() then
-	local ExperienceChat = require(CorePackages.Workspace.Packages.ExpChat)
-	ExperienceChat.GlobalFlags.EnableAlwaysAvailableCamera = true
-end
-
-local getFFlagRenderVoiceBubbleAfterAsyncInit = require(RobloxGui.Modules.Flags.getFFlagRenderVoiceBubbleAfterAsyncInit)
-if getFFlagRenderVoiceBubbleAfterAsyncInit() then
-	local ExperienceChat = require(CorePackages.Workspace.Packages.ExpChat)
-	local GlobalFlags = ExperienceChat.GlobalFlags :: any
-	GlobalFlags.RenderVoiceBubbleAfterAsyncInit = true
-end
-
-local GetFFlagShowLikelySpeakingBubbles =
-	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagShowLikelySpeakingBubbles
-if GetFFlagShowLikelySpeakingBubbles() then
-	local ExperienceChat = require(CorePackages.Workspace.Packages.ExpChat)
-	local GlobalFlags = ExperienceChat.GlobalFlags :: any
-	GlobalFlags.ShowLikelySpeakingBubbles = true
-end
-
 local FFlagInExperienceInterventionApp = game:DefineFastFlag("InExperienceInterventionApp", false)
+local FFlagLuaAppEnableInExperienceDataModelStreamStarter =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagLuaAppEnableInExperienceDataModelStreamStarter
 
 -- Since prop validation can be expensive in certain scenarios, you can enable
 -- this flag locally to validate props to Roact components.
@@ -218,6 +202,18 @@ end
 -- In-game notifications script
 ScriptContext:AddCoreScriptLocal("CoreScripts/NotificationScript2", RobloxGui)
 
+if FFlagLuaAppEnableInExperienceDataModelStreamStarter then
+	ScriptContext:AddCoreScriptLocal("CoreScripts/InExperienceDataModelStreamStarter", script.Parent)
+end
+
+-- Channel update prompt for protocol launch (private channel / beta program)
+if game:GetEngineFeature("ProtocolLaunchPrivateChannelUpdateCheckEngineFeature") then
+	local ChannelUpdatePrompt = safeRequire(CoreGuiModules.ChannelUpdatePrompt)
+	if ChannelUpdatePrompt then
+		ChannelUpdatePrompt.init()
+	end
+end
+
 -- Chrome
 if GetFFlagChromeCentralizedConfiguration() then
 	coroutine.wrap(safeRequire)(CoreGuiModules.Chrome.ConfigureChrome)
@@ -230,9 +226,31 @@ coroutine.wrap(safeRequire)(CoreGuiModules.SelfieView)
 coroutine.wrap(safeRequire)(CoreGuiModules.TopBar)
 
 -- SideSheet
-local FFlagEnableSideSheet = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableSideSheet
-if FFlagEnableSideSheet then
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+if isSideSheetEnabled then
 	coroutine.wrap(safeRequire)(CoreGuiModules.InExperienceSideSheet)
+end
+
+-- What's New
+local FFlagEnableWhatsNew = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableWhatsNew
+if FFlagEnableWhatsNew then
+	coroutine.wrap(safeRequire)(CoreGuiModules.InGameWhatsNew)
+end
+
+-- BuildExperience ChatSheet
+local FFlagAppNavMyStatsTab = require(CorePackages.Workspace.Packages.SharedFlags).FFlagAppNavMyStatsTab
+if FFlagAppNavMyStatsTab then
+	local BuildModeLaunch =
+		coroutine.wrap(safeRequire)(CorePackages.Workspace.Packages.BuildExperiencePlaytestLaunch.BuildModeLaunch)
+	local BuildExperience = coroutine.wrap(safeRequire)(CorePackages.Workspace.Packages.BuildExperience)
+	local isBuildModeActive = BuildExperience and BuildModeLaunch and BuildModeLaunch:hasBuildMode()
+	if BuildExperience then
+		BuildExperience.mountCreatorAgentResumeToastReceiver(isBuildModeActive == true)
+	end
+	if BuildExperience and isBuildModeActive then
+		game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
+		BuildExperience.mountChatSheet()
+	end
 end
 
 if FFlagTopBarRefactor then
@@ -268,14 +286,16 @@ coroutine.wrap(function() -- this is the first place we call, which can yield so
 	ScriptContext:AddCoreScriptLocal("CoreScripts/ScreenTimeInGame", RobloxGui)
 end)()
 
-coroutine.wrap(function()
-	if CachedPolicyService:IsSubjectToChinaPolicies() then
-		if not game:IsLoaded() then
-			game.Loaded:Wait()
+if not FFlagDisableLuobuWarningToast then
+	coroutine.wrap(function()
+		if CachedPolicyService:IsSubjectToChinaPolicies() then
+			if not game:IsLoaded() then
+				game.Loaded:Wait()
+			end
+			safeRequire(CoreGuiModules.LuobuWarningToast)
 		end
-		safeRequire(CoreGuiModules.LuobuWarningToast)
-	end
-end)()
+	end)()
+end
 
 -- Performance Stats Management
 ScriptContext:AddCoreScriptLocal("CoreScripts/PerformanceStatsManagerScript", RobloxGui)
@@ -319,9 +339,7 @@ if FFlagPlayerFeedbackPromptEnabled then
 	coroutine.wrap(safeRequire)(CoreGuiModules.PlayerFeedback)
 end
 
-if game:GetEngineFeature("GroupServiceJoinPromptEngineAPIEnabled") then
-	coroutine.wrap(safeRequire)(CoreGuiModules.Groups.GroupsApp)
-end
+coroutine.wrap(safeRequire)(CoreGuiModules.Groups.GroupsApp)
 
 coroutine.wrap(safeRequire)(CoreGuiModules.AvatarGeneration.SelfieConsent)
 
@@ -332,6 +350,13 @@ end
 -- Prompt Block Player Script
 ScriptContext:AddCoreScriptLocal("CoreScripts/BlockPlayerPrompt", RobloxGui)
 ScriptContext:AddCoreScriptLocal("CoreScripts/FriendPlayerPrompt", RobloxGui)
+
+if FFlagEnablePromptAgeCheckListener then
+	local PromptAgeCheckHandler = safeRequire(CoreGuiModules.PromptAgeCheckHandler)
+	if PromptAgeCheckHandler then
+		PromptAgeCheckHandler.init()
+	end
+end
 
 -- Avatar Context Menu
 ScriptContext:AddCoreScriptLocal("CoreScripts/AvatarContextMenu", RobloxGui)
@@ -353,7 +378,6 @@ coroutine.wrap(safeRequire)(RobloxGui.Modules.EmotesMenu.EmotesMenuMaster)
 coroutine.wrap(safeRequire)(RobloxGui.Modules.Captures.CapturesApp)
 
 coroutine.wrap(safeRequire)(CoreGuiModules.AvatarEditorPrompts)
-
 
 local FFlagVirtualCursorModularization =
 	require(CorePackages.Workspace.Packages.SharedFlags).FFlagVirtualCursorModularization
@@ -418,7 +442,10 @@ coroutine.wrap(function()
 	end
 end)()
 
-ScriptContext:AddCoreScriptLocal("CoreScripts/ExperienceChatMain", RobloxGui)
+-- Debug flag here can be used to disable experience chat for testing purposes
+if not FFlagDebugDisableExperienceChatMain then
+	ScriptContext:AddCoreScriptLocal("CoreScripts/ExperienceChatMain", RobloxGui)
+end
 
 ScriptContext:AddCoreScriptLocal("CoreScripts/ChatEmoteUsage", script.Parent)
 
@@ -446,17 +473,6 @@ coroutine.wrap(function()
 	end
 end)()
 
--- premium sponsored experience reporting
-if FFlagEnablePremiumSponsoredExperienceReporting then
-	coroutine.wrap(function()
-		local PremiumSponsoredExperienceReporting =
-			safeRequire(CorePackages.Workspace.Packages.PremiumSponsoredExperienceReporting)
-		if PremiumSponsoredExperienceReporting and PremiumSponsoredExperienceReporting.starterScript then
-			PremiumSponsoredExperienceReporting.starterScript()
-		end
-	end)()
-end
-
 if game:GetEngineFeature("EnableAdGuiInteractivityControlRefactor") then
 	coroutine.wrap(function()
 		local AdGuiInteractivity = safeRequire(CorePackages.Workspace.Packages.AdGuiInteractivity)
@@ -466,26 +482,21 @@ if game:GetEngineFeature("EnableAdGuiInteractivityControlRefactor") then
 		end
 	end)()
 end
+coroutine.wrap(function()
+	local EnhancedVideo = safeRequire(CorePackages.Workspace.Packages.EnhancedVideo)
 
-if FFlagLuaAppEnableEnhancedVideoScripts then
-	coroutine.wrap(function()
-		local EnhancedVideo = safeRequire(CorePackages.Workspace.Packages.EnhancedVideo)
+	if EnhancedVideo and EnhancedVideo.starterScript then
+		EnhancedVideo.starterScript()
+	end
+end)()
 
-		if EnhancedVideo and EnhancedVideo.starterScript then
-			EnhancedVideo.starterScript()
-		end
-	end)()
-end
+coroutine.wrap(function()
+	local InExperienceClickout = safeRequire(CorePackages.Workspace.Packages.InExperienceClickout)
 
-if FFlagLuaAppEnableInExperienceClickoutScripts then
-	coroutine.wrap(function()
-		local InExperienceClickout = safeRequire(CorePackages.Workspace.Packages.InExperienceClickout)
-
-		if InExperienceClickout and InExperienceClickout.starterScript then
-			InExperienceClickout.starterScript()
-		end
-	end)()
-end
+	if InExperienceClickout and InExperienceClickout.starterScript then
+		InExperienceClickout.starterScript()
+	end
+end)()
 
 if game:GetEngineFeature("EnableLuaAdPlayer") then
 	safeRequire(CorePackages.Workspace.Packages.AdPlayer).init()
@@ -500,10 +511,6 @@ if GetFFlagEnableSoundSessionTelemetry() then
 end
 
 coroutine.wrap(safeRequire)(CoreGuiModules.ApolloClient)
-
-if GetFFlagContactListClientEnabled() then
-	coroutine.wrap(safeRequire)(CoreGuiModules.ContactList)
-end
 
 if isCharacterNameHandlerEnabled() then
 	ScriptContext:AddCoreScriptLocal("CoreScripts/CharacterNameHandler", script.Parent)
@@ -547,6 +554,10 @@ end
 
 ScriptContext:AddCoreScriptLocal("CoreScripts/BulkPurchaseApp", RobloxGui)
 
+if GetEngineFeatureEnablePromptRobuxTransfer() then
+	ScriptContext:AddCoreScriptLocal("CoreScripts/InExperienceTransferApp", RobloxGui)
+end
+
 if AudioFocusManagementEnabled then
 	ScriptContext:AddCoreScriptLocal("CoreScripts/ExperienceAudioFocusBinder", RobloxGui)
 end
@@ -567,6 +578,10 @@ ScriptContext:AddCoreScriptLocal("CoreScripts/CoreGuiEnableAnalytics", RobloxGui
 
 if FFlagEnableLinkSharingEvent then
 	ScriptContext:AddCoreScriptLocal("CoreScripts/OpenShareSheetWithLink", RobloxGui)
+end
+
+if FFlagEnableShareSheet then
+	ScriptContext:AddCoreScriptLocal("CoreScripts/UniversalShareSheetScreenGui", RobloxGui)
 end
 
 if FFlagLuaAppInExperienceDetailsPrompt then
@@ -598,20 +613,11 @@ local ReactSchedulingDelaySeconds = FIntReactSchedulingTrackerStartUpDelayMs / 1
 local ReactSchedulingTracker = require(CoreGuiModules.Common.ReactSchedulingTracker)
 -- delay to reduce startup noise
 task.delay(ReactSchedulingDelaySeconds, function()
-	(ReactSchedulingTracker::ReactSchedulingTracker.ReactSchedulingTracker):start()
+	(ReactSchedulingTracker :: ReactSchedulingTracker.ReactSchedulingTracker):start()
 end)
 
-local FFlagEnableMemoryTrackerUnification =
-	require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableMemoryTrackerUnification
-if FFlagEnableMemoryTrackerUnification then
-	require(CorePackages.Workspace.Packages.Memory).start(true, FStringReactSchedulingContext)
-else
-	local MemoryTracker = require(CorePackages.Workspace.Packages.Memory).MemoryTracker
-	local memoryTracker = MemoryTracker(FStringReactSchedulingContext)
-	if memoryTracker then
-		memoryTracker:start()
-	end
-end
+local Memory = require(CorePackages.Workspace.Packages.Memory)
+Memory.start(true, FStringReactSchedulingContext, Memory.MemoryScope.InExperience)
 
 if game:GetEngineFeature("RecordingServicePlaybackApiLua") then
 	coroutine.wrap(safeRequire)(CorePackages.Workspace.Packages.ExperienceStateReplay)
@@ -634,7 +640,8 @@ coroutine.wrap(function()
 end)()
 
 if FFlagEnableCorescriptsProfiler then
-	local CoreScriptsProfilerTelemetry = require(CorePackages.Workspace.Packages.CoreScriptsProfiler).CoreScriptsProfilerTelemetry
+	local CoreScriptsProfilerTelemetry =
+		require(CorePackages.Workspace.Packages.CoreScriptsProfiler).CoreScriptsProfilerTelemetry
 
 	if CoreScriptsProfilerTelemetry then
 		-- Start the telemetry system

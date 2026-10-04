@@ -5,10 +5,14 @@ local React = require(Packages.React)
 local useContext = React.useContext
 
 local PluginContext = require(script.Parent.PluginContext)
+local isPluginElevated = require(script.Parent.isPluginElevated)
 
-local function usePlugin(): Plugin?
+local function usePlugin(): (Plugin?, boolean)
 	local plugin = useContext(PluginContext)
-	return if plugin == React.None then nil else plugin
+	if plugin and plugin ~= React.None then
+		return plugin, isPluginElevated(plugin)
+	end
+	return nil, false
 end
 
 return usePlugin

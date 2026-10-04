@@ -11,11 +11,22 @@ local UIBlox = InGameMenuDependencies.UIBlox
 
 local ImageSetButton = UIBlox.Core.ImageSet.ImageSetButton
 local Images = UIBlox.App.ImageSet.Images
-local withSelectionCursorProvider = UIBlox.App.SelectionImage.withSelectionCursorProvider
-local CursorKind = UIBlox.App.SelectionImage.CursorKind
+local Foundation = require(CorePackages.Packages.Foundation)
+local FFlagCoreUiMigrateUIBloxToFoundation = require(CorePackages.Workspace.Packages.SharedFlags).FFlagCoreUiMigrateUIBloxToFoundation
 
-local HOME_ICON_ON = Images["icons/menu/home_on"]
-local HOME_ICON_OFF = Images["icons/menu/home_off"]
+local withSelectionCursorProvider = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.UNSTABLE.withCursorMigration
+	else UIBlox.App.SelectionImage.withSelectionCursorProvider
+local CursorKind = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.Enums.CursorType
+	else UIBlox.App.SelectionImage.CursorKind
+
+local Image = Foundation.Image
+
+local HOME_ICON_ON = if FFlagCoreUiMigrateUIBloxToFoundation then "icons/menu/home_on" else Images["icons/menu/home_on"]
+local HOME_ICON_OFF = if FFlagCoreUiMigrateUIBloxToFoundation
+	then "icons/menu/home_off"
+	else Images["icons/menu/home_off"]
 
 local HomeButton = Roact.PureComponent:extend("HomeButton")
 
@@ -40,15 +51,23 @@ function HomeButton:renderWithSelectionCursor(getSelectionCursor)
 		Size = UDim2.fromOffset(64, 64),
 		LayoutOrder = self.props.layoutOrder,
 	}, {
-		HomeButton = Roact.createElement(ImageSetButton, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Image = icon,
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(32, 32),
-			SelectionImageObject = getSelectionCursor(CursorKind.RoundedRect),
-			[Roact.Event.Activated] = self.props.onActivated,
-		}),
+		HomeButton = if FFlagCoreUiMigrateUIBloxToFoundation
+			then Roact.createElement(Image, {
+				Image = icon,
+				tag = "position-center-center anchor-center-center size-800",
+				backgroundStyle = { Transparency = 1 },
+				selection = { SelectionImageObject = getSelectionCursor(CursorKind.RoundedRect) },
+				onActivated = self.props.onActivated,
+			})
+			else Roact.createElement(ImageSetButton, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				Image = icon,
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(32, 32),
+				SelectionImageObject = getSelectionCursor(CursorKind.RoundedRect),
+				[Roact.Event.Activated] = self.props.onActivated,
+			}),
 	})
 end
 

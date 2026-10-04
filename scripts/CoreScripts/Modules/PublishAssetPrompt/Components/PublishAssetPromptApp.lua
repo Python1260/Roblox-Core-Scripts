@@ -1,5 +1,5 @@
 --[[
-	This component displays an on-screen prompt when AssetService:PromptPublishAssetAsync is called,
+	This component displays an on-screen prompt when AssetService:PromptCreatePlatformContentAsync is called,
 	so that a player can publish assets from within an experience. The appearance of this prompt varies depending
 	on the AssetType. In addition to PromptPublishAssetSingleStep, eventually we may add multi-step prompts.
 ]]
@@ -19,6 +19,7 @@ local PromptType = require(Components.Parent.PromptType)
 local PublishAssetPromptSingleStep = require(Components.PublishAssetPromptSingleStep)
 local PublishAvatarPrompt = require(Components.PublishAvatarPrompt.PublishAvatarPrompt)
 local PublishAvatarAssetPrompt = require(Components.PublishAvatarAssetPrompt.PublishAvatarAssetPrompt)
+local PublishMakeupLookPrompt = require(Components.PublishMakeupLookPrompt.PublishMakeupLookPrompt)
 local ResultModal = require(Components.ResultModal)
 
 local UIBlox = require(CorePackages.Packages.UIBlox)
@@ -31,6 +32,8 @@ local FocusNavigableSurfaceRegistry = FocusNavigationUtils.FocusNavigableSurface
 local FocusNavigationRegistryProvider = FocusNavigableSurfaceRegistry.Provider
 local FocusRoot = FocusNavigationUtils.FocusRoot
 local FocusNavigableSurfaceIdentifierEnum = FocusNavigationUtils.FocusNavigableSurfaceIdentifierEnum
+
+local GetFFlagUploadMakeupSupport = require(Components.Parent.Flags.GetFFlagUploadMakeupSupport)
 
 --Displays behind the in-game menu so that developers can't block interaction with the InGameMenu by constantly prompting.
 --The in-game menu displays at level 0, to render behind it we need to display at level -1.
@@ -86,6 +89,10 @@ function PublishAssetPromptApp:render()
 		})
 	elseif self.props.promptType == PromptType.PublishAvatarAsset then
 		promptElement = Roact.createElement(PublishAvatarAssetPrompt, {
+			screenSize = self.state.screenSize,
+		})
+	elseif GetFFlagUploadMakeupSupport() and self.props.promptType == PromptType.PublishMakeupLook then
+		promptElement = Roact.createElement(PublishMakeupLookPrompt, {
 			screenSize = self.state.screenSize,
 		})
 	end

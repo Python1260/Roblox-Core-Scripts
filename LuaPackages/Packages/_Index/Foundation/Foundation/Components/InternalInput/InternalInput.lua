@@ -1,7 +1,6 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
-local Flags = require(Foundation.Utility.Flags)
 local Motion = require(Packages.Motion)
 local useMotion = Motion.useMotion
 
@@ -17,6 +16,7 @@ type Padding = Types.Padding
 
 local StateLayerAffordance = require(Foundation.Enums.StateLayerAffordance)
 
+local InputHint = require(script.Parent.InputHint)
 local useInputMotionStates = require(script.Parent.useInputMotionStates)
 local useInputVariants = require(script.Parent.useInputVariants)
 export type InputColors = useInputMotionStates.InputColors
@@ -27,9 +27,6 @@ local withCommonProps = require(Foundation.Utility.withCommonProps)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
 local Constants = require(Foundation.Constants)
-
-local ControlState = require(Foundation.Enums.ControlState)
-type ControlState = ControlState.ControlState
 
 local InputSize = require(Foundation.Enums.InputSize)
 type InputSize = InputSize.InputSize
@@ -67,6 +64,7 @@ type Props = {
 	label: {
 		text: string | React.ReactNode?,
 		position: Enum.HorizontalAlignment?,
+		hint: string?,
 	},
 	size: InputSize?,
 	-- Custom styles for the input.
@@ -86,7 +84,6 @@ local function InternalInput(inputProps: Props, ref: React.Ref<GuiObject>?)
 	local label, labelPosition = props.label.text, props.label.position or Enum.HorizontalAlignment.Right
 	local hasLabel = if typeof(label) == "string" then #label > 0 else label ~= nil
 
-	local isHovering, setIsHovering = React.useState(false)
 	local tokens = useTokens()
 
 	local isFilled = props.isChecked or props.isIndeterminate
@@ -101,28 +98,17 @@ local function InternalInput(inputProps: Props, ref: React.Ref<GuiObject>?)
 		}
 	end, { tokens, hasLabel, props.customVariantProps.cursorRadius } :: { unknown })
 
-	local motionStates = useInputMotionStates(
-		tokens,
-		if Flags.FoundationToggleVisualUpdate
-			then props.customVariantProps.colors
-			else props.customVariantProps.checkedStyle
-	)
+	local motionStates = useInputMotionStates(tokens, props.customVariantProps.colors)
 
 	local values, animate = useMotion(motionStates.Default)
 
 	React.useEffect(function()
 		if isFilled then
 			animate(motionStates.Checked)
-		elseif isHovering then
-			animate(motionStates.Hover)
 		else
 			animate(motionStates.Default)
 		end
-	end, { isFilled, isHovering, motionStates } :: { unknown })
-
-	local onInputStateChanged = React.useCallback(function(newState: ControlState)
-		setIsHovering(newState == ControlState.Hover)
-	end, {})
+	end, { isFilled, motionStates } :: { unknown })
 
 	local onActivated = React.useCallback(function()
 		if props.isDisabled then
@@ -143,7 +129,6 @@ local function InternalInput(inputProps: Props, ref: React.Ref<GuiObject>?)
 		Active = not props.isDisabled,
 		GroupTransparency = if props.isDisabled then Constants.DISABLED_TRANSPARENCY else 0,
 		onActivated = onActivated,
-		onStateChanged = onInputStateChanged,
 		stateLayer = { affordance = StateLayerAffordance.None },
 		selection = (if hasLabel then { Selectable = false } else selectionProps),
 		cursor = (if hasLabel then nil else cursor),
@@ -151,11 +136,14 @@ local function InternalInput(inputProps: Props, ref: React.Ref<GuiObject>?)
 		ref = ref,
 	}
 
-	local strokeThickness = if Flags.FoundationToggleVisualUpdate
-			and props.customVariantProps.stroke
+	local strokeThickness = if props.customVariantProps.stroke
 			and props.customVariantProps.stroke.thickness ~= nil
 		then props.customVariantProps.stroke.thickness
 		else variantProps.input.stroke.thickness
+
+	local stateLayer: Types.StateLayer = React.useMemo(function()
+		return { affordance = StateLayerAffordance.None, inset = nil, mode = nil }
+	end, {})
 
 	local inputContainerProps = {
 		tag = props.customVariantProps.tag,
@@ -163,7 +151,7 @@ local function InternalInput(inputProps: Props, ref: React.Ref<GuiObject>?)
 		backgroundStyle = values.backgroundStyle,
 		-- StateLayer can only be applied to something with an onActivated
 		onActivated = onActivated,
-		stateLayer = { affordance = StateLayerAffordance.Background },
+		stateLayer = stateLayer,
 		stroke = {
 			Color = values.strokeStyle:map(function(value: Types.ColorStyleValue)
 				return value.Color3 :: Color3
@@ -209,16 +197,30 @@ local function InternalInput(inputProps: Props, ref: React.Ref<GuiObject>?)
 		},
 	}
 
+	local inputLabel = if typeof(label) == "string"
+		then React.createElement(InputLabel, {
+			Text = label,
+			textStyle = values.labelStyle,
+			size = getInputTextSize(props.size),
+			testId = `{props.testId}--label`,
+		})
+		else label
+
 	return React.createElement(View, withCommonProps(props, Dash.union(internalInputProps, interactionProps)), {
 		Input = React.createElement(View, inputContainerProps, props.children),
-		InputLabel = if typeof(label) == "string"
-			then React.createElement(InputLabel, {
-				Text = label,
-				textStyle = values.labelStyle,
-				size = getInputTextSize(props.size),
-				testId = `{props.testId}--label`,
+		InputLabel = if props.label.hint ~= nil and props.label.hint ~= ""
+			then React.createElement(View, {
+				tag = "col gap-xxsmall auto-xy",
+			}, {
+				InputLabel = inputLabel,
+				Hint = React.createElement(InputHint, {
+					text = props.label.hint,
+					size = getInputTextSize(props.size),
+					testId = `{props.testId}--hint`,
+					LayoutOrder = 2,
+				}),
 			})
-			else label,
+			else inputLabel,
 	})
 end
 

@@ -1,74 +1,216 @@
 --!strict
+--[[
+    InputSetup - This ServerScript performs instance modification and signals input setup is complete.
+]]--
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local StarterPlayer = game:GetService("StarterPlayer")
 
 local CommonUtils = require(script.Parent:WaitForChild("CommonUtils"))
 local FlagUtil = CommonUtils.get("FlagUtil")
 local PlayerModuleEventBus = CommonUtils.get("PlayerModuleEventBus")
-local FFlagUserPlayerScriptsClickToMoveUsesIAS = FlagUtil.getUserFlag("UserPlayerScriptsClickToMoveUsesIAS")
-local FFlagUserPlayerScriptsCameraRotationUsesIAS = FlagUtil.getUserFlag("UserPlayerScriptsCameraRotationUsesIAS")
+
+local FFlagUserPlayerScriptsCCLIntegrationD = FlagUtil.getUserFlag("UserPlayerScriptsCCLIntegrationD")
+local FFlagUserPlayerScriptsUseScriptableBindings = FlagUtil.getUserFlag("UserPlayerScriptsUseScriptableBindings")
+local FFlagUserPlayerScriptsSAuthDirectAPIs = FlagUtil.getUserFlag("UserPlayerScriptsSAuthDirectAPIs2")
+local FFlagUserPlayerScriptsPlayerControlState = FlagUtil.getUserFlag("UserPlayerScriptsPlayerControlState2")
+local FFlagUserPlayerScriptsSupportTVRemoteKeycodes = FlagUtil.getUserFlag("UserPlayerScriptsSupportTVRemoteKeycodes")
+local FFlagUserPlayerScriptsTaskDeferSimulation = FlagUtil.getUserFlag("UserPlayerScriptsTaskDeferSimulation")
+
+local AvatarAbilitiesInterface = if FFlagUserPlayerScriptsCCLIntegrationD
+	then require(script.Parent:WaitForChild("ControlModule"):WaitForChild("AvatarAbilitiesInterface"))
+	else nil
+local InputReplication = if FFlagUserPlayerScriptsCCLIntegrationD
+	then require(script.Parent:WaitForChild("ControlModule"):WaitForChild("InputReplication"))
+	else nil
 
 local CONNECTIONS = {
 	INPUTS_SETUP = "INPUTS_SETUP",
 }
 
-if FFlagUserPlayerScriptsCameraRotationUsesIAS then
-	local character = StarterPlayer.PlayerModule.InputContexts.Character
+--[[ Input Setup ]]
+if FFlagUserPlayerScriptsUseScriptableBindings then
+	local characterContext = StarterPlayer.PlayerModule.InputContexts.CharacterContext
+	local cameraContext = StarterPlayer.PlayerModule.InputContexts.CameraContext
+	local moveAction = characterContext:FindFirstChild("MoveAction")
+	local jumpAction = characterContext:FindFirstChild("JumpAction")
+	local cameraAction = cameraContext:FindFirstChild("CameraAction")
+	local rotationAction = characterContext:FindFirstChild("RotationAction")
 
-	local cameraZoom = character.CameraZoom
+	if moveAction and not moveAction:FindFirstChild("DynamicThumbstickScriptableBinding") then
+		local dynamicThumbstickBinding = Instance.new("InputBinding")
+		dynamicThumbstickBinding.Name = "DynamicThumbstickScriptableBinding"
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then dynamicThumbstickBinding.Type = Enum.InputBindingType.Scriptable end
+		dynamicThumbstickBinding.Parent = moveAction
+	elseif FFlagUserPlayerScriptsSAuthDirectAPIs and moveAction then
+		local existingBinding = moveAction:FindFirstChild("DynamicThumbstickScriptableBinding")
+		if existingBinding and existingBinding:IsA("InputBinding") then existingBinding.Type = Enum.InputBindingType.Scriptable end
+	end
 
-	local wheelBinding = Instance.new("InputBinding")
-	wheelBinding.Name = "MouseWheelBinding"
-	wheelBinding.KeyCode = Enum.KeyCode.MouseWheel
-	wheelBinding.Scale = -1
-	wheelBinding.Parent = cameraZoom
+	if moveAction and not moveAction:FindFirstChild("ClassicThumbstickScriptableBinding") then
+		local classicThumbstickBinding = Instance.new("InputBinding")
+		classicThumbstickBinding.Name = "ClassicThumbstickScriptableBinding"
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then classicThumbstickBinding.Type = Enum.InputBindingType.Scriptable end
+		classicThumbstickBinding.Parent = moveAction
+	elseif FFlagUserPlayerScriptsSAuthDirectAPIs and moveAction then
+		local existingBinding = moveAction:FindFirstChild("ClassicThumbstickScriptableBinding")
+		if existingBinding and existingBinding:IsA("InputBinding") then existingBinding.Type = Enum.InputBindingType.Scriptable end
+	end
 
-	local pinchBinding = Instance.new("InputBinding")
-	pinchBinding.Name = "TrackpadPinchBinding"
-	pinchBinding.KeyCode = Enum.KeyCode.TrackpadPinch
-	pinchBinding.Scale = -1
-	pinchBinding.Parent = cameraZoom
+	if moveAction and not moveAction:FindFirstChild("ClickToMoveScriptableBinding") then
+		local clickToMoveBinding = Instance.new("InputBinding")
+		clickToMoveBinding.Name = "ClickToMoveScriptableBinding"
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then clickToMoveBinding.Type = Enum.InputBindingType.Scriptable end
+		clickToMoveBinding.Parent = moveAction
+	elseif FFlagUserPlayerScriptsSAuthDirectAPIs and moveAction then
+		local existingBinding = moveAction:FindFirstChild("ClickToMoveScriptableBinding")
+		if existingBinding and existingBinding:IsA("InputBinding") then existingBinding.Type = Enum.InputBindingType.Scriptable end
+	end
 
-	local cameraRotation = character.CameraRotation
+	if jumpAction and not jumpAction:FindFirstChild("ClickToMoveScriptableBinding") then
+		local clickToMoveBinding = Instance.new("InputBinding")
+		clickToMoveBinding.Name = "ClickToMoveScriptableBinding"
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then clickToMoveBinding.Type = Enum.InputBindingType.Scriptable end
+		clickToMoveBinding.Parent = jumpAction
+	elseif FFlagUserPlayerScriptsSAuthDirectAPIs and jumpAction then
+		local existingBinding = jumpAction:FindFirstChild("ClickToMoveScriptableBinding")
+		if existingBinding and existingBinding:IsA("InputBinding") then existingBinding.Type = Enum.InputBindingType.Scriptable end
+	end
 
-	local mouseDeltaBinding = Instance.new("InputBinding")
-	mouseDeltaBinding.Name = "MouseDeltaBinding"
-	mouseDeltaBinding.KeyCode = Enum.KeyCode.MouseDelta
-	mouseDeltaBinding.Vector2Scale = Vector2.new(0.008727, 0.006720)
-	mouseDeltaBinding.Parent = cameraRotation
+	if cameraAction and not cameraAction:FindFirstChild("CameraScriptableBinding") then
+		local cameraScriptableBinding = Instance.new("InputBinding")
+		cameraScriptableBinding.Name = "CameraScriptableBinding"
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then cameraScriptableBinding.Type = Enum.InputBindingType.Scriptable end
+		cameraScriptableBinding.Parent = cameraAction
+	elseif FFlagUserPlayerScriptsSAuthDirectAPIs and cameraAction then
+		local existingBinding = cameraAction:FindFirstChild("CameraScriptableBinding")
+		if existingBinding and existingBinding:IsA("InputBinding") then existingBinding.Type = Enum.InputBindingType.Scriptable end
+	end
 
-	local pointerPanBinding = Instance.new("InputBinding")
-	pointerPanBinding.Name = "TrackpadPanBinding"
-	pointerPanBinding.KeyCode = Enum.KeyCode.TrackpadPan
-	pointerPanBinding.Vector2Scale = Vector2.new(0.12217, 0.09407)
-	pointerPanBinding.Parent = cameraRotation
-
-	local cameraPanActive = Instance.new("InputAction")
-	cameraPanActive.Name = "CameraPanActive"
-	cameraPanActive.Enabled = false
-	cameraPanActive.Parent = character
-
-	local cameraPanActiveBinding = Instance.new("InputBinding")
-	cameraPanActiveBinding.Name = "MouseBinding"
-	cameraPanActiveBinding.KeyCode = Enum.KeyCode.MouseRightButton
-	cameraPanActiveBinding.Parent = cameraPanActive
+	if rotationAction and not rotationAction:FindFirstChild("RotationScriptableBinding") then
+		local rotationScriptableBinding = Instance.new("InputBinding")
+		rotationScriptableBinding.Name = "RotationScriptableBinding"
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then rotationScriptableBinding.Type = Enum.InputBindingType.Scriptable end
+		rotationScriptableBinding.Parent = rotationAction
+	elseif FFlagUserPlayerScriptsSAuthDirectAPIs and rotationAction then
+		local existingBinding = rotationAction:FindFirstChild("RotationScriptableBinding")
+		if existingBinding and existingBinding:IsA("InputBinding") then existingBinding.Type = Enum.InputBindingType.Scriptable end
+	end
 end
 
-if FFlagUserPlayerScriptsClickToMoveUsesIAS then
-	local character = StarterPlayer.PlayerModule.InputContexts.Character
+if not FFlagUserPlayerScriptsPlayerControlState then
+	local function attemptCreateActionsIfAbsent(player: Player)
+		local avatarAbilitiesInterface = AvatarAbilitiesInterface.get(player)
 
-	local clickToMovePositionAction = Instance.new("InputAction")
-	clickToMovePositionAction.Name = "ClickToMovePosition"
-	clickToMovePositionAction.Type = Enum.InputActionType.ViewportPosition
-	clickToMovePositionAction.Parent = character
+		local function createAction(abilityName: string)
+			local inputContexts = player:FindFirstChild("InputContexts")
+			if not inputContexts then return end
+			local characterContext = inputContexts:FindFirstChild("CharacterContext")
+			if not characterContext then return end
+			if FFlagUserPlayerScriptsTaskDeferSimulation and characterContext:FindFirstChild(abilityName .. "Action") then return end
 
-	local mousePositionBinding = Instance.new("InputBinding")
-	mousePositionBinding.Name = "MousePositionBinding"
-	mousePositionBinding.KeyCode = Enum.KeyCode.MousePosition
-	mousePositionBinding.Parent = clickToMovePositionAction
+			local action = Instance.new("InputAction")
+			action.Name = abilityName .. "Action"
+			if FFlagUserPlayerScriptsUseScriptableBindings then
+				local scriptableBinding = Instance.new("InputBinding")
+				scriptableBinding.Name = "ScriptableBinding"
+				if FFlagUserPlayerScriptsSAuthDirectAPIs then scriptableBinding.Type = Enum.InputBindingType.Scriptable end
+				scriptableBinding.Parent = action
+			end
+			action.Parent = characterContext
+		end
+
+		if avatarAbilitiesInterface:isEnabled() then
+			local inputContexts = player:FindFirstChild("InputContexts")
+			if not inputContexts then
+				-- We aren't able to create new instances or wait while in a BindToSimulation update
+				-- Creating these objects will be done asynchronously. It will take two calls of attemptCreateActionsIfAbsent() to create the hierarchy
+				(if FFlagUserPlayerScriptsTaskDeferSimulation then task.defer else task.spawn)(function()
+					InputReplication.CloneInputsIfAbsent(player)
+				end)
+			else
+				local characterContext = inputContexts:FindFirstChild("CharacterContext")
+				if characterContext then
+					for _, abilityName in avatarAbilitiesInterface:GetAbilities() do
+						local action = characterContext:FindFirstChild(abilityName .. "Action")
+						if not action then
+							(if FFlagUserPlayerScriptsTaskDeferSimulation then task.defer else task.spawn)(function()
+								createAction(abilityName)
+							end)
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local function updatePlayer(player: Player)
+		attemptCreateActionsIfAbsent(player)
+		local avatarAbilitiesInterface = AvatarAbilitiesInterface.get(player)
+		if avatarAbilitiesInterface:isEnabled() then
+			InputReplication.SendInputToCCLCharacter(player)
+		end
+	end
+
+	if FFlagUserPlayerScriptsCCLIntegrationD then
+		Players.PlayerAdded:Connect(attemptCreateActionsIfAbsent)
+		for _, player in Players:GetPlayers() do
+			attemptCreateActionsIfAbsent(player)
+		end
+
+		RunService:BindToSimulation(function(dt)
+			for _, player in Players:GetPlayers() do
+				updatePlayer(player)
+			end
+		end, Enum.StepFrequency.Hz60)
+	end
 end
 
-if FFlagUserPlayerScriptsClickToMoveUsesIAS or FFlagUserPlayerScriptsCameraRotationUsesIAS then
-	-- Set shared state and publish so server auth can proceed
-	PlayerModuleEventBus.data.inputsSetupComplete = true
-	PlayerModuleEventBus:publish(CONNECTIONS.INPUTS_SETUP)
+if FFlagUserPlayerScriptsSupportTVRemoteKeycodes then
+	local inputContexts = StarterPlayer.PlayerModule:FindFirstChild("InputContexts")
+	if not inputContexts then
+		warn("PlayerModule: InputContexts not found; skipping TV-remote (MicroGamepad) keycode bindings")
+	end
+	local characterContext = inputContexts and inputContexts:FindFirstChild("CharacterContext")
+	local cameraContext = inputContexts and inputContexts:FindFirstChild("CameraContext")
+
+	local function addMicroGamepadBinding(action: Instance?, configure: (InputBinding) -> ())
+		if action and not action:FindFirstChild("MicroGamepadBinding") then
+			local binding = Instance.new("InputBinding")
+			binding.Name = "MicroGamepadBinding"
+			configure(binding)
+			binding.Parent = action
+		end
+	end
+
+	if characterContext then
+		addMicroGamepadBinding(characterContext:FindFirstChild("MoveAction"), function(binding)
+			binding.Up = Enum.KeyCode.ButtonUp
+			binding.Down = Enum.KeyCode.ButtonDown
+		end)
+		addMicroGamepadBinding(characterContext:FindFirstChild("JumpAction"), function(binding)
+			binding.KeyCode = Enum.KeyCode.ButtonCenter
+		end)
+		addMicroGamepadBinding(characterContext:FindFirstChild("AbilityAction1"), function(binding)
+			binding.KeyCode = Enum.KeyCode.ButtonCenter
+		end)
+	elseif inputContexts then
+		warn("PlayerModule: CharacterContext not found; skipping TV-remote keycode bindings (ButtonUp/Down/Center) for character controls")
+	end
+
+	if cameraContext then
+		addMicroGamepadBinding(cameraContext:FindFirstChild("CameraRotationAction"), function(binding)
+			binding.Vector2Scale = Vector2.new(4.189, -3.225)
+			binding.Right = Enum.KeyCode.ButtonRight
+			binding.Left = Enum.KeyCode.ButtonLeft
+		end)
+	elseif inputContexts then
+		warn("PlayerModule: CameraContext not found; skipping TV-remote keycode bindings (ButtonLeft/Right) for camera rotation")
+	end
 end
+
+-- [[ End Input Setup ]]
+
+-- Set shared state and publish so server auth can proceed
+PlayerModuleEventBus.data.inputsSetupComplete = true
+PlayerModuleEventBus:publish(CONNECTIONS.INPUTS_SETUP)

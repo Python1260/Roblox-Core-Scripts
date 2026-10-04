@@ -1,8 +1,6 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
-local Flags = require(Foundation.Utility.Flags)
 
-local Dash = require(Packages.Dash)
 local FoundationCloudAssets = require(Packages.FoundationCloudAssets)
 local FoundationImages = require(Packages.FoundationImages)
 local React = require(Packages.React)
@@ -13,6 +11,7 @@ local useOnLoaded = require(script.Parent.useOnLoaded)
 local Assets = FoundationCloudAssets.Assets
 local Interactable = require(Foundation.Components.Interactable)
 local Images = FoundationImages.Images
+local DeprecatedIconImages = FoundationImages.IconImages_DEPRECATED
 type ImageSetImage = FoundationImages.ImageSetImage
 local getScaledSlice = require(script.Parent.ImageSet.getScaledSlice)
 local isCloudAsset = require(script.Parent.CloudAsset.isCloudAsset)
@@ -43,6 +42,7 @@ export type ImageProps = {
 	imageStyle: ColorStyle?,
 
 	Image: Bindable<string>?,
+	ImageContent: Bindable<string | Content>?,
 	ResampleMode: Bindable<Enum.ResamplerMode>?,
 	ScaleType: Bindable<Enum.ScaleType>?,
 	TileSize: Bindable<UDim2>?,
@@ -68,6 +68,11 @@ local function getFoundationImageAsset(image: string): ImageSetImage?
 	-- FoundationImages guards unknown keys with an __index throw.
 	-- In dev we keep strict indexing so CI catches bad keys early.
 	-- In production we use rawget to avoid render-time crashes from malformed user input.
+	local deprecatedImage = DeprecatedIconImages[image]
+	if deprecatedImage then
+		return deprecatedImage :: ImageSetImage
+	end
+
 	if isDev then
 		return Images[image]
 	end
@@ -92,6 +97,25 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 	local isInteractable = props.onStateChanged ~= nil or props.onActivated ~= nil or props.onSecondaryActivated ~= nil
 
 	local providedAspectRatio = props.aspectRatio
+
+	local bindingImageIsCloudAsset, setBindingImageIsCloudAsset = React.useState(false)
+	React.useEffect(function()
+		if not ReactIs.isBinding(props.Image) then
+			return
+		end
+
+		local imageBinding = props.Image :: React.Binding<string>
+		setBindingImageIsCloudAsset(isCloudAsset(imageBinding:getValue()))
+
+		local disconnectBinding = React.__subscribeToBinding(imageBinding, function(image: string)
+			setBindingImageIsCloudAsset(isCloudAsset(image))
+		end)
+
+		return function()
+			disconnectBinding()
+		end
+	end, { props.Image, providedAspectRatio } :: { unknown })
+
 	local image, imageRectOffset, imageRectSize, aspectRatio = React.useMemo(
 		function(): ...any
 			-- selene: allow(shadowing)
@@ -117,13 +141,11 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 								end
 								return nil
 							end
-							asset = if Flags.FoundationImageSafeLookup
-								then getFoundationImageAsset(value)
-								else Images[value]
+							asset = getFoundationImageAsset(value)
 							return if prop == "AspectRatio"
 								then providedAspectRatio
 								elseif asset then asset[prop]
-								elseif Flags.FoundationImageSafeLookup and prop == "Image" then value
+								elseif prop == "Image" then value
 								else nil
 						elseif prop == "Image" then
 							return value
@@ -136,7 +158,10 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 						end
 					end)
 				end
-				aspectRatio = getImageBindingValue("AspectRatio")
+
+				aspectRatio = if bindingImageIsCloudAsset
+					then getImageBindingValue("AspectRatio")
+					else providedAspectRatio
 				image = getImageBindingValue("Image")
 				imageRectOffset = getImageBindingValue("ImageRectOffset")
 				imageRectSize = getImageBindingValue("ImageRectSize")
@@ -146,9 +171,7 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 					image = asset.assetId
 					aspectRatio = getAspectRatio(asset.size)
 				else
-					local asset = if Flags.FoundationImageSafeLookup
-						then getFoundationImageAsset(props.Image)
-						else Images[props.Image]
+					local asset = getFoundationImageAsset(props.Image)
 					if asset then
 						image = asset.Image
 						imageRectOffset = asset.ImageRectOffset
@@ -162,6 +185,7 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 		{
 			props.Image,
 			props.imageRect,
+			bindingImageIsCloudAsset,
 			providedAspectRatio,
 			Images,
 		} :: { unknown }
@@ -171,11 +195,7 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 	if props.slice then
 		if ReactIs.isBinding(props.Image) then
 			local slice = (props.Image :: React.Binding<string>):map(function(value: string)
-				if
-					if Flags.FoundationImageSafeLookup
-						then shouldUseFoundationSlice(value)
-						else isFoundationImage(value)
-				then
+				if shouldUseFoundationSlice(value) then
 					return getScaledSlice(props.slice.center, props.slice.scale)
 				else
 					return props.slice
@@ -188,11 +208,7 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 				return value.scale
 			end)
 		elseif typeof(props.Image) == "string" then
-			if
-				if Flags.FoundationImageSafeLookup
-					then shouldUseFoundationSlice(props.Image)
-					else isFoundationImage(props.Image)
-			then
+			if shouldUseFoundationSlice(props.Image) then
 				local slice = getScaledSlice(props.slice.center, props.slice.scale)
 				sliceCenter = slice.center
 				sliceScale = slice.scale
@@ -209,16 +225,30 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 
 	local tagsWithDefaults = useDefaultTags(props.tag, defaultTags)
 	local tag = useStyleTags(tagsWithDefaults)
+	useOnLoaded(image, props.onLoaded)
 
-	if Flags.FoundationImageOnLoadedCallback then
-		useOnLoaded(image, props.onLoaded)
-	end
+	local imageContent = React.useMemo(function(): Bindable<Content>?
+		if ReactIs.isBinding(props.ImageContent) then
+			return (props.ImageContent :: React.Binding<string | Content>):map(
+				function(value: string | Content): Content
+					if typeof(value) == "string" then
+						return Content.fromUri(value)
+					end
+					return value
+				end
+			)
+		elseif typeof(props.ImageContent) == "string" then
+			return Content.fromUri(props.ImageContent)
+		end
+		return props.ImageContent :: Content?
+	end, { props.ImageContent })
 
 	local engineComponent = if isInteractable then "ImageButton" else "ImageLabel"
 
 	local engineComponentProps = withGuiObjectProps(props, {
 		AutoButtonColor = if engineComponent == "ImageButton" then props.AutoButtonColor else nil,
 		Image = image,
+		ImageContent = imageContent,
 		ImageColor3 = if props.imageStyle then indexBindable(props.imageStyle, "Color3") else nil,
 		ImageTransparency = if props.imageStyle then indexBindable(props.imageStyle, "Transparency") else nil,
 		ImageRectOffset = imageRectOffset,
@@ -232,42 +262,21 @@ local function Image(imageProps: ImageProps, ref: React.Ref<GuiObject>?)
 		ref = ref,
 		[React.Tag] = tag,
 	})
+	local component: any = engineComponent
+	local componentProps: any = engineComponentProps
 
-	if Flags.FoundationBuildingBlocksRemoveDashUnion then
-		local component: any = engineComponent
-		local componentProps: any = engineComponentProps
-
-		if isInteractable then
-			component = Interactable
-			componentProps.component = engineComponent
-			componentProps.onActivated = props.onActivated
-			componentProps.onSecondaryActivated = props.onSecondaryActivated
-			componentProps.onStateChanged = props.onStateChanged
-			componentProps.stateLayer = props.stateLayer
-			componentProps.isDisabled = props.isDisabled
-			componentProps.cursor = props.cursor
-		end
-
-		return React.createElement(component, componentProps, GuiObjectChildren(props))
-	else
-		local component = if isInteractable then Interactable else engineComponent
-
-		local imageComponentProps = {
-			component = engineComponent,
-			onActivated = props.onActivated,
-			onSecondaryActivated = props.onSecondaryActivated,
-			onStateChanged = props.onStateChanged,
-			stateLayer = props.stateLayer,
-			isDisabled = props.isDisabled,
-			cursor = props.cursor,
-		}
-
-		local componentProps = if isInteractable
-			then Dash.union(engineComponentProps, imageComponentProps)
-			else engineComponentProps
-
-		return React.createElement(component, componentProps, GuiObjectChildren(props))
+	if isInteractable then
+		component = Interactable
+		componentProps.component = engineComponent
+		componentProps.onActivated = props.onActivated
+		componentProps.onSecondaryActivated = props.onSecondaryActivated
+		componentProps.onStateChanged = props.onStateChanged
+		componentProps.stateLayer = props.stateLayer
+		componentProps.isDisabled = props.isDisabled
+		componentProps.cursor = props.cursor
 	end
+
+	return React.createElement(component, componentProps, GuiObjectChildren(props))
 end
 
 return React.memo(React.forwardRef(Image))

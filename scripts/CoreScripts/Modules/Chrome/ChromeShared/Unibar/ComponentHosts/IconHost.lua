@@ -7,12 +7,18 @@ local React = require(CorePackages.Packages.React)
 
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
+local FFlagEnableWhatsNew = SharedFlags.FFlagEnableWhatsNew
+
+local WhatsNewAnchor = if FFlagEnableWhatsNew
+	then require(CorePackages.Workspace.Packages.WhatsNew).WhatsNewAnchor
+	else nil
 
 local ChromeFlags = require(script.Parent.Parent.Parent.Parent.Flags)
 local FFlagUnibarMenuOpenHamburger = ChromeFlags.FFlagUnibarMenuOpenHamburger
 local FFlagUnibarMenuOpenSubmenu = ChromeFlags.FFlagUnibarMenuOpenSubmenu
 
 local ChromeSharedFlags = require(Root.Flags)
+local FFlagChromeNineDotActivityIndicator = ChromeSharedFlags.FFlagChromeNineDotActivityIndicator
 local FFlagTokenizeUnibarConstantsWithStyleProvider = ChromeSharedFlags.FFlagTokenizeUnibarConstantsWithStyleProvider
 
 local UIBlox = require(CorePackages.Packages.UIBlox)
@@ -37,13 +43,13 @@ local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
 local UnibarStyle = ChromePackage.UnibarStyle
 
 local useObservableValue = require(Root.Hooks.useObservableValue)
-local useNotificationCount = require(Root.Hooks.useNotificationCount)
-local useMappedObservableValue = require(Root.Hooks.useMappedObservableValue)
 local useMappedObservableValueBinding = require(Root.Hooks.useMappedObservableValueBinding)
 local useTimeHysteresis = require(Root.Hooks.useTimeHysteresis)
-local useTokens = Foundation.Hooks.useTokens
-
 local shouldRejectMultiTouch = require(Root.Utility.shouldRejectMultiTouch)
+
+local ChatNotificationBadge = require(script.Parent.ChatNotificationBadge)
+local NineDotActivityIndicator = require(script.Parent.NineDotActivityIndicator)
+local NineDotNotificationBadge = require(script.Parent.NineDotNotificationBadge)
 
 local isInExperienceUIVREnabled =
 	require(CorePackages.Workspace.Packages.SharedExperimentDefinition).isInExperienceUIVREnabled
@@ -77,10 +83,6 @@ end
 local MenuIconContext = if FFlagEnableConsoleExpControls
 	then require(Root.Parent.Parent.TopBar.Components.MenuIconContext)
 	else nil :: never
-
-local FFlagEnableUnibarFtuxTooltips = SharedFlags.FFlagEnableUnibarFtuxTooltips
-local GetFFlagSimpleChatUnreadMessageCount = SharedFlags.GetFFlagSimpleChatUnreadMessageCount
-local FFlagUseBindingForUnreadChat = game:DefineFastFlag("UseBindingForUnreadChat", false)
 
 type IntegrationComponentProps = ChromePackage.IntegrationComponentProps
 type IntegrationId = ChromePackage.IntegrationId
@@ -121,7 +123,8 @@ export type IconHostProps = {
 	position: React.Binding<UDim2> | UDim2 | nil,
 	visible: React.Binding<boolean> | boolean | nil,
 	disableButtonBehaviors: boolean?,
-	disableBadgeNumber: boolean?,
+	minBadgeCount: number?,
+	showNineDotActivityIndicator: boolean?,
 }
 
 function NotificationBadge(props: IconHostProps): any?
@@ -129,72 +132,51 @@ function NotificationBadge(props: IconHostProps): any?
 		return nil
 	end
 
-	local notificationData, setNotificationData, notificationCount
+	local notificationData, setNotificationData
 	local shouldShowBadge, setShouldShowBadge
 	local hideNotificationCountWhileOpen = false
+	local notification = props.integration.integration and props.integration.integration.notification or nil
+	notificationData, setNotificationData = React.useBinding(notification and notification:get().value or 0)
+	shouldShowBadge, setShouldShowBadge = React.useState(false)
 
-	if FFlagUseBindingForUnreadChat then
-		local notification = props.integration.integration and props.integration.integration.notification or nil
-		notificationData, setNotificationData = React.useBinding(notification and notification:get().value or 0)
-		shouldShowBadge, setShouldShowBadge = React.useState(false)
+	React.useEffect(function()
+		if not notification then
+			return
+		end
 
-		React.useEffect(function()
-			if not notification then
-				return
-			end
-
-			local conn = notification:connect(function()
-				local count = notification:get().value or 0
-				setShouldShowBadge(count > 0)
-				setNotificationData(count)
-			end)
-			return function()
-				conn:disconnect()
-			end
-		end, { props.integration.integration.id })
-	else
-		notificationCount = useNotificationCount(props.integration.integration)
-
-		-- inhibit notificationCount if this integration is a currently open submenu root
-		local isCurrentlyOpenSubMenu = useMappedObservableValue(ChromeService:currentSubMenu(), function(currentSubMenu)
-			return currentSubMenu == props.integration.id
+		local conn = notification:connect(function()
+			local count = notification:get().value or 0
+			setShouldShowBadge(count > 0)
+			setNotificationData(count)
 		end)
-
-		if isCurrentlyOpenSubMenu then
-			notificationCount = 0
+		return function()
+			conn:disconnect()
 		end
+	end, { props.integration.integration.id })
 
-		if props.integration and props.integration.integration then
-			hideNotificationCountWhileOpen = props.integration.integration.hideNotificationCountWhileOpen or false
-		end
-	end
-
-	local tokens
-	if GetFFlagSimpleChatUnreadMessageCount() and props.disableBadgeNumber then
-		tokens = useTokens()
-	end
 	local unibarStyle
-	local iconSize
 	local iconBadgeOffsetX
 	local iconBadgeOffsetY
 	if FFlagTokenizeUnibarConstantsWithStyleProvider then
 		unibarStyle = UnibarStyle.use()
-		iconSize = unibarStyle.ICON_SIZE
 		iconBadgeOffsetX = unibarStyle.ICON_BADGE_OFFSET_X
 		iconBadgeOffsetY = unibarStyle.ICON_BADGE_OFFSET_Y
 	else
-		iconSize = Constants.ICON_SIZE
 		iconBadgeOffsetX = Constants.ICON_BADGE_OFFSET_X
 		iconBadgeOffsetY = Constants.ICON_BADGE_OFFSET_Y
 	end
 
-	local displayBadge = if FFlagUseBindingForUnreadChat then shouldShowBadge else notificationCount > 0
+	local minBadgeCount = props.minBadgeCount or 0
+
+	local displayBadge = shouldShowBadge or minBadgeCount > 0
+
+	local badgeValue: any = notificationData:map(function(count)
+		return math.min(math.max(count, minBadgeCount), MAX_BADGE_VALUE)
+	end)
 
 	return React.createElement("Frame", {
 		BackgroundTransparency = 1,
-		Size = if GetFFlagSimpleChatUnreadMessageCount() and props.disableBadgeNumber
-			then UDim2.new(0, iconSize, 0, iconSize)
-			else UDim2.fromScale(1, 1),
+		Size = UDim2.fromScale(1, 1),
 		Visible = props.toggleTransition and props.toggleTransition:map(function(value)
 			if hideNotificationCountWhileOpen then
 				return value < 0.5
@@ -205,36 +187,24 @@ function NotificationBadge(props: IconHostProps): any?
 		ZIndex = 2,
 	}, {
 		Badge = if displayBadge
-			then if GetFFlagSimpleChatUnreadMessageCount() and props.disableBadgeNumber
-				then React.createElement(Foundation.View, {
-					Position = UDim2.new(1, 0, 0.2, 0),
-					backgroundStyle = {
-						Color3 = tokens.Color.System.Contrast.Color3,
-						Transparency = 0,
-					},
-					stroke = {
-						Color = tokens.Color.Surface.Surface_0.Color3,
-						Transparency = 0,
-						Thickness = tokens.Stroke.Thicker,
-					},
-					tag = "anchor-top-right radius-circle size-200 stroke-thicker",
-					ZIndex = 2,
-				})
-				else React.createElement(
-					StatusIndicator,
-					{
-						value = if FFlagUseBindingForUnreadChat
-							then notificationData:map(function(count)
-								return math.min(count, MAX_BADGE_VALUE)
-							end)
-							else math.min(notificationCount, MAX_BADGE_VALUE),
-						variant = if FoundationFlags.FoundationStatusIndicatorVariantExperiment
-							then StatusIndicatorVariant.Contrast_Experiment
-							else StatusIndicatorVariant.Emphasis,
-						AnchorPoint = Vector2.new(0, 0),
-						Position = UDim2.new(0, iconBadgeOffsetX, 0, iconBadgeOffsetY),
-					} :: any
-				)
+			then React.createElement(
+				StatusIndicator,
+				{
+					value = badgeValue,
+					variant = if FoundationFlags.FoundationStatusIndicatorVariantExperiment
+						then StatusIndicatorVariant.Contrast_Experiment
+						else StatusIndicatorVariant.Emphasis,
+					AnchorPoint = Vector2.new(0, 0),
+					Position = UDim2.new(0, iconBadgeOffsetX, 0, iconBadgeOffsetY),
+				} :: any
+			)
+			else nil,
+		ActivityIndicator = if FFlagChromeNineDotActivityIndicator and props.integration.id == "nine_dot"
+			then React.createElement(NineDotActivityIndicator, {
+				hasNotificationBadge = displayBadge,
+				position = UDim2.new(0, iconBadgeOffsetX, 0, iconBadgeOffsetY),
+				visible = props.showNineDotActivityIndicator == true,
+			})
 			else nil,
 	})
 end
@@ -364,7 +334,7 @@ function TooltipButton(props: TooltipButtonProps)
 			props.setHovered(active)
 			local hovered = newState == ControlState.Hover
 			setHovered(hovered, (hovered and isTooltipHovered) or areTooltipsDisplaying())
-			if FFlagEnableUnibarFtuxTooltips and hovered then
+			if hovered then
 				ChromeService:onIntegrationHovered():fire(props.integration.id)
 			end
 			if not active then
@@ -667,15 +637,7 @@ function IconHost(props: IconHostProps)
 		end
 	)
 
-	return React.createElement("Frame", {
-		Size = UDim2.new(0, iconCellWidth, 0, iconCellWidth),
-		LayoutOrder = props.integration.order,
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		Position = props.position,
-		Visible = props.visible,
-		ZIndex = if FFlagEnableConsoleExpControls then nil else props.integration.order,
-	}, {
+	local hostChildren = {
 
 		React.createElement("Frame", {
 			Name = "IntegrationIconFrame",
@@ -708,7 +670,19 @@ function IconHost(props: IconHostProps)
 			color = backgroundHover,
 			visible = isHovered,
 		}),
-		React.createElement(NotificationBadge, props) :: any,
+		if props.integration.id == "chat"
+			then React.createElement(ChatNotificationBadge, {
+				iconHostProps = props,
+				NotificationBadge = NotificationBadge,
+			}) :: any
+			elseif FFlagChromeNineDotActivityIndicator and props.integration.id == "nine_dot" then React.createElement(
+				NineDotNotificationBadge,
+				{
+					iconHostProps = props,
+					NotificationBadge = NotificationBadge,
+				}
+			)
+			else React.createElement(NotificationBadge, props) :: any,
 		if props.disableButtonBehaviors
 			then nil
 			else React.createElement(TooltipButton, {
@@ -716,7 +690,29 @@ function IconHost(props: IconHostProps)
 				setHovered = setHovered,
 				isCurrentlyOpenSubMenu = isCurrentlyOpenSubMenu,
 			}) :: any,
-	})
+	}
+
+	local hostFrameProps = {
+		Size = UDim2.new(0, iconCellWidth, 0, iconCellWidth),
+		LayoutOrder = props.integration.order,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		Position = props.position,
+		Visible = props.visible,
+		ZIndex = if FFlagEnableConsoleExpControls then nil else props.integration.order,
+	}
+
+	-- Registry anchorIds match Chrome integration ids (e.g. chat, nine_dot).
+	if FFlagEnableWhatsNew then
+		return React.createElement("Frame", hostFrameProps, {
+			WhatsNewAnchor = React.createElement(WhatsNewAnchor :: any, {
+				anchorId = props.integration.id,
+				tag = "size-full",
+			}, hostChildren),
+		})
+	end
+
+	return React.createElement("Frame", hostFrameProps, hostChildren)
 end
 
 return IconHost

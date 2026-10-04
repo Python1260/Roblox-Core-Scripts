@@ -92,7 +92,7 @@ export type AssetQualityMetrics = {
 	fetchTimeMs: number?,
 	fetchFailureReason: string?,
 	visualizationUrl: string?,
-	returnVersion: number?,
+	aqJobId: string?,
 }
 
 export type EditableImageWithPBRData = {
@@ -102,7 +102,23 @@ export type EditableImageWithPBRData = {
 	MetalnessMap: EditableImageData?,
 	NormalMap: EditableImageData?,
 	RoughnessMap: EditableImageData?,
+	EmissiveMask: EditableImageData?,
+	EmissiveTint: Color3?,
+	EmissiveStrength: number?,
 }
+
+export type CurveAnimationsData = { CurveAnimation }
+
+export type CurveAnimComputedFramesData = {
+	animFrames: { { [string]: CFrame } },
+	animLength: number,
+	positionMagnitudeFrames: { { [string]: number } },
+	tracks: { any },
+}
+
+export type ContentIdEntry = { instance: Instance, fieldName: string }
+export type ContentIdMap = { [string]: ContentIdEntry }
+export type ContentIdEntriesMap = { [string]: { ContentIdEntry } }
 
 export type SharedData = {
 	-- Names should match ValidationEnums.SharedDataMember.
@@ -115,11 +131,19 @@ export type SharedData = {
 	uploadEnum: UploadEnum,
 	consumerConfig: PreloadedConsumerConfigs,
 	aqsFetchMetrics: AssetQualityMetrics,
+	r15LegacyDuplicateRoot: Instance, -- R15Fixed duplicate; schema-checked only to catch smuggled payloads (present only when the engine feature populates it)
+
 	aqsSummaryData: { [string]: { [string]: { [string]: number } } },
 	renderMeshesData: { [string]: EditableMeshData },
 	innerCagesData: { [string]: EditableCageData },
 	outerCagesData: { [string]: EditableCageData },
 	meshTextures: { [string]: EditableImageWithPBRData },
+	curveAnimations: CurveAnimationsData,
+	curveAnimComputedFrames: CurveAnimComputedFramesData,
+	contentIds: ContentIdEntriesMap,
+	hsrAssets: { [string]: { Instance } },
+	curveAnimBoneData: { hasBones: boolean }?,
+	fullBodyPartsMetrics: { [string]: any },
 }
 
 export type failureStringContext = {
@@ -127,34 +151,52 @@ export type failureStringContext = {
 	params: { [string]: any },
 }
 
+export type FailureEntry = {
+	failureStringKey: string,
+	failureStringParams: { [string]: any },
+	instancePath: string,
+}
+
 export type SingleValidationResult = {
 	validationEnum: string,
 	status: string,
-	errorTranslationContexts: { failureStringContext },
-	internalData: {},
 	duration: number,
-	telemetryContext: string?,
+	telemetryContext: string,
+	failures: { FailureEntry },
+	warnings: { FailureEntry },
 }
 
 export type ValidationResultData = {
+	validationJobId: string,
+	telemetryBundleId: string?,
 	pass: boolean,
 	numFailures: number,
+	numWarnings: number,
 	states: { [string]: string },
-	errorTranslationContexts: { failureStringContext },
-	internalData: { [string]: {} },
 	ranIntoInternalError: boolean,
+	failureMap: { [string]: { FailureEntry } },
+	warningMap: { [string]: { FailureEntry } },
+	relevantSourceStrings: { [string]: string },
+	aqJobId: string,
 }
 
-export type ValidationReporterFailMethod = (
+export type ValidationReporterReportMethod = (
 	self: ValidationReporter,
-	errorKey: string,
-	errorLabelVariables: { [string]: any }?,
-	internalContext: {}?,
-	telemetryContext: string?
+	key: string,
+	params: { [string]: any }?,
+	instance: Instance?
 ) -> nil
 
 export type ValidationReporter = {
-	fail: ValidationReporterFailMethod,
+	fail: ValidationReporterReportMethod,
+	warn: ValidationReporterReportMethod,
+	err: (self: ValidationReporter, logMessage: string) -> nil,
+	setReportingInstance: (self: ValidationReporter, instance: Instance?) -> nil,
+	setReportingRoot: (self: ValidationReporter, rootInstance: Instance) -> nil,
+	-- Backend-only: throws past ValidationManager so RCC reschedules the job.
+	forceError: (self: ValidationReporter, message: string) -> never,
+	-- Aborts the current test. Backend re-raises (RCC reschedules); Studio/IEC reports as err.
+	fetchError: (self: ValidationReporter, message: string) -> never,
 }
 
 export type SingleValidationFileData = {
@@ -165,26 +207,111 @@ export type SingleValidationFileData = {
 	isShadow: boolean,
 }
 
-export type UGCValidationConsumerName = "Toolbox" | "AutoSetup" | "Backend" | "InExpClient" | "InExpServer"
+-- "Backend" / "InExpClient" are legacy aliases for "Publish" / "InExpServer" kept for downstream
+-- consumers mid-migration. Prefer the new names in new code; the aliases will be removed once
+-- consumer CIs are off them.
+export type UGCValidationConsumerName =
+	"Toolbox"
+	| "AutoSetup"
+	| "Publish"
+	| "InExpServer"
+	| "Internal"
+	| "Backend"
+	| "InExpClient"
 
+-- Pipeline position the AQ fetch should start from:
+--   "scene"  — generate a GLTF from the rootInstance, then fetch AQS from it (default)
+--   "gltf"   — GLTF payload already built upstream; skip generation, fetch AQS from aqFetchData
+--   "jobId"  — AQ job already ran; fetch the AQS summary directly via aqFetchData
+export type AqFetchStage = "scene" | "gltf" | "jobId"
+
+-- Origin / lifecycle axis (where the upload came from).
+export type ConsumerEnv = "Studio" | "Backend" | "IEC"
+
+-- Execution / capability axis (where validation runs); differs from ConsumerEnv only for VaaS (Backend vs IEC).
+export type ValidationEnv = "Studio" | "Backend" | "IEC"
+
+-- Consumer-namespaced sub-tables for fields that only specific envs need. Each consumer
+-- populates the sub-table that matches its env. ValidationManager fills the non-matching
+-- env's sub-table with {} so reads are uniform; required fields are present iff the
+-- consumer's env matches.
+export type BackendConfigs = {
+	restrictedUserIds: RestrictedUserIds?,
+	isUserInTrustedCreatorProgram: boolean?,
+	isEmissiveAllowed: boolean?,
+	universeId: number?,
+}
+
+export type AssetQualityValidationInput = {
+	model: Instance,
+	assetType: Enum.AssetType,
+}
+
+export type AssetQualityValidationConfig = {
+	source: UGCValidationConsumerName,
+	mode: string?,
+	intendedBundleType: Enum.BundleType?,
+	validateSingleAssetsInBundle: boolean?,
+	backendConfigs: BackendConfigs?,
+}
+
+export type AssetQualityValidationResult = {
+	validationData: ValidationResultData,
+	assetType: Enum.AssetType?,
+}
+
+export type IECConfigs = {
+	token: string?,
+	universeId: number?,
+	restrictedUserIds: RestrictedUserIds?,
+}
+
+-- Consumers identify themselves via `source`; validation resolves env and policy.
 export type UGCValidationConsumerConfigs = {
 	source: UGCValidationConsumerName,
+	isVaaS: boolean?, -- default FALSE
 	enforceR15FolderStructure: boolean?, -- default TRUE
 	enforceShadowValidations: boolean?, -- default FALSE
 	telemetryBundleId: string?,
 	telemetryRootId: string?,
 	preloadedEditableMeshes: { [string]: EditableMesh }?,
 	preloadedEditableImages: { [string]: EditableImage }?,
+	-- SystemTester-only: lets fixtures bake HSR Instances inline and bypass
+	-- AssetDelivery. Production consumers leave this nil — live fetch is authoritative.
+	preloadedHsrAssets: { [string]: { Instance } }?,
+	-- SystemTester-only: enum names to drop from dispatch entirely (not just filter
+	-- from results). Use for modules that hit network endpoints unreachable from
+	-- the test env. Production consumers leave this nil.
+	skipModules: { [string]: boolean }?,
+	skipAssetQualityChecks: boolean?, -- default FALSE; when true, drops all isAssetQualityModule modules
+	-- SystemTester-only: skip the pre-.Size anti-tamper physics reset, whose ResetCollisionFidelity needs
+	-- engine mesh content the fixtures cannot load. Production consumers leave this nil so the reset runs.
+	skipPhysicsDataReset: boolean?,
+	aqFetchStage: AqFetchStage?, -- default "scene"
+	aqFetchData: string?, -- jobId or GLTF payload; empty when stage == "scene"
+	backendConfigs: BackendConfigs?,
+	iecConfigs: IECConfigs?,
 }
 
 export type PreloadedConsumerConfigs = {
 	source: UGCValidationConsumerName,
-	enforceR15FolderStructure: boolean, -- default TRUE
-	enforceShadowValidations: boolean, -- default FALSE
+	isVaaS: boolean,
+	consumerEnv: ConsumerEnv,
+	validationEnv: ValidationEnv,
+	enforceR15FolderStructure: boolean,
+	enforceShadowValidations: boolean,
 	telemetryBundleId: string,
 	telemetryRootId: string,
 	preloadedEditableMeshes: { [string]: EditableMesh },
 	preloadedEditableImages: { [string]: EditableImage },
+	preloadedHsrAssets: { [string]: { Instance } },
+	skipModules: { [string]: boolean },
+	skipAssetQualityChecks: boolean,
+	skipPhysicsDataReset: boolean,
+	aqFetchStage: AqFetchStage,
+	aqFetchData: string,
+	backendConfigs: BackendConfigs,
+	iecConfigs: IECConfigs,
 }
 
 export type ValidationModule = {
@@ -195,7 +322,6 @@ export type ValidationModule = {
 	conditionalData: { string }?,
 	prereqTests: { string }?,
 	expectedFailures: { string }?,
-	expectedAqsData: { [string]: any }?,
 	knownAqsUserErrors: { [string]: string }?,
 	run: (ValidationReporter, SharedData) -> nil,
 }
@@ -208,8 +334,8 @@ export type PreloadedValidationModule = {
 	conditionalData: { string },
 	prereqTests: { string },
 	expectedFailures: { string },
-	expectedAqsData: { [string]: any },
 	knownAqsUserErrors: { [string]: string },
+	isAssetQualityModule: boolean,
 	run: (ValidationReporter, SharedData) -> nil,
 }
 

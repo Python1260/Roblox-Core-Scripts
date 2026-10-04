@@ -23,6 +23,9 @@ local UIBlox = require(CorePackages.Packages.UIBlox)
 local Signals = require(CorePackages.Packages.Signals)
 local InExperienceTopBar = require(CorePackages.Workspace.Packages.InExperienceTopBar)
 
+local Foundation = require(CorePackages.Packages.Foundation)
+local ColorMode = Foundation.Enums.ColorMode
+
 local EmotesModules = script.Parent
 local CoreScriptModules = EmotesModules.Parent
 
@@ -38,7 +41,7 @@ local Backpack = if not FFlagEnableNewBackpack then require(CoreScriptModules.Ba
 local Chat = require(CoreScriptModules.ChatSelector)
 local TenFootInterface = require(CoreScriptModules.TenFootInterface)
 local TopBarConstant = require(CoreScriptModules.TopBar.Constants)
-local InExperienceAppChatModal = require(CorePackages.Workspace.Packages.AppChat).App.InExperienceAppChatModal
+local InExperienceAppChatModal = require(CorePackages.Workspace.Packages.AppChat.InExperienceAppChatModal)
 local FFlagTopBarSignalizeSetCores = InExperienceTopBar.Flags.FFlagTopBarSignalizeSetCores
 
 local StyleConstants = UIBlox.App.Style.Constants
@@ -46,6 +49,7 @@ local UiModeStyleProvider = require(CorePackages.Workspace.Packages.Style).UiMod
 
 local CanPlayEmotes = require(Utility.CanPlayEmotes)
 local Constants = require(EmotesModules.Constants)
+local FFlagFixEmotesMenuAvailability = require(EmotesModules.Flags.FFlagFixEmotesMenuAvailability)
 
 local EmotesMenu = require(Components.EmotesMenu)
 local EmotesMenuReducer = require(Reducers.EmotesMenuReducer)
@@ -59,6 +63,8 @@ local NumberEmotesLoadedChanged = require(Actions.NumberEmotesLoadedChanged)
 local SetGuiInset = require(Actions.SetGuiInset)
 local SetLayout = require(Actions.SetLayout)
 local SetLocale = require(Actions.SetLocale)
+
+local FFlagEmotesStayOpenWithChat = game:DefineFastFlag("EmotesStayOpenWithChat", false)
 
 local EmotesMenuMaster = {}
 EmotesMenuMaster.__index = EmotesMenuMaster
@@ -117,21 +123,25 @@ function EmotesMenuMaster:_connectCoreGuiListeners()
 		end)
 	end
 
-	Chat.VisibilityStateChanged:connect(function(isChatVisible)
-		if not isChatVisible then
-			return
-		end
+	if not FFlagEmotesStayOpenWithChat then
+		Chat.VisibilityStateChanged:connect(function(isChatVisible)
+			if not isChatVisible then
+				return
+			end
 
-		if self:isOpen() then
-			self:close()
-		end
-	end)
+			if self:isOpen() then
+				self:close()
+			end
+		end)
+	end
 
-	InExperienceAppChatModal.default.visibilitySignal.Event:Connect(function(visible)
-		if visible and self:isOpen() then
-			self:close()
-		end
-	end)
+	if not FFlagEmotesStayOpenWithChat then
+		InExperienceAppChatModal.default.visibilitySignal.Event:Connect(function(visible)
+			if visible and self:isOpen() then
+				self:close()
+			end
+		end)
+	end
 end
 
 function EmotesMenuMaster:_connectApiListeners()
@@ -214,7 +224,11 @@ function EmotesMenuMaster:_onHumanoidDescriptionChanged(humanoidDescription)
 
 		local numberEmotesChangedSignal = humanoidDescription:GetPropertyChangedSignal("NumberEmotesLoaded")
 		self.numberEmotesLoadedChangedConn = numberEmotesChangedSignal:Connect(function(newNumberEmotesLoaded)
-			self:_onNumberEmotesLoadedChanged(newNumberEmotesLoaded)
+			if FFlagFixEmotesMenuAvailability then
+				self:_onNumberEmotesLoadedChanged(humanoidDescription.NumberEmotesLoaded)
+			else
+				self:_onNumberEmotesLoadedChanged(newNumberEmotesLoaded)
+			end
 		end)
 		self:_onNumberEmotesLoadedChanged(humanoidDescription.NumberEmotesLoaded)
 
@@ -308,7 +322,7 @@ function EmotesMenuMaster:_connectListeners()
 		end
 	end)
 
-	if FFlagTopBarSignalizeSetCores then 
+	if FFlagTopBarSignalizeSetCores then
 		self.disposeEffect = Signals.createEffect(function(scope)
 			local getTopBarStore = InExperienceTopBar.Stores.GetTopBarStore
 			if getTopBarStore then
@@ -328,7 +342,7 @@ end
 
 function EmotesMenuMaster:_mount()
 	local appStyleForUiModeStyleProvider = {
-		themeName = StyleConstants.ThemeName.Dark,
+		themeName = ColorMode.Dark,
 		fontName = StyleConstants.FontName.Gotham,
 	}
 

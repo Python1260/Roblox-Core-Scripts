@@ -23,21 +23,20 @@ type SheetRef = SheetTypes.SheetRef
 type SheetProps = SheetTypes.SheetProps
 local SheetType = require(script.Parent.SheetType)
 
+local childrenHasFullBleed = require(script.Parent.childrenHasFullBleed)
 local useHardwareInsets = require(script.Parent.useHardwareInsets)
 local useScreenHeight = require(script.Parent.useScreenHeight)
 
-local Flags = require(Foundation.Utility.Flags)
 local Image = require(Foundation.Components.Image)
 local View = require(Foundation.Components.View)
 
 local usePreferences = require(Foundation.Providers.Preferences.usePreferences)
 
-local SPRING_FREQUENCY = 18
 local SPRING_FREQUENCY_HZ = 4
 local SPRING_OMEGA = 2 * math.pi * SPRING_FREQUENCY_HZ
-local SPRING_DAMPING = 0.9
 local VELOCITY_THRESHOLD = 1
 local POSITION_THRESHOLD = 0.5
+local SCROLL_AT_MAX_TOLERANCE = 1e-2
 local ENGINE_INERTIA_FRICTION = 2.35
 local BOTTOM_PADDING = 200
 
@@ -73,19 +72,19 @@ local function advanceCriticalDampedSpring(
 	return target + newDisplacement, newVelocity
 end
 
+-- selene: allow(high_cyclomatic_complexity)
 local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 	local props = withDefaults(sheetProps, defaultProps)
 	local overlay = useOverlay()
 	local tokens = useTokens()
 	local elevation = useElevation(ElevationLayer.Sheet, { stackAboveOwner = false })
 
-	local reducedMotion = false
-	if Flags.FoundationSheetReducedMotion then
-		local preferences = usePreferences()
-		reducedMotion = preferences.reducedMotion
-	end
+	local preferences = usePreferences()
+	local reducedMotion = preferences.reducedMotion
 
 	local screenHeight = useScreenHeight()
+	local overlayAvailableHeight, setOverlayAvailableHeight =
+		React.useState(if overlay then overlay.AbsoluteSize.Y else 0)
 	local sheetHeight, setSheetHeight = React.useState(0)
 	local backupSnapPoints = React.useMemo(function()
 		return { sheetHeight }
@@ -109,10 +108,21 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 		end
 	end
 	maxSheetHeight = math.min(maxSheetHeight, screenHeight)
+	if overlayAvailableHeight > 0 then
+		maxSheetHeight = math.min(maxSheetHeight, overlayAvailableHeight)
+	end
+
 	local safeAreaPadding = useHardwareInsets(overlay).bottom
 
 	local currentSnapIndex = React.useRef(0)
 	local isClosing = React.useRef(false)
+
+	-- onSnapPointChanged is captured via a ref because including it in the
+	-- useCallback deps below cascades into the opening useEffect and
+	-- re-snaps the sheet to defaultSnapPointIndex on every parent render
+	-- when the consumer passes a non-memoized callback.
+	local onSnapPointChangedRef = React.useRef(props.onSnapPointChanged)
+	onSnapPointChangedRef.current = props.onSnapPointChanged
 
 	local backdropTransparency, setBackdropTransparencyGoal = useAnimatedBinding(1, function()
 		if isClosing.current then
@@ -123,10 +133,15 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 	local actionsHeight, setActionsHeight = React.useBinding(0)
 	local hasActionsDivider, setHasActionsDivider = React.useBinding(false)
 	local hasHeader, setHasHeader = React.useBinding(false)
+	local hasFullBleed
+	local fullBleedHeight, setFullBleedHeight
+	hasFullBleed = childrenHasFullBleed(props.children)
+	fullBleedHeight, setFullBleedHeight = React.useBinding(0)
 
 	local outerScrollY = React.useRef(0)
 	local outerScrollingRef = React.useRef(nil :: ScrollingFrame?)
 	local innerScrollY, setInnerScrollY = React.useBinding(0)
+	local innerScrollingRef = React.useRef(nil :: ScrollingFrame?)
 	local innerScrollingEnabled, setInnerScrollingEnabled = React.useBinding(false)
 
 	local inputActive = React.useRef(false)
@@ -134,6 +149,20 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 	local springConnection = React.useRef(nil :: RBXScriptConnection?)
 	local springActive = React.useRef(false)
 	local springVelocity = React.useRef(0)
+
+	local isVerticalSheetGestureRef = nil
+	local isVerticalSheetGesture = nil
+	local setIsVerticalSheetGesture = nil
+	local setIsVerticalSheetGestureValue = nil
+	isVerticalSheetGestureRef = React.useRef(false)
+	isVerticalSheetGesture, setIsVerticalSheetGesture = React.useState(false)
+	setIsVerticalSheetGestureValue = React.useCallback(function(value: boolean)
+		if isVerticalSheetGestureRef.current == value then
+			return
+		end
+		isVerticalSheetGestureRef.current = value
+		setIsVerticalSheetGesture(value)
+	end, {})
 
 	local stopSpringSimulation = React.useCallback(function()
 		if springConnection.current then
@@ -149,12 +178,9 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 		springActive.current = true
 
 		local springTarget = targetPosition
-		if Flags.FoundationBottomSheetImproveSpring then
-			if outerScrollingRef.current then
-				outerScrollingRef.current:ResetScrollVelocity()
-			end
+		if outerScrollingRef.current then
+			outerScrollingRef.current:ResetScrollVelocity()
 		end
-		local lastPosition = if outerScrollingRef.current then outerScrollingRef.current.CanvasPosition.Y else 0
 
 		springConnection.current = game:GetService("RunService").Heartbeat:Connect(function(delta)
 			if not outerScrollingRef.current or not springActive.current then
@@ -164,34 +190,12 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 
 			local currentPos = outerScrollingRef.current.CanvasPosition.Y
 			local displacement
-			if Flags.FoundationBottomSheetImproveSpring then
-				local newCanvasY, newVelocity =
-					advanceCriticalDampedSpring(currentPos, springVelocity.current, springTarget, delta)
+			local newCanvasY, newVelocity =
+				advanceCriticalDampedSpring(currentPos, springVelocity.current, springTarget, delta)
 
-				springVelocity.current = newVelocity
-				outerScrollingRef.current.CanvasPosition = Vector2.new(0, newCanvasY)
-				lastPosition = outerScrollingRef.current.CanvasPosition.Y
-				displacement = springTarget - outerScrollingRef.current.CanvasPosition.Y
-			else
-				displacement = springTarget - currentPos
-				local springForce = displacement * SPRING_FREQUENCY * SPRING_FREQUENCY
-
-				-- Engine has inertia, we can estimate it based off the delta from our expected last position
-				-- then we remove that inertia from our spring to compensate and make the spring smooth
-				local scrollingInertia = (currentPos - lastPosition) / delta
-				springVelocity.current -= scrollingInertia
-
-				local dampingForce = -springVelocity.current * 2 * SPRING_DAMPING * SPRING_FREQUENCY
-				local totalForce = springForce + dampingForce
-				local dt = math.min(delta, 1 / 30) -- cap delta to avoid large jumps
-
-				springVelocity.current = springVelocity.current + totalForce * dt
-
-				-- Apply the velocity to move the canvas position
-				local newCanvasY = currentPos + springVelocity.current * dt
-				outerScrollingRef.current.CanvasPosition = Vector2.new(0, newCanvasY)
-				lastPosition = outerScrollingRef.current.CanvasPosition.Y
-			end
+			springVelocity.current = newVelocity
+			outerScrollingRef.current.CanvasPosition = Vector2.new(0, newCanvasY)
+			displacement = springTarget - outerScrollingRef.current.CanvasPosition.Y
 
 			local hasSettled = math.abs(displacement) < POSITION_THRESHOLD
 				and math.abs(springVelocity.current) < VELOCITY_THRESHOLD
@@ -203,67 +207,73 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 		end)
 	end, { stopSpringSimulation })
 
-	local snapValueToPosition = React.useCallback(function(value: number)
-		return snapValueToPixels(value) + safeAreaPadding
-	end, { safeAreaPadding, snapValueToPixels } :: { unknown })
+	local snapValueToPosition = React.useCallback(
+		function(value: number)
+			return math.min(snapValueToPixels(value), maxSheetHeight) + safeAreaPadding
+		end,
+		{
+			safeAreaPadding,
+			snapValueToPixels,
+			maxSheetHeight,
+		} :: { unknown }
+	)
 
 	local springToSnapIndex = React.useCallback(function(index: number)
 		currentSnapIndex.current = index
 		startSpringSimulation(snapValueToPosition(snapPoints[index]))
+		if onSnapPointChangedRef.current then
+			onSnapPointChangedRef.current(snapPoints[index], index)
+		end
 	end, { snapValueToPosition, snapPoints } :: { unknown })
 
-	local jumpToSnapIndex = if Flags.FoundationSheetReducedMotion
-		then React.useCallback(function(index: number)
-			stopSpringSimulation()
-			currentSnapIndex.current = index
-			if outerScrollingRef.current then
-				outerScrollingRef.current.CanvasPosition = Vector2.new(0, snapValueToPosition(snapPoints[index]))
-			end
-		end, { stopSpringSimulation, snapValueToPosition, snapPoints } :: { unknown })
-		else nil :: never
+	local jumpToSnapIndex = React.useCallback(function(index: number)
+		stopSpringSimulation()
+		currentSnapIndex.current = index
+		if outerScrollingRef.current then
+			outerScrollingRef.current.CanvasPosition = Vector2.new(0, snapValueToPosition(snapPoints[index]))
+		end
+		if onSnapPointChangedRef.current then
+			onSnapPointChangedRef.current(snapPoints[index], index)
+		end
+	end, { stopSpringSimulation, snapValueToPosition, snapPoints } :: { unknown })
 
-	local closeSheet = React.useCallback(
-		function(forceAnimate: boolean?)
-			if isClosing.current then
-				return
+	local closeSheet = React.useCallback(function(forceAnimate: boolean?)
+		if isClosing.current then
+			return
+		end
+		if reducedMotion and not forceAnimate then
+			isClosing.current = true
+			stopSpringSimulation()
+			if outerScrollingRef.current then
+				outerScrollingRef.current.CanvasPosition = Vector2.new(0, 0)
 			end
-			if Flags.FoundationSheetReducedMotion and reducedMotion and not forceAnimate then
-				isClosing.current = true
-				stopSpringSimulation()
-				if outerScrollingRef.current then
-					outerScrollingRef.current.CanvasPosition = Vector2.new(0, 0)
-				end
-				setBackdropTransparencyGoal(Otter.instant(1) :: Otter.Goal<any>)
-			else
-				springVelocity.current = -scrollVelocity.current
-				startSpringSimulation(0)
-				setBackdropTransparencyGoal(Otter.ease(1, {
-					duration = tokens.Time.Time_100,
-				}))
-				isClosing.current = true
-			end
-		end,
-		if Flags.FoundationSheetReducedMotion
-			then { startSpringSimulation, stopSpringSimulation, reducedMotion } :: { unknown }
-			else { startSpringSimulation }
-	)
+			setBackdropTransparencyGoal(Otter.instant(1) :: Otter.Goal<any>)
+		else
+			springVelocity.current = -scrollVelocity.current
+			startSpringSimulation(0)
+			setBackdropTransparencyGoal(Otter.ease(1, {
+				duration = tokens.Time.Time_100,
+			}))
+			isClosing.current = true
+		end
+	end, { startSpringSimulation, stopSpringSimulation, reducedMotion } :: { unknown })
+
+	local isOuterScrollAtMax = React.useCallback(function()
+		local target = math.floor(maxSheetHeight + safeAreaPadding)
+		return outerScrollY.current >= target - SCROLL_AT_MAX_TOLERANCE
+	end, { maxSheetHeight, safeAreaPadding } :: { unknown })
 
 	local updateInnerScrolling = React.useCallback(function()
 		local isAtTopOfInnerScroll = innerScrollY:getValue() <= 0
-		local isAtMaxOfOuterScroll = outerScrollY.current
-			>= if Flags.FoundationBottomSheetImproveSpring
-				then math.floor(maxSheetHeight + safeAreaPadding)
-				else math.round(maxSheetHeight + safeAreaPadding)
+		local isAtMaxOfOuterScroll = isOuterScrollAtMax()
+		local isCollapsing = not isAtMaxOfOuterScroll and scrollVelocity.current < 0
 
-		if scrollVelocity.current > 0 and isAtTopOfInnerScroll and inputActive.current then
+		if isCollapsing or (scrollVelocity.current > 0 and isAtTopOfInnerScroll and inputActive.current) then
 			setInnerScrollingEnabled(false)
-		elseif
-			(scrollVelocity.current < 0 or (Flags.FoundationBottomSheetImproveSpring and scrollVelocity.current == 0))
-			and isAtMaxOfOuterScroll
-		then
+		elseif (scrollVelocity.current < 0 or (scrollVelocity.current == 0)) and isAtMaxOfOuterScroll then
 			setInnerScrollingEnabled(true)
 		end
-	end, { maxSheetHeight, safeAreaPadding } :: { unknown })
+	end, { isOuterScrollAtMax })
 
 	local snapToClosestSwipeSnapPoint = React.useCallback(function()
 		local vel = scrollVelocity.current
@@ -291,11 +301,7 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 		if not inputActive.current then
 			springVelocity.current = -vel
 			if target.index == 0 then
-				if Flags.FoundationSheetReducedMotion then
-					closeSheet(true)
-				else
-					closeSheet()
-				end
+				closeSheet(true)
 			else
 				springToSnapIndex(target.index)
 			end
@@ -305,7 +311,7 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 	React.useEffect(
 		function()
 			if overlay then
-				if Flags.FoundationSheetReducedMotion and reducedMotion then
+				if reducedMotion then
 					jumpToSnapIndex(props.defaultSnapPointIndex)
 					setBackdropTransparencyGoal(Otter.instant(0))
 				else
@@ -316,55 +322,66 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 				end
 
 				-- Enable inner scrolling if starting at max snap point
-				local isAtMaxSnapPoint = snapValueToPixels(snapPoints[props.defaultSnapPointIndex]) == maxSheetHeight
-				if isAtMaxSnapPoint then
-					setInnerScrollingEnabled(true)
-				end
+				local isAtMaxSnapPoint = snapValueToPixels(snapPoints[props.defaultSnapPointIndex]) >= maxSheetHeight
+				setInnerScrollingEnabled(isAtMaxSnapPoint)
 			end
 			return function()
 				stopSpringSimulation()
 			end
 		end,
-		if Flags.FoundationSheetReducedMotion
-			then {
-				overlay,
-				snapPoints,
-				props.defaultSnapPointIndex,
-				springToSnapIndex,
-				snapValueToPixels,
-				jumpToSnapIndex,
-				reducedMotion,
-			} :: { unknown }
-			else {
-				overlay,
-				snapPoints,
-				props.defaultSnapPointIndex,
-				springToSnapIndex,
-				snapValueToPixels,
-			} :: { unknown }
+		{
+			overlay,
+			snapPoints,
+			props.defaultSnapPointIndex,
+			springToSnapIndex,
+			snapValueToPixels,
+			jumpToSnapIndex,
+			reducedMotion,
+		} :: { unknown }
 	)
+	React.useLayoutEffect(function()
+		if not overlay then
+			return
+		end
+		setOverlayAvailableHeight(overlay.AbsoluteSize.Y)
+		local connection = overlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			setOverlayAvailableHeight(overlay.AbsoluteSize.Y)
+		end)
+		return function()
+			connection:Disconnect()
+		end
+	end, { overlay })
 
 	-- TODO: maybe attach these to the outer scroll view instead of input service (does it make a difference?)
 	-- TODO: create a ScrollingInertia property that can be used instead of touchpan
 	-- TODO: support mouse wheel scrolling/trackpad scrolling
-	React.useEffect(function()
-		local touchPanConnection = game:GetService("UserInputService").TouchPan:Connect(function(_, _, velocity, _)
-			scrollVelocity.current = velocity.Y
-			updateInnerScrolling()
-		end)
-		local inputBeganConnection = game:GetService("UserInputService").InputBegan:Connect(function()
-			inputActive.current = true
-			scrollVelocity.current = 0
-			stopSpringSimulation()
-		end)
-		local inputEndedConnection = game:GetService("UserInputService").InputEnded:Connect(function()
-			if inputActive.current == false then
-				return
-			end
+	React.useEffect(
+		function()
+			local touchPanConnection = game:GetService("UserInputService").TouchPan
+				:Connect(function(_, totalTranslation, velocity, _)
+					scrollVelocity.current = velocity.Y
+					if inputActive.current and totalTranslation then
+						local verticalDragDistance = math.abs(totalTranslation.Y)
+						local horizontalDragDistance = math.abs(totalTranslation.X)
+						if verticalDragDistance > horizontalDragDistance then
+							setIsVerticalSheetGestureValue(true)
+						end
+					end
+					updateInnerScrolling()
+				end)
+			local inputBeganConnection = game:GetService("UserInputService").InputBegan:Connect(function()
+				inputActive.current = true
+				scrollVelocity.current = 0
+				setIsVerticalSheetGestureValue(false)
+				stopSpringSimulation()
+			end)
+			local inputEndedConnection = game:GetService("UserInputService").InputEnded:Connect(function()
+				if inputActive.current == false then
+					return
+				end
 
-			inputActive.current = false
-
-			if Flags.FoundationBottomSheetImproveSpring then
+				inputActive.current = false
+				setIsVerticalSheetGestureValue(false)
 				local outerScrollVelocityY = if outerScrollingRef.current
 					then outerScrollingRef.current:GetScrollVelocity().Y
 					else 0
@@ -372,53 +389,32 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 				scrollVelocity.current = outerScrollVelocityY
 
 				-- Don't handle snapping if outer scrolling is at maximum or sheet is closing
-				local shouldSkipSnapping = outerScrollY.current >= math.floor(maxSheetHeight + safeAreaPadding)
-					or isClosing.current
+				local shouldSkipSnapping = (isOuterScrollAtMax()) or isClosing.current
 
 				if shouldSkipSnapping then
 					setInnerScrollingEnabled(true)
 					return
 				end
-			elseif Flags.FoundationSheetFixClosingSwipe then
-				local outerScrollingNotMoving
-				if outerScrollingRef.current then
-					local success, value = pcall(function()
-						return outerScrollingRef.current:GetScrollVelocity().Y == 0
-					end)
 
-					if success then
-						outerScrollingNotMoving = value
-					end
-				end
+				snapToClosestSwipeSnapPoint()
+			end)
 
-				-- Don't handle snapping if outer scrolling is not moving or sheet is closing
-				local shouldSkipSnapping = outerScrollingNotMoving or isClosing.current
-
-				if shouldSkipSnapping then
-					setInnerScrollingEnabled(true)
-					return
-				end
-			else
-				-- Don't handle snapping if inner scrolling is active or sheet is closing
-				local shouldSkipSnapping = (
-					innerScrollingEnabled:getValue()
-					and outerScrollY.current >= math.round(maxSheetHeight + safeAreaPadding)
-				) or isClosing.current
-
-				if shouldSkipSnapping then
-					return
-				end
+			return function()
+				setIsVerticalSheetGestureValue(false)
+				touchPanConnection:Disconnect()
+				inputBeganConnection:Disconnect()
+				inputEndedConnection:Disconnect()
 			end
-
-			snapToClosestSwipeSnapPoint()
-		end)
-
-		return function()
-			touchPanConnection:Disconnect()
-			inputBeganConnection:Disconnect()
-			inputEndedConnection:Disconnect()
-		end
-	end, { overlay, snapToClosestSwipeSnapPoint, updateInnerScrolling, stopSpringSimulation } :: { unknown })
+		end,
+		{
+			overlay,
+			snapToClosestSwipeSnapPoint,
+			updateInnerScrolling,
+			stopSpringSimulation,
+			isOuterScrollAtMax,
+			setIsVerticalSheetGestureValue,
+		} :: { unknown }
+	)
 
 	local closeAffordanceRef = React.useRef(nil) :: React.Ref<GuiObject>
 	local contentStartRef, setContentStartRef = React.useState(nil :: React.Ref<GuiObject>?)
@@ -445,19 +441,25 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 				bottomPadding = BOTTOM_PADDING,
 				innerScrollingEnabled = innerScrollingEnabled,
 				innerScrollY = innerScrollY,
+				innerScrollingRef = innerScrollingRef,
 				setInnerScrollY = function(value: number)
 					setInnerScrollY(value)
 					updateInnerScrolling()
 				end,
 				hasHeader = hasHeader,
 				setHasHeader = setHasHeader,
+				hasFullBleed = hasFullBleed,
+				fullBleedHeight = fullBleedHeight,
+				setFullBleedHeight = setFullBleedHeight,
 				closeSheet = closeSheet,
+				hasRadius = true,
 				sheetType = SheetType.Bottom,
 				innerSurface = innerSurface,
 				testId = props.testId,
 				closeAffordanceRef = closeAffordanceRef,
 				contentStartRef = contentStartRef,
 				setContentStartRef = setContentStartRef,
+				isVerticalSheetGesture = isVerticalSheetGesture,
 			}
 		end,
 		{
@@ -468,8 +470,47 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 			innerSurface,
 			closeAffordanceRef,
 			contentStartRef,
+			hasFullBleed,
+			isVerticalSheetGesture,
 		} :: { unknown }
 	)
+
+	local gripperElement = React.createElement(View, {
+		ZIndex = 5,
+		backgroundStyle = tokens.Color.Content.Muted,
+		Position = UDim2.new(0.5, 0, 0, if hasFullBleed then tokens.Padding.Small else -tokens.Padding.XSmall),
+		AnchorPoint = Vector2.new(0.5, 0),
+		tag = "align-y-center size-1000-100 padding-y-small radius-small",
+		testId = `{props.testId}--gripper`,
+	}, {
+		TouchTarget = React.createElement(View, {
+			tag = "size-1000-600",
+			stateLayer = {
+				affordance = StateLayerAffordance.None,
+			},
+			onActivated = function()
+				-- Cancel input ended if the gripper is pressed
+				inputActive.current = false
+				if innerScrollingRef.current then
+					setInnerScrollY(0)
+					innerScrollingRef.current.CanvasPosition = Vector2.new(0, 0)
+					innerScrollingRef.current:ResetScrollVelocity()
+				end
+				if #snapPoints > 1 then
+					local nextIndex = currentSnapIndex.current % #snapPoints + 1
+					if reducedMotion then
+						jumpToSnapIndex(nextIndex)
+					else
+						springToSnapIndex(nextIndex)
+					end
+					local isAtMaxSnapPoint = snapValueToPixels(snapPoints[nextIndex]) >= maxSheetHeight
+					setInnerScrollingEnabled(isAtMaxSnapPoint)
+				else
+					closeSheet()
+				end
+			end,
+		}),
+	})
 
 	return overlay
 		and ReactRoblox.createPortal(
@@ -485,9 +526,7 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 				},
 				React.createElement("ScrollingFrame", {
 					Size = UDim2.fromScale(1, 1),
-					CanvasSize = if Flags.FoundationSheetPreventCloseOnResize
-						then UDim2.new(1, 0, 1, maxSheetHeight + safeAreaPadding)
-						else UDim2.new(1, 0, 0, screenHeight + maxSheetHeight + safeAreaPadding),
+					CanvasSize = UDim2.new(1, 0, 1, maxSheetHeight + safeAreaPadding),
 					ClipsDescendants = false,
 					BackgroundTransparency = 1,
 					ScrollingDirection = Enum.ScrollingDirection.Y,
@@ -503,12 +542,8 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 					end :: unknown,
 				}, {
 					SheetContainer = React.createElement(View, {
-						Size = if Flags.FoundationSheetPreventCloseOnResize
-							then UDim2.new(1, 0, 1, BOTTOM_PADDING - maxSheetHeight - safeAreaPadding)
-							else UDim2.new(1, 0, 0, screenHeight + BOTTOM_PADDING),
-						Position = if Flags.FoundationSheetPreventCloseOnResize
-							then UDim2.new(0, 0, 1, -maxSheetHeight)
-							else UDim2.fromOffset(0, screenHeight + safeAreaPadding),
+						Size = UDim2.new(1, 0, 1, BOTTOM_PADDING - maxSheetHeight - safeAreaPadding),
+						Position = UDim2.new(0, 0, 1, -maxSheetHeight),
 						ZIndex = 3,
 					}, {
 						Sheet = React.createElement(View, {
@@ -527,41 +562,13 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 							-- Needed to sink the onActivated event to the backdrop
 							onActivated = Dash.noop,
 							testId = props.testId,
-							tag = "col items-center padding-top-small radius-large clip bg-surface-100",
+							tag = {
+								["col items-center radius-large clip bg-surface-100"] = true,
+								["padding-top-medium"] = not hasFullBleed,
+							},
 						}, {
-							Gripper = React.createElement(View, {
-								ZIndex = 3,
-								backgroundStyle = tokens.Color.Content.Muted,
-								tag = "align-y-center size-1000-100 padding-y-small radius-small",
-								testId = `{props.testId}--gripper`,
-							}, {
-								TouchTarget = React.createElement(View, {
-									tag = "size-1000-600",
-									stateLayer = {
-										affordance = StateLayerAffordance.None,
-									},
-									onActivated = function()
-										-- Cancel input ended if the gripper is pressed
-										inputActive.current = false
-										if #snapPoints > 1 then
-											local nextIndex = currentSnapIndex.current % #snapPoints + 1
-											if Flags.FoundationSheetReducedMotion and reducedMotion then
-												jumpToSnapIndex(nextIndex)
-											else
-												springToSnapIndex(nextIndex)
-											end
-											if Flags.FoundationSheetFixClosingSwipe then
-												local isAtMaxSnapPoint = snapValueToPixels(snapPoints[nextIndex])
-													== maxSheetHeight
-												if isAtMaxSnapPoint then
-													setInnerScrollingEnabled(true)
-												end
-											end
-										else
-											closeSheet()
-										end
-									end,
-								}),
+							GripperContainer = React.createElement("Folder", nil, {
+								Gripper = gripperElement,
 							}),
 							Content = React.createElement(SheetContext.Provider, {
 								value = contextValue,
@@ -571,9 +578,7 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 					Shadow = React.createElement(Image, {
 						Image = SHADOW_IMAGE,
 						Size = UDim2.new(1, SHADOW_SIZE * 2, 0, maxSheetHeight + BOTTOM_PADDING + SHADOW_SIZE * 2),
-						Position = if Flags.FoundationSheetPreventCloseOnResize
-							then UDim2.new(-SHADOW_SIZE, 0, 1, -maxSheetHeight - SHADOW_SIZE)
-							else UDim2.fromOffset(-SHADOW_SIZE, screenHeight + safeAreaPadding - SHADOW_SIZE),
+						Position = UDim2.new(-SHADOW_SIZE, 0, 1, -maxSheetHeight - SHADOW_SIZE),
 						ZIndex = 2,
 						slice = {
 							center = Rect.new(SHADOW_SIZE, SHADOW_SIZE, SHADOW_SIZE + 1, SHADOW_SIZE + 1),
@@ -594,11 +599,9 @@ local function BottomSheet(sheetProps: SheetProps, ref: React.Ref<Instance>)
 								Transparency = math.lerp(tokens.Color.Common.Backdrop.Transparency, 1, value),
 							}
 						end),
-						onActivated = if Flags.FoundationSheetReducedMotion
-							then function()
-								closeSheet()
-							end
-							else closeSheet :: never,
+						onActivated = function()
+							closeSheet()
+						end,
 						testId = `{props.testId}--backdrop`,
 					}),
 				})

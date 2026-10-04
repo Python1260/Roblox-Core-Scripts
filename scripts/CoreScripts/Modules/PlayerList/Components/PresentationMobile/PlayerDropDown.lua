@@ -43,13 +43,15 @@ local ClosePlayerDropDown = require(PlayerList.Actions.ClosePlayerDropDown)
 local SetPlayerListVisibility = require(PlayerList.Actions.SetPlayerListVisibility)
 local FFlagPlayerListReduceRerenders = require(PlayerList.Flags.FFlagPlayerListReduceRerenders)
 local FFlagAddNewPlayerListMobileFocusNav = PlayerListPackage.Flags.FFlagAddNewPlayerListMobileFocusNav
-local FFlagUseNewPlayerList = PlayerListPackage.Flags.FFlagUseNewPlayerList
 
 local UnblockPlayer = require(PlayerList.Thunks.UnblockPlayer)
 local RequestFriendship = require(PlayerList.Thunks.RequestFriendship)
 local SetPlayerIsBlocked = require(PlayerList.Actions.SetPlayerIsBlocked)
 
 local PlayerDropDown = Roact.PureComponent:extend("PlayerDropDown")
+
+local FFlagStandardizeSafetyIcon = require(CorePackages.Workspace.Packages.SharedFlags).FFlagStandardizeSafetyIcon
+local FFlagAllowDisplayingFoundationIconsForDropdown = require(PlayerList.Flags.FFlagAllowDisplayingFoundationIconsForDropdown)
 
 PlayerDropDown.validateProps = t.strictInterface({
 	contentsVisible = t.boolean,
@@ -174,7 +176,10 @@ end
 
 function PlayerDropDown:createReportButton()
 	local selectedPlayer = self.props.selectedPlayer
-	local reportIcon = Images["icons/actions/feedback"]
+	local reportIcon = if FFlagStandardizeSafetyIcon and FFlagAllowDisplayingFoundationIconsForDropdown then
+		"Flag"
+	else
+		Images["icons/actions/feedback"]
 
 	return Roact.createElement(DropDownButton, {
 		contentVisible = self.state.contentVisible,
@@ -190,7 +195,7 @@ function PlayerDropDown:createReportButton()
 				local InGameMenu = require(RobloxGui.Modules.InGameMenuInit)
 				InGameMenu.openReportDialog(selectedPlayer, self.__componentName)
 			else
-				local ReportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuNewContainerPage)
+				local ReportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuContainerPage)
 				ReportAbuseMenu:ReportPlayer(selectedPlayer, self.__componentName)
 				self.props.closeDropDown()
 			end
@@ -220,7 +225,7 @@ end
 
 function PlayerDropDown:render()
 	return WithLayoutValues(function(layoutValues)
-		layoutValues = if FFlagUseNewPlayerList then self.props.layoutValues else layoutValues
+		layoutValues = self.props.layoutValues
 
 		local selectedPlayer = self.props.selectedPlayer
 
@@ -398,7 +403,7 @@ local function mapDispatchToProps(dispatch)
 end
 
 local function PlayerDropDownWrapper(props)
-	local layoutValues = if FFlagUseNewPlayerList then useLayoutValues() else nil
+	local layoutValues = useLayoutValues()
 
 	local focusGuiObject = ReactFocusNavigation.useFocusGuiObject()
 	local focusedGuiObject = ReactFocusNavigation.useFocusedGuiObject()
@@ -410,16 +415,8 @@ local function PlayerDropDownWrapper(props)
 	}))
 end
 
-if FFlagAddNewPlayerListMobileFocusNav or FFlagUseNewPlayerList then
-	if FFlagPlayerListReduceRerenders then
-		return React.memo(RoactRodux.connect(mapStateToProps, mapDispatchToProps)(PlayerDropDownWrapper))
-	end
-
-	return RoactRodux.connect(mapStateToProps, mapDispatchToProps)(PlayerDropDownWrapper)
-else
-	if FFlagPlayerListReduceRerenders then
-		return React.memo(RoactRodux.connect(mapStateToProps, mapDispatchToProps)(PlayerDropDown))
-	end
-
-	return RoactRodux.connect(mapStateToProps, mapDispatchToProps)(PlayerDropDown)
+if FFlagPlayerListReduceRerenders then
+	return React.memo(RoactRodux.connect(mapStateToProps, mapDispatchToProps)(PlayerDropDownWrapper))
 end
+
+return RoactRodux.connect(mapStateToProps, mapDispatchToProps)(PlayerDropDownWrapper)

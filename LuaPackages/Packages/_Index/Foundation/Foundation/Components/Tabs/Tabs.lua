@@ -1,11 +1,12 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
-
 local Dash = require(Packages.Dash)
 local React = require(Packages.React)
 
 local FillBehavior = require(Foundation.Enums.FillBehavior)
+local Flags = require(Foundation.Utility.Flags)
 local InputSize = require(Foundation.Enums.InputSize)
+local OverflowScrollContainer = require(Foundation.Components.OverflowScrollContainer)
 local TabItem = require(script.Parent.TabItem)
 local Types = require(Foundation.Components.Types)
 local View = require(Foundation.Components.View)
@@ -15,7 +16,7 @@ local withDefaults = require(Foundation.Utility.withDefaults)
 
 local useAnimatedHighlight = require(Foundation.Utility.useAnimatedHighlight)
 
-local OverflowScrollContainer = require(script.Parent.OverflowScrollContainer)
+local DEPRECATED_OverflowScrollContainer = require(script.Parent.OverflowScrollContainer)
 
 type InputSize = InputSize.InputSize
 type FillBehavior = FillBehavior.FillBehavior
@@ -62,13 +63,28 @@ local function Tabs(tabsProps: TabsProps, ref: React.Ref<GuiObject>?)
 
 	local containerRef = React.useRef(nil :: GuiObject?)
 
+	local tabListWidth, setTabListWidth
+	local updateTabListsWidth
+	if Flags.FoundationUnifiedScrimScrolling then
+		tabListWidth, setTabListWidth = React.useBinding(0)
+		updateTabListsWidth = React.useCallback(function(tabList: GuiObject)
+			setTabListWidth(tabList.AbsoluteSize.X)
+		end, {})
+	end
+
 	-- Create refs for each tab (use user-provided ref if available)
-	local tabRefs = React.useMemo(function()
-		local refs = {}
+	local tabRefs
+	local tabRefsCache = React.useRef({} :: { [Types.ItemId]: React.RefObject<GuiObject?> })
+	tabRefs = React.useMemo(function()
+		local cache = tabRefsCache.current
 		for _, tab in props.tabs do
-			refs[tab.id] = tab.ref or React.createRef()
+			if tab.ref then
+				cache[tab.id] = tab.ref
+			elseif not cache[tab.id] then
+				cache[tab.id] = React.createRef()
+			end
 		end
-		return refs
+		return cache
 	end, { props.tabs })
 
 	local animatedBorder = useAnimatedHighlight(
@@ -82,36 +98,68 @@ local function Tabs(tabsProps: TabsProps, ref: React.Ref<GuiObject>?)
 	local borderPosition, borderWidth, activeTabHeight =
 		animatedBorder.highlightPosition, animatedBorder.highlightWidth, animatedBorder.activeItemHeight
 
-	return React.createElement(View, {
-		tag = "size-full-0 auto-y clip",
-	}, {
-		Tabs = React.createElement(
-			View,
-			withCommonProps(props, { ref = ref or containerRef, tag = "col size-full-0 auto-y" }),
-			{
-				Wrapper = React.createElement(
-					View,
-					{ LayoutOrder = 1, tag = "size-full-0 auto-y", testId = `{props.testId}--wrapper` },
-					{
-						ScrollContainer = React.createElement(OverflowScrollContainer, {
-							LayoutOrder = 1,
-							size = props.size,
-							testId = `{props.testId}--scroll-container`,
-						}, {
+	local tabsSize: InputSize = props.size
+	return React.createElement(
+		View,
+		withCommonProps(props, {
+			tag = if Flags.FoundationUnifiedScrimScrolling then "auto-y no-clip" else "auto-y clip",
+			Size = UDim2.fromScale(1, 0),
+			sizeConstraint = if Flags.FoundationUnifiedScrimScrolling and not isFill
+				then {
+					MaxSize = tabListWidth:map(function(width: number)
+						return Vector2.new(width, math.huge)
+					end),
+				}
+				else nil,
+		}),
+		{
+			Tabs = React.createElement(View, {
+				ref = ref or containerRef,
+				tag = "col auto-y",
+				Size = UDim2.fromScale(1, 0),
+			}, {
+				Wrapper = React.createElement(View, {
+					LayoutOrder = 1,
+					tag = "auto-y",
+					Size = UDim2.fromScale(1, 0),
+					testId = `{props.testId}--wrapper`,
+				}, {
+					ScrollContainer = React.createElement(
+						if Flags.FoundationUnifiedScrimScrolling
+							then OverflowScrollContainer
+							else DEPRECATED_OverflowScrollContainer,
+						if Flags.FoundationUnifiedScrimScrolling
+							then {
+								LayoutOrder = 1,
+								size = props.size,
+								scrimBottomInset = tokens.Stroke.Thick,
+								testId = `{props.testId}--scroll-container`,
+							}
+							else {
+								LayoutOrder = 1,
+								size = props.size,
+								testId = `{props.testId}--scroll-container`,
+							},
+						{
 							TabList = React.createElement(
 								View,
 								{
+									onAbsoluteSizeChanged = if Flags.FoundationUnifiedScrimScrolling
+										then updateTabListsWidth
+										else nil,
 									tag = {
 										["row flex-y-fill auto-xy"] = true,
-										["gap-large"] = not isFill,
-										["size-full-0"] = isFill,
+										["gap-large"] = not isFill
+											and (tabsSize == InputSize.Small or tabsSize == InputSize.XSmall),
 									},
+									Size = if isFill then UDim2.fromScale(1, 0) else nil,
 									testId = `{props.testId}--list`,
 								},
 								Dash.map(props.tabs, function(tab, index)
 									return React.createElement(TabItem, {
 										id = tab.id,
 										text = tab.text,
+										indicator = tab.indicator,
 										key = tostring(tab.id),
 										icon = tab.icon,
 										isActive = tab.id == activeTabId,
@@ -125,40 +173,42 @@ local function Tabs(tabsProps: TabsProps, ref: React.Ref<GuiObject>?)
 									})
 								end)
 							),
-						}),
-						Border = React.createElement(View, {
-							LayoutOrder = 2,
-							AnchorPoint = Vector2.new(0, 1),
-							Size = UDim2.new(1, 0, 0, tokens.Stroke.Thick),
-							Position = UDim2.fromScale(0, 1),
-							backgroundStyle = tokens.Color.Stroke.Default,
-							testId = `{props.testId}--border`,
-						}),
-					}
-				),
+						}
+					),
+					Border = React.createElement(View, {
+						LayoutOrder = 2,
+						AnchorPoint = Vector2.new(0, 1),
+						Size = UDim2.new(1, 0, 0, tokens.Stroke.Thick),
+						Position = UDim2.fromScale(0, 1),
+						backgroundStyle = tokens.Color.Stroke.Default,
+						testId = `{props.testId}--border`,
+					}),
+				}),
 				Content = if activeTab and activeTab.content
 					then React.createElement(View, {
 						LayoutOrder = 2,
-						tag = "size-full-0 auto-y",
+						tag = "auto-y",
+						Size = UDim2.fromScale(1, 0),
 						testId = `{props.testId}--content`,
 					}, activeTab.content)
 					else nil,
-			}
-		),
-		AnimatedBorder = React.createElement(View, {
-			LayoutOrder = 0,
-			ZIndex = props.ZIndex + 1,
-			Size = borderWidth:map(function(value)
-				return UDim2.fromOffset(value, tokens.Stroke.Thick)
-			end),
-			Position = React.joinBindings({ borderPosition, activeTabHeight }):map(function(value)
-				local xPosition, yPosition = value[1], value[2]
-				return UDim2.fromOffset(xPosition, yPosition - tokens.Stroke.Thick)
-			end),
-			backgroundStyle = tokens.Color.System.Contrast,
-			testId = `{props.testId}--animated-border`,
-		}),
-	})
+			}),
+			AnimatedBorder = React.createElement(View, {
+				LayoutOrder = 0,
+				ZIndex = props.ZIndex + 1,
+				Size = borderWidth:map(function(value)
+					return UDim2.fromOffset(value, tokens.Stroke.Thick)
+				end),
+				AnchorPoint = Vector2.new(0, 1),
+				Position = React.joinBindings({ borderPosition, activeTabHeight }):map(function(value)
+					local xPosition, yPosition = value[1], value[2]
+					return UDim2.fromOffset(xPosition, yPosition)
+				end),
+				backgroundStyle = tokens.Color.System.Contrast,
+				testId = `{props.testId}--animated-border`,
+			}),
+		}
+	)
 end
 
 return React.memo(React.forwardRef(Tabs))

@@ -7,11 +7,22 @@ export type CustomJson<T, Json> = proto.CustomJson<T, Json>
 export type TypeRegistry = proto.TypeRegistry
 
 local marketplace_catalog_page = require(script.marketplace_catalog_page)
+local marketplace_item_details_page = require(script.marketplace_item_details_page)
+local marketplace_offer_modal_page = require(script.marketplace_offer_modal_page)
 
 -- Exported types
+export type PaginationDirection = marketplace_catalog_page.PaginationDirection
 export type MarketplaceCatalogPageRequest = marketplace_catalog_page.MarketplaceCatalogPageRequest
+export type RequestPagination = marketplace_catalog_page.RequestPagination
 export type MarketplaceCatalogPageResponse = marketplace_catalog_page.MarketplaceCatalogPageResponse
+export type Pagination = marketplace_catalog_page.Pagination
+export type MarketplaceItemDetailsPageRequest = marketplace_item_details_page.MarketplaceItemDetailsPageRequest
+export type MarketplaceItemDetailsPageResponse = marketplace_item_details_page.MarketplaceItemDetailsPageResponse
+export type MarketplaceOfferModalPageRequest = marketplace_offer_modal_page.MarketplaceOfferModalPageRequest
+export type MarketplaceOfferModalPageResponse = marketplace_offer_modal_page.MarketplaceOfferModalPageResponse
 
 return {
 	marketplace_catalog_page = marketplace_catalog_page,
+	marketplace_item_details_page = marketplace_item_details_page,
+	marketplace_offer_modal_page = marketplace_offer_modal_page,
 }

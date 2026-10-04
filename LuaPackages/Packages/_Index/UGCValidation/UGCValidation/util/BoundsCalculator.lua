@@ -24,7 +24,6 @@ local getMeshVerts = require(root.util.getMeshVerts)
 local getMeshInfo = require(root.util.getMeshInfo)
 local BoundsDataUtils = require(root.util.BoundsDataUtils)
 local getExpectedPartSize = require(root.util.getExpectedPartSize)
-local getFFlagUGCValidateLegFullBodySeparation = require(root.flags.getFFlagUGCValidateLegFullBodySeparation)
 local R15plusUtils = require(root.util.R15plusUtils)
 local getAttachmentCFrameInPartSpace = require(root.util.getAttachmentCFrameInPartSpace)
 
@@ -143,6 +142,27 @@ local function calculateBoundsDataForPart(
 
 	BoundsDataUtils.setOverallBounds(resultMinMaxBounds)
 	return true, nil, resultMinMaxBounds
+end
+
+local function buildValidationContextFromRenderMeshes(
+	rootInstance: Instance,
+	assetTypeEnum: Enum.AssetType?,
+	renderMeshesData: { [string]: any }
+): Types.ValidationContext
+	local editableMeshes: { [Instance]: { [string]: { instance: EditableMesh, created: boolean } } } = {}
+	local allInstances = rootInstance:GetDescendants()
+	table.insert(allInstances, rootInstance)
+	for _, inst in allInstances do
+		local meshData = renderMeshesData[inst.Name]
+		if meshData and meshData.editable then
+			editableMeshes[inst] =
+				{ MeshId = { instance = meshData.editable, created = meshData.createdInValidation or false } }
+		end
+	end
+	return {
+		assetTypeEnum = assetTypeEnum,
+		editableMeshes = editableMeshes,
+	} :: any
 end
 
 local function calculateAllPartsBoundsData(
@@ -288,11 +308,7 @@ function BoundsCalculator.calculateIndividualFullBodyPartsData(
 	end
 
 	local partsCFrames = AssetCalculator.calculateAllTransformsForFullBody(fullBodyAssets)
-	if getFFlagUGCValidateLegFullBodySeparation() then
-		if doOrientArmsLegsToWorldAxes then
-			orientFullBodyArmsLegsToWorldAxes(partsCFrames, findMeshHandle)
-		end
-	else
+	if doOrientArmsLegsToWorldAxes then
 		orientFullBodyArmsLegsToWorldAxes(partsCFrames, findMeshHandle)
 	end
 
@@ -326,6 +342,37 @@ function BoundsCalculator.calculateFullBodyBounds(
 		return success, failureReasons
 	end
 	return true, nil, resultOpt
+end
+
+function BoundsCalculator.calculateAssetBoundsFromData(
+	inst: Instance,
+	assetTypeEnum: Enum.AssetType,
+	renderMeshesData: { [string]: any }
+): (boolean, { string }?, Types.BoundsData?)
+	local validationContext = buildValidationContextFromRenderMeshes(inst, assetTypeEnum, renderMeshesData)
+	return BoundsCalculator.calculateAssetBounds(inst, validationContext)
+end
+
+function BoundsCalculator.calculateFullBodyBoundsFromData(
+	fullBodyAssets: Types.AllBodyParts,
+	renderMeshesData: { [string]: any }
+): (boolean, { string }?, Types.BoundsData?)
+	local firstPart = next(fullBodyAssets)
+	if not firstPart then
+		return false, { "No body parts provided" }
+	end
+	local rootForCache = (fullBodyAssets[firstPart] :: Instance).Parent :: Instance
+	local validationContext = buildValidationContextFromRenderMeshes(rootForCache, nil, renderMeshesData)
+	return BoundsCalculator.calculateFullBodyBounds(fullBodyAssets, validationContext)
+end
+
+function BoundsCalculator.calculateIndividualAssetPartsDataFromData(
+	inst: Instance,
+	assetTypeEnum: Enum.AssetType,
+	renderMeshesData: { [string]: any }
+): (boolean, { string }?, { [string]: any }?)
+	local validationContext = buildValidationContextFromRenderMeshes(inst, assetTypeEnum, renderMeshesData)
+	return BoundsCalculator.calculateIndividualAssetPartsData(inst, validationContext)
 end
 
 return BoundsCalculator

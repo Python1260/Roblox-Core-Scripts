@@ -10,7 +10,6 @@ local RoactRodux = require(CorePackages.Packages.RoactRodux)
 local t = require(CorePackages.Packages.t)
 local Otter = require(CorePackages.Packages.Otter)
 local UIBlox = require(CorePackages.Packages.UIBlox)
-local PlayerListPackage = require(CorePackages.Workspace.Packages.PlayerList)
 
 local Components = script.Parent.Parent
 local Connection = Components.Connection
@@ -37,13 +36,15 @@ local PlayerList = Components.Parent
 
 local ClosePlayerDropDown = require(PlayerList.Actions.ClosePlayerDropDown)
 local FFlagPlayerListReduceRerenders = require(PlayerList.Flags.FFlagPlayerListReduceRerenders)
-local FFlagUseNewPlayerList = PlayerListPackage.Flags.FFlagUseNewPlayerList
 
 local UnblockPlayer = require(PlayerList.Thunks.UnblockPlayer)
 local RequestFriendship = require(PlayerList.Thunks.RequestFriendship)
 local SetPlayerIsBlocked = require(PlayerList.Actions.SetPlayerIsBlocked)
 
 local PlayerDropDown = Roact.PureComponent:extend("PlayerDropDown")
+
+local FFlagStandardizeSafetyIcon = require(CorePackages.Workspace.Packages.SharedFlags).FFlagStandardizeSafetyIcon
+local FFlagAllowDisplayingFoundationIconsForDropdown = require(PlayerList.Flags.FFlagAllowDisplayingFoundationIconsForDropdown)
 
 PlayerDropDown.validateProps = t.strictInterface({
 	positionY = t.number,
@@ -135,7 +136,10 @@ end
 
 function PlayerDropDown:createReportButton()
 	local selectedPlayer = self.props.selectedPlayer
-	local reportIcon = Images["icons/actions/feedback"]
+	local reportIcon = if FFlagStandardizeSafetyIcon and FFlagAllowDisplayingFoundationIconsForDropdown then
+		"Flag"
+	else
+		Images["icons/actions/feedback"]
 
 	return Roact.createElement(DropDownButton, {
 		layoutOrder = 5,
@@ -149,7 +153,7 @@ function PlayerDropDown:createReportButton()
 				local InGameMenu = require(RobloxGui.Modules.InGameMenuInit)
 				InGameMenu.openReportDialog(selectedPlayer, self.__componentName)
 			else
-				local ReportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuNewContainerPage)
+				local ReportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuContainerPage)
 				ReportAbuseMenu:ReportPlayer(selectedPlayer, self.__componentName)
 				self.props.closeDropDown()
 			end
@@ -263,13 +267,7 @@ function PlayerDropDown:didMount()
 end
 
 function PlayerDropDown:willUpdate(nextProps, nextState)
-	if FFlagUseNewPlayerList then
-		self.dropDownPosition = nextProps.positionY
-	else
-		if nextProps.selectedPlayer ~= self.props.selectedPlayer then
-			self.dropDownPosition = nextProps.positionY
-		end
-	end
+	self.dropDownPosition = nextProps.positionY
 end
 
 function PlayerDropDown:didUpdate(previousProps, previousState)

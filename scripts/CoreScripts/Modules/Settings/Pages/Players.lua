@@ -32,7 +32,7 @@ local Localization = require(CorePackages.Workspace.Packages.InExperienceLocales
 local utility = require(RobloxGui.Modules.Settings.Utility)
 local Create = require(CorePackages.Workspace.Packages.AppCommonLib).Create
 
-local reportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuNewContainerPage)
+local reportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuContainerPage)
 local SocialUtil = require(RobloxGui.Modules:WaitForChild("SocialUtil"))
 local Diag = require(CorePackages.Workspace.Packages.Analytics).AnalyticsReporters.Diag
 local EventStream = require(CorePackages.Workspace.Packages.Analytics).AnalyticsReporters.EventStream
@@ -59,12 +59,15 @@ end
 
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local GetFFlagLuaAppEnableOpenTypeSupport = SharedFlags.GetFFlagLuaAppEnableOpenTypeSupport
-local FFlagIEMFocusNavToButtons = SharedFlags.FFlagIEMFocusNavToButtons
+local FFlagIEMTabFocusNav = SharedFlags.FFlagIEMTabFocusNav
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
 local FFlagRelocateMobileMenuButtons = require(RobloxGui.Modules.Settings.Flags.FFlagRelocateMobileMenuButtons)
 local FIntRelocateMobileMenuButtonsVariant = require(RobloxGui.Modules.Settings.Flags.FIntRelocateMobileMenuButtonsVariant)
 local FFlagMenuButtonsMountWithIEM = require(RobloxGui.Modules.Settings.Flags.FFlagMenuButtonsMountWithIEM)
 local EngineFeatureRbxAnalyticsServiceExposePlaySessionId = game:GetEngineFeature("RbxAnalyticsServiceExposePlaySessionId")
 local FFlagConnectionsToFriendsRename = SharedFlags.FFlagConnectionsToFriendsRename
+local FFlagHidePeoplePageInviteFriends = SharedFlags.FFlagHidePeoplePageInviteFriends
+local FFlagAddInviteFriendsIntegration = SharedFlags.FFlagAddInviteFriendsIntegration
 
 local UserProfileStore = UserProfiles.Stores.UserProfileStore
 
@@ -130,7 +133,7 @@ local EngineFeatureVoiceChatMultistreamSubscriptionsEnabled =
 local LuaFlagVoiceChatDisableSubscribeRetryForMultistream =
 	game:DefineFastFlag("LuaFlagVoiceChatDisableSubscribeRetryForMultistream", true)
 local FFlagPlayerListRefactorUsernameFormatting = game:DefineFastFlag("PlayerListRefactorUsernameFormatting", false)
-local FFlagCorrectlyPositionMuteButton = game:DefineFastFlag("CorrectlyPositionMuteButton", false)
+local FFlagCheckShareGameButtonInMuteAllLayout = game:DefineFastFlag("CheckShareGameButtonInMuteAllLayout", false)
 local FFlagOnlyCaptureFocusIfOnPlayerPage = game:DefineFastFlag("OnlyCaptureFocusIfOnPlayerPage", false)
 local FIntSettingsHubPlayersButtonsResponsiveThreshold =
 	game:DefineFastInt("SettingsHubPlayersButtonsResponsiveThreshold", 200)
@@ -719,7 +722,7 @@ local function Initialize()
 	})
 	this.ButtonsContainer = buttonsContainer
 
-	if FFlagRelocateMobileMenuButtons and (FIntRelocateMobileMenuButtonsVariant == 1 or FIntRelocateMobileMenuButtonsVariant == 3) then
+	if isSideSheetEnabled or (FFlagRelocateMobileMenuButtons and (FIntRelocateMobileMenuButtonsVariant == 1 or FIntRelocateMobileMenuButtonsVariant == 3)) then
 		buttonsContainer.Parent = nil
 	end
 
@@ -817,6 +820,11 @@ local function Initialize()
 
 	if not FFlagRelocateMobileMenuButtons or FIntRelocateMobileMenuButtonsVariant == 0 then
 		resumeButton.Parent = buttonsContainer
+
+		if FFlagIEMTabFocusNav then
+			this.FirstSelectableObjects = {resumeButton, resetButton, leaveButton}
+			this.FirstSelectableObjectsUpdated:fire()
+		end
 	end
 
 	local function pollImage()
@@ -899,10 +907,7 @@ local function Initialize()
 	utility:OnResized(buttonsContainer, function(newSize, isPortrait)
 		if (isPortrait or utility:IsSmallTouchScreen()) and (not Theme.AlwaysShowBottomBar()) then
 			local buttonsFontSize = isPortrait and Theme.textSize(18) or Theme.textSize(24)
-			if Theme.UseBiggerText then
-				buttonsFontSize = Theme.textSize(20)
-			end
-			buttonsContainer.Visible = not Theme.EnableVerticalBottomBar
+			buttonsContainer.Visible = true
 			buttonsContainer.Size = UDim2.new(1, 0, 0, Theme.ButtonHeight)
 			if not FFlagRelocateMobileMenuButtons or FIntRelocateMobileMenuButtonsVariant == 0 then
 				resetLabel.TextSize = buttonsFontSize
@@ -1350,6 +1355,7 @@ local function Initialize()
 			utility:MakeFocusState(frame, renderName)
 
 			frame.Activated:Connect(function()
+				VoiceChatServiceManager.pendingConnectionSource = VoiceConstants.VOICE_CONNECTION_SOURCE.SETTINGS_TOGGLE_ON
 				VoiceChatServiceManager:JoinVoice()
 			end)
 
@@ -1509,10 +1515,8 @@ local function Initialize()
 		local frame = createRow("ImageLabel", showDisplayName)
 		frame.TextLabel.Name = "DisplayNameLabel"
 		frame.SecondRow.Name = "NameLabel"
-		if FFlagIEMFocusNavToButtons then
-			frame.Selectable = false
-			frame.SelectionGroup = true
-		end
+		frame.Selectable = false
+		frame.SelectionGroup = true
 		if GetFFlagLuaAppEnableOpenTypeSupport() then
 			frame.NameLabel.OpenTypeFeatures = OpenTypeSupport:getUserNameStylisticAlternative()
 		end
@@ -1848,8 +1852,9 @@ local function Initialize()
 	end
 
 	local rebuildPlayerList = function(switchedFromGamepadInput)
-		if FFlagIEMFocusNavToButtons then
-			this.LastSelectableObjects = {}
+		this.LastSelectableObjects = {}
+		if FFlagIEMTabFocusNav and not this.ButtonsContainer.Visible then
+			this.FirstSelectableObjects = {}
 		end
 		sortedPlayers = PlayersService:GetPlayers()
 
@@ -1881,7 +1886,14 @@ local function Initialize()
 			and not muteAllButton
 			and VoiceChatServiceManager.voiceUIVisible
 
-		local showShareGameButton = canShareCurrentGame() and not shareGameButton and not RunService:IsStudio()
+		local hidePeoplePageInviteFriends = FFlagHidePeoplePageInviteFriends
+			and FFlagAddInviteFriendsIntegration
+			and isSideSheetEnabled
+
+		local showShareGameButton = canShareCurrentGame()
+			and not shareGameButton
+			and not RunService:IsStudio()
+			and not hidePeoplePageInviteFriends
 		if (showShareGameButton or showMuteAllButton) and not buttonFrame then
 			buttonFrame = Create("Frame")({
 				Name = "Holder",
@@ -1920,7 +1932,7 @@ local function Initialize()
 		-- We shouldn't create this button if we're not in a live game
 		-- If this condition is updated, showShareGameButton should be updated above
 		local isNotStudio = (not RunService:IsStudio())
-		if canShareCurrentGame() and not shareGameButton and isNotStudio then
+		if canShareCurrentGame() and not shareGameButton and isNotStudio and not hidePeoplePageInviteFriends then
 			local inviteToGameAnalytics
 			if GetFFlagLuaInExperienceCoreScriptsGameInviteUnification() then
 				inviteToGameAnalytics =
@@ -1953,6 +1965,18 @@ local function Initialize()
 		then
 			addJoinVoiceButton()
 			updateButtonsLayout()
+		end
+
+		if FFlagIEMTabFocusNav then
+			if showMuteAllButton then 
+				table.insert(this.FirstSelectableObjects, muteAllButton)
+			end
+			if showShareGameButton then
+				table.insert(this.FirstSelectableObjects, shareGameButton)
+			end
+			if showMuteAllButton or showShareGameButton then
+				this.FirstSelectableObjectsUpdated:fire()
+			end
 		end
 
 		local inspectMenuEnabled = GuiService:GetInspectMenuEnabled()
@@ -2075,7 +2099,7 @@ local function Initialize()
 				reportAbuseButtonCreate(frame, player)
 
 
-				if FFlagIEMFocusNavToButtons and index == #sortedPlayers  then
+				if index == #sortedPlayers  then
 					local rightSideButtons = frame:FindFirstChild("RightSideButtons")
 					if rightSideButtons then
 						for _, button in rightSideButtons:GetChildren() do
@@ -2084,6 +2108,17 @@ local function Initialize()
 							end
 						end
 						this.LastSelectableObjectsUpdated:fire()
+					end
+				end
+				if FFlagIEMTabFocusNav and index == 1 and #this.FirstSelectableObjects == 0 then
+					local rightSideButtons = frame:FindFirstChild("RightSideButtons")
+					if rightSideButtons then
+						for _, button in rightSideButtons:GetChildren() do
+							if button:IsA("ImageButton") then
+								table.insert(this.FirstSelectableObjects, button)
+							end
+						end
+						this.FirstSelectableObjectsUpdated:fire()
 					end
 				end
 			end
@@ -2111,7 +2146,11 @@ local function Initialize()
 			end)
 
 			muteAllButton.LayoutOrder = 1
-			if FFlagCorrectlyPositionMuteButton then
+			-- We need share button to layout mute all
+			local canLayoutMuteAll = if FFlagCheckShareGameButtonInMuteAllLayout
+				then shareGameButton ~= nil
+				else true
+			if canLayoutMuteAll then
 				layoutMuteAll()
 			else
 				muteAllButton.Parent = buttonFrame
@@ -2188,7 +2227,7 @@ local function Initialize()
 			end
 		end
 
-		if UserInputService.GamepadEnabled then
+		if UserInputService.GamepadEnabled and not (FFlagIEMTabFocusNav and GuiService.SelectedCoreObject) then
 			if GetFFlagCleanupMuteSelfButton() then
 				pcall(function()
 					if FFlagOnlyCaptureFocusIfOnPlayerPage then
@@ -2263,7 +2302,7 @@ local function Initialize()
 					end
 				end)
 
-				if FFlagCorrectlyPositionMuteButton and not GetFFlagCleanupMuteSelfButton() then
+				if not GetFFlagCleanupMuteSelfButton() then
 					rebuildPlayerList()
 				end
 

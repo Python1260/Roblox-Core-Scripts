@@ -14,9 +14,16 @@ To start, lets create a fake validation that ensures all layered clothing Access
 
 1. Open `src/validationSystem/ValidationEnums.lua`, and find `ValidationEnums.ValidationModule`. The first step is to add a well named enum for our validation, something creative like `AccessoryIsNamedAccessory`. Add `AccessoryIsNamedAccessory = "AccessoryIsNamedAccessory"` to the bottom of the table. 
 2. Now that the enum exists, the module runner will expect to find a module with that name. Create `src/validationFolders/AccessoryIsNamedAccessory/AccessoryIsNamedAccessory.lua`. We create a folder instead of just the lua module so that we can group the validation, unit tests, and documentation all into the same folder.
-3. Before we can add the validation, lets create the error message and have it ready. Turn on the vpn and go to the translation hub, select namespace `Common.UGCValidation`, and add a new string. The key name should follow `ErrorLabel.YourCoolAnything`. Since this is a mock validation, do not mark it for translation. Otherwise, mark this string for `Studio` and `InGameContent`, and have it ready for translation. Make it public before we publish a new UGCValidation version.
-4. Once you decide on your error string, lets fetch it so we have a backup. While on VPN, run `python3 PythonHelpers/createBackupTranslations.py`.  
-3. Now lets write the test! Here is a basic template
+3. Before we can add the validation, lets create the error message. From a devspace (or on VPN), author it directly in the Translations Hub — and add the matching mirror entry — with one command:
+
+   ```bash
+   python3 PythonHelpers/syncTranslations.py --draft YourCoolAnything "Your asset is invalid because {Reason}." --description "Context for translators: shown when ..."
+   ```
+
+   This registers a **hidden draft** (`isLive=false`, `isReadyForTranslation=false`) in namespace `Common.UGCValidation` under key `ErrorLabel.YourCoolAnything`, associates it with the `Studio` and `RobloxInGameContent` consumers, and appends the key + English fallback to `src/validationSystem/ErrorSourceStrings.lua`. Commit that file change alongside your module.
+
+   The **Translations Hub is the source of truth**; `ErrorSourceStrings.lua` is a generated mirror + runtime fallback. `--draft` is the easy path, but authoring is open: you can instead create the draft in the Hub UI and hand-add the matching `Keys` + `Values` rows to the file — CI's `verify` only checks that each key the PR added is under `Common.UGCValidation` and **already exists** in the Hub (not the English text). That `verify` check blocks the merge until every added string has been pushed as a draft; **merging then flips those keys to live + ready for translation** (see `.github/workflows/sync-translations.yml`). For a mock/throwaway validation, just don't merge it — nothing reaches translators until merge.
+4. Now lets write the test! Here is a basic template
 
 ```lua
 local root = script.Parent.Parent.Parent
@@ -52,52 +59,48 @@ TODO: Update
 TODO: Update
 
 ## Publishing
-As of June 2024, you require this version of rotriever https://github.com/Roblox/rotriever/releases/tag/v0.5.13-alpha.2 in order to publish
+
+Rotriever, the version of which is pinned in `foreman.toml`, is the only tool you need.
+
+### Release agent skill
+
+This repository includes the `rotriever-package-release` skill for both Codex and Claude. It automates the version-bump, Jira/PR tagging, publication, verification, and documented downstream-consumer workflow:
+
+- [Codex skill](.codex/skills/rotriever-package-release/SKILL.md)
+- [Claude skill](.claude/skills/rotriever-package-release/SKILL.md)
 
 ### Publishing a new version
 
-1. In this repo, update `rotriever.toml`'s "version" field and merge the change to the `main` branch
-2. Run this Github Action https://github.com/Roblox/ugc-validation/actions/workflows/publish.yml (select the `Run workflow` dropdown, then press the `Run workflow` button)
-3. Locally on the 'main' branch (which has the rotriever.toml change made above), remove the entire `[config]` section from C:\Git\ugc-validation\rotriever.toml (this change is a hack to make running `rotrieve publish origin` work). Create a branch locally and commit the change to the branch (don't push the branch)
-4. Locally on the branch, from `C:\Git\ugc-validation` run `rotrieve publish origin`
-   - Note: if you don't have rotrieve, download it from https://github.com/Roblox/rotriever/releases, then unzip it to use the exe
-   - Note: missing packages may be reported. Install them with pip install and re-run
-   - the result of successfully running should be a new entry in https://github.com/Roblox/ugc-validation/tags
-5. You can now delete the local branch with the rotriever.toml edit (the edit which removed the `[config]` section)
-6. [Run this TeamCity job](https://teamcity-sage.rbx.com/buildConfiguration/App_Lua_Tools_CacheRotrieverPackage05x)
-   - Package Source: github.com/Roblox/ugc-validation
-   - Package name: UGCValidation
-   - Version: [version from step 1]
+1. On a PR, bump `version` in `rotriever.toml`. Merge to `main`.
+2. Run the [Publish Rotriever Package](https://github.com/Roblox/ugc-validation/actions/workflows/publish.yml) GitHub Action against `main` (`Run workflow` → `Run workflow`). Confirm your version is the last line of [`rotriever-registry-index/UGCValidation/metadata`](https://github.com/Roblox/rotriever-registry-index/blob/main/UGCValidation/metadata) — that's the package live for all consumers.
+3. After pulling the merge locally, create a throwaway branch, delete the `[config]` section from `rotriever.toml`, and commit — **don't push**. (Removing `[config]` is required for the legacy publish to work: it otherwise tries to resolve our git-based dependencies through the registry index and fails.)
+4. Run `rotrieve publish origin`. Confirm a new `v<version>` entry appears in [the tag list](https://github.com/Roblox/ugc-validation/tags).
+5. Delete the throwaway branch.
 
 ### Updating UGC Validation in [rcc-jobs-lua-scripts](https://github.com/Roblox/rcc-jobs-lua-scripts)
 
-1. Update `rotriever.toml` in rcc-jobs-lua-scripts repo to include the new version (commit this change on a branch)
-2. Run `rotrieve upgrade --packages UGCValidation` locally from `C:\Git\rcc-jobs-lua-scripts`
-3. Commit all changes to your branch, and open a pull request
-   - changes should only be to the UGC-Validation library plus lock.toml, rotriever.lock
-4. rcc-jobs-lua-scripts repo will automatically get synced into game-engine after the pull request is merged (might take ~20min)
+1. On a branch, bump the UGCValidation version in `rotriever.toml`.
+2. Run `rotrieve upgrade --packages UGCValidation` from the repo root.
+3. Open a PR. The diff is `rotriever.toml`, `rotriever.lock`, and the entire `Packages/_Index/UGCValidation/` vendored tree — this repo checks the resolved package contents into source control, so every bump rewrites them.
+4. After merge, rcc-jobs-lua-scripts auto-syncs into game-engine within ~20 minutes.
 
 ### Updating UGC Validation in [LuaPackages](https://github.com/Roblox/lua-apps/tree/master/content/LuaPackages) and [RccServer/CorePackages](https://github.com/Roblox/lua-apps/tree/master/apps/RccServer/CorePackages)
 
-1. Update `rotriever.toml` in the linked LuaPackages and RccServer/CorePackages folders to include the new version (commit this change on a branch)
-2. Run `git lua install` locally from `C:\Git\lua-apps`
-3. Commit all changes to your branch, and open a pull request
-   - changes should only be to the rotriever.toml and rotriever.lock files
-4. lua-apps repo will automatically get synced into game-engine after the pull request is merged (might take ~20min)
+1. On a branch, bump UGCValidation in **both** `content/LuaPackages/rotriever.toml` and `apps/RccServer/CorePackages/rotriever.toml`.
+2. Run `lute build` from the repo root to regenerate both lockfiles.
+3. Open a PR. The diff should only be the two `rotriever.toml` files and their `rotriever.lock` siblings.
+4. After merge, lua-apps back-merges into game-engine within ~2 hours.
 
 
 ### Updating UGC Validation in StudioPlugins
-1. Update `rotriever.toml` in [Toolbox folder](https://github.com/Roblox/StudioPlugins/tree/main/Builtin/Toolbox) to include the new version
-   - Increase the Toolbox version under the [package] section
-2. Run `rotrieve upgrade --packages UGCValidation` locally from `C:\Git\StudioPlugins\Builtin\Toolbox`
-3. Update `rotriever.toml` in [AvatarCompatibilityPreviewer folder](https://github.com/Roblox/StudioPlugins/tree/main/Builtin/AvatarCompatibilityPreviewer) to include the new version
-   - Increase the AvatarCompatibilityPreviewer version under the [package] section
-4. Run `rotrieve upgrade --packages UGCValidation` locally from `C:\Git\StudioPlugins\Builtin\AvatarCompatibilityPreviewer`
-5. If any new strings are added, edited, or translated, then run `python3 scripts/translations/download_artifacts.py --download-source --namespaces Studio.Toolbox Common.UGCValidation Studio.AvatarCompatibilityPreviewer` locally from `C:\Git\StudioPlugins\`. This will update any translation string changes in Toolbox and ACP, including everything in our [namespace](https://translations-hub.simulprod.com/translatable-content?namespace=Common.UGCValidation)
-6. Commit all changes to your branch, and open a pull request
-   - changes should only be to the rotriever.toml, rotriever.lock, and potentially csv files
+
+1. From the StudioPlugins repo run `python3 scripts/rotriever/update.py set UGCValidation "<version>"`.
+2. If new translation strings landed in this release, run `python3 scripts/translations/download_artifacts.py --download-source --namespaces Studio.Toolbox Common.UGCValidation Studio.AvatarCompatibilityPreviewer` ([translations hub](https://translations-hub.simulprod.com/translatable-content?namespace=Common.UGCValidation)).
+3. Open a PR. Diff should be limited to `rotriever.toml`, `rotriever.lock`, and any CSV updates.
+
 
 ### Updating Toolbox and AvatarCompatibilityPreviewer packages in game-engine
+This can be skipped if you are not rushing code cutoff. There is a daily automatic sync.
 1. Once the PR for StudioPlugins is merged, take note of the commit hash of the merge commit.
    - It will show up in the PR timeline with the message "[username] merged commit [commit hash] into main"
    - Ensure an automated comment shows up on the PR confirming that Toolbox and AvatarCompatibilityPreviewer were published at that commit hash
@@ -105,12 +108,3 @@ As of June 2024, you require this version of rotriever https://github.com/Roblox
    - Find the line with 'StudioPlugin-Toolbox' and replace the commit hash (the value after the '@') with the new commit hash
    - Replace the commit hash for StudioPlugin-AvatarCompatibilityPreviewer as well
 3. Commit all changes to a branch, and open a pull request
-
-
-
-### Updating Error Strings in Lua-apps [LuaPackages](https://github.com/Roblox/lua-apps).
-This is an optional process that does not currently have impact, as in-experience creation does not utilize translations.
-1. Run the `Pull translations and create pull request` job in this [GHA workflow](https://github.com/Roblox/lua-apps/actions/workflows/create-translations-pull-request.yaml)
-2. Check [github](https://github.com/Roblox/lua-apps/pulls?q=is%3Apr+is%3Aopen+UC-6278+%5BAUTO-GENERATED%5D) and verify that there are two PRs. They will either be newly created, or newly updated 
-3. Check that the PRs have any changes to Common.UGCValidation. If so, approve and merge the PRs. 
-That should be all. For more context, you can read the full [documentation](https://roblox.atlassian.net/wiki/spaces/IN/pages/2536473082/Using+Platform+Translations#lua-apps-(LuaApp-%2F-RobloxInGameContent)).

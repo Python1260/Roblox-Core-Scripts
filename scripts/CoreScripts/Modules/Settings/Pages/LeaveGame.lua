@@ -53,11 +53,14 @@ local EngineFeatureRbxAnalyticsServiceExposePlaySessionId = game:GetEngineFeatur
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 local FFlagChromeShortcutRemoveRespawnOnLeavePage = SharedFlags.FFlagChromeShortcutRemoveRespawnOnLeavePage
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
 local FFlagRefactorMenuConfirmationButtons = require(RobloxGui.Modules.Settings.Flags.FFlagRefactorMenuConfirmationButtons)
 local FFlagConfirmationButtonsUseGreyButtons = require(RobloxGui.Modules.Settings.Flags.FFlagConfirmationButtonsUseGreyButtons)
-local FFlagMenuButtonsFixConfirmationScrolling = require(RobloxGui.Modules.Settings.Flags.FFlagMenuButtonsFixConfirmationScrolling)
 
 local Constants = require(RobloxGui.Modules:WaitForChild("InGameMenu"):WaitForChild("Resources"):WaitForChild("Constants"))
+
+local InExperienceSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet)
+local SideSheetLocalizationKeys = InExperienceSideSheet.Constants.LocalizationKeys
 
 local focusNavigationService = ReactFocusNavigation.FocusNavigationService.new(ReactFocusNavigation.EngineInterface.CoreGui)
 
@@ -85,9 +88,15 @@ local function LeaveButtonsContainer(props: Props)
 	local focusGuiObject = useFocusGuiObject()
 
 	local localizedText = useLocalization({
-		ConfirmLeaveGame = Constants.ConfirmLeaveGameLocalizedKey,
-		LeaveGame = Constants.LeaveGameLocalizedKey,
-		DontLeaveGame = Constants.DontLeaveGameLocalizedKey,
+		ConfirmLeaveGame = if isPioneerLaunch()
+			then SideSheetLocalizationKeys.QuitConfirmation
+			else Constants.ConfirmLeaveGameLocalizedKey,
+		LeaveGame = if isPioneerLaunch()
+			then SideSheetLocalizationKeys.QuitButton
+			else Constants.LeaveGameLocalizedKey,
+		DontLeaveGame = if isPioneerLaunch()
+			then SideSheetLocalizationKeys.Resume
+			else Constants.DontLeaveGameLocalizedKey,
 	}) 
 
 	React.useEffect(function() 
@@ -99,7 +108,14 @@ local function LeaveButtonsContainer(props: Props)
 	end, { lastInput, focusGuiObject })
 
 	local onLeaveGame = React.useCallback(function()
-		leaveGame(true)
+		if isPioneerLaunch() then
+			-- TODO APPEXP-5024: Wire up the actual sign out action for Pioneer.
+			leaveGame(false, {
+				shouldNativeExit = true,
+			})
+		else
+			leaveGame(true)
+		end
 	end, { leaveGame })
 
 	local onDontLeaveGame = React.useCallback(function()
@@ -153,7 +169,7 @@ local function LeaveGameContainer(props: Props)
 		localization = localization,
 	}, {
 		FoundationProvider = React.createElement(FoundationProvider, {
-			theme = Foundation.Enums.Theme.Dark,
+			colorMode = Foundation.Enums.ColorMode.Dark,
 		}, {
 			FocusNavigationProvider = React.createElement(ReactFocusNavigation.FocusNavigationContext.Provider, {
 				value = focusNavigationService,
@@ -224,11 +240,11 @@ local function Initialize()
 			end
 		end
 
-		if FFlagMenuButtonsFixConfirmationScrolling then
-			this.Page.Size = UDim2.new(1,0,0,0)
-		end
+		this.Page.Size = UDim2.new(1,0,0,0)
 	else
-		local leaveGameConfirmationText = RobloxTranslator:FormatByKey(Constants.ConfirmLeaveGameLocalizedKey)
+		local leaveGameConfirmationText = if isPioneerLaunch()
+			then RobloxTranslator:FormatByKey(SideSheetLocalizationKeys.QuitConfirmation)
+			else RobloxTranslator:FormatByKey(Constants.ConfirmLeaveGameLocalizedKey)
 
 		local leaveGameText =  Create'TextLabel'
 		{
@@ -273,7 +289,19 @@ local function Initialize()
 			leaveGameText.FontSize = Enum.FontSize.Size48
 		end
 
-		this.LeaveGameButton = utility:MakeStyledButton("LeaveGame", "Leave", nil, function() leaveGame(true) end)
+		local leaveButtonText = if isPioneerLaunch()
+			then RobloxTranslator:FormatByKey(SideSheetLocalizationKeys.QuitButton)
+			else "Leave"
+		this.LeaveGameButton = utility:MakeStyledButton("LeaveGame", leaveButtonText, nil, function()
+			if isPioneerLaunch() then
+				-- TODO APPEXP-5024: Wire up the actual sign out action for Pioneer.
+				leaveGame(false, {
+					shouldNativeExit = true,
+				})
+			else
+				leaveGame(true)
+			end
+		end)
 		this.LeaveGameButton.NextSelectionRight = nil
 		this.LeaveGameButton.Parent = leaveButtonContainer
 

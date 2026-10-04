@@ -35,6 +35,7 @@ local RobloxTranslator = require(CorePackages.Workspace.Packages.RobloxTranslato
 local VRHub = require(CorePackages.Workspace.Packages.VrCommon).VRHub
 local VRUtil = require(CorePackages.Workspace.Packages.VrCommon).VRUtil
 local VoiceChatServiceManager = require(RobloxGui.Modules.VoiceChat.VoiceChatServiceManager).default
+local VoiceConstants = require(RobloxGui.Modules.VoiceChat.Constants)
 
 local ExternalEventConnection = require(CorePackages.Workspace.Packages.RoactUtils).ExternalEventConnection
 
@@ -90,8 +91,6 @@ local FIntVRBottomBarPositionOffsetVerticalNumber =
 	require(RobloxGui.Modules.Flags.FIntVRBottomBarPositionOffsetVerticalNumber)
 local FIntVRBottomBarPositionOffsetDepthNumber =
 	require(RobloxGui.Modules.Flags.FIntVRBottomBarPositionOffsetDepthNumber)
-local FFlagVRBottomBarHighlightedLeaveGameIcon =
-	require(RobloxGui.Modules.Flags.FFlagVRBottomBarHighlightedLeaveGameIcon)
 local IsSpatialRobloxGuiEnabled = require(RobloxGui.Modules.VR.IsSpatialRobloxGuiEnabled)
 
 local SplashScreenManager = require(CorePackages.Workspace.Packages.SplashScreenManager).SplashScreenManager
@@ -432,6 +431,7 @@ local JoinVoice = {
 	iconOff = Images["icons/controls/publicAudioJoin"],
 	text = "Join Voice",
 	onActivated = function()
+		VoiceChatServiceManager.pendingConnectionSource = VoiceConstants.VOICE_CONNECTION_SOURCE.IN_EXPERIENCE
 		VoiceChatServiceManager:JoinVoice()
 		if FFlagEnableJoinVoiceVrTelemetry then
 			local isToggleOn = VoiceChatServiceManager:ShouldShowJoinVoice()
@@ -797,12 +797,8 @@ function VRBottomBar:updateItems()
 		table.insert(enabledItems, SafetyOff)
 	end
 
-	if FFlagVRBottomBarHighlightedLeaveGameIcon then
-		if VRHub.ShowHighlightedLeaveGameIcon then
-			table.insert(enabledItems, LeaveGameHighlighted)
-		else
-			table.insert(enabledItems, LeaveGame)
-		end
+	if VRHub.ShowHighlightedLeaveGameIcon then
+		table.insert(enabledItems, LeaveGameHighlighted)
 	else
 		table.insert(enabledItems, LeaveGame)
 	end
@@ -945,11 +941,10 @@ function VRBottomBar:renderWithStyle(style)
 			}),
 		}),
 
-		ShowHighlightedLeaveGameIconToggled = FFlagVRBottomBarHighlightedLeaveGameIcon
-			and Roact.createElement(ExternalEventConnection, {
-				event = VRHub.ShowHighlightedLeaveGameIconToggled.Event,
-				callback = self.updateItemListState,
-			}),
+		ShowHighlightedLeaveGameIconToggled = Roact.createElement(ExternalEventConnection, {
+			event = VRHub.ShowHighlightedLeaveGameIconToggled.Event,
+			callback = self.updateItemListState,
+		}),
 		ShowTopBarChanged = Roact.createElement(ExternalEventConnection, {
 			event = VRHub.ShowTopBarChanged.Event,
 			callback = self.onShowTopBarChanged,

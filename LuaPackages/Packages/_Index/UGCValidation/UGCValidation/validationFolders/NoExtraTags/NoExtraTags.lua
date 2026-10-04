@@ -5,27 +5,56 @@ local ValidationEnums = require(root.validationSystem.ValidationEnums)
 local CollectionService = game:GetService("CollectionService")
 local ErrorSourceStrings = require(root.validationSystem.ErrorSourceStrings)
 
+local getFFlagUGCValidateNoExtraTagsRequireHsrAssets =
+	require(root.flags.getFFlagUGCValidateNoExtraTagsRequireHsrAssets)
+
 local NoExtraTags = {}
 
 NoExtraTags.categories = Constants.AllAssetUploadCategories
-NoExtraTags.requiredData = { ValidationEnums.SharedDataMember.rootInstance }
+NoExtraTags.requiredData = if getFFlagUGCValidateNoExtraTagsRequireHsrAssets()
+	then {
+		ValidationEnums.SharedDataMember.rootInstance,
+		ValidationEnums.SharedDataMember.hsrAssets,
+	}
+	else { ValidationEnums.SharedDataMember.rootInstance }
 NoExtraTags.expectedFailures = { "Asset_EF_TaggedJacket", "Bundle_EF_BodyWithLLLTagged.LeftLeg" }
 
-NoExtraTags.run = function(reporter: Types.ValidationReporter, data: Types.SharedData)
-	local inst = data.rootInstance :: Instance
-	local objects = (inst :: Instance):GetDescendants()
-	table.insert(objects, inst)
-
-	local unauthorizedDescendantPaths = {}
+local function collectTaggedPaths(rootInstance: Instance, taggedPaths: { string })
+	local objects = rootInstance:GetDescendants()
+	table.insert(objects, rootInstance)
 	for _, obj in objects do
 		if #CollectionService:GetTags(obj) > 0 then
-			table.insert(unauthorizedDescendantPaths, obj:GetFullName())
+			table.insert(taggedPaths, obj:GetFullName())
+		end
+	end
+end
+
+NoExtraTags.run = function(reporter: Types.ValidationReporter, data: Types.SharedData)
+	local taggedPaths: { string } = {}
+	collectTaggedPaths(data.rootInstance, taggedPaths)
+
+	if getFFlagUGCValidateNoExtraTagsRequireHsrAssets() then
+		for _, hsrCandidates in data.hsrAssets do
+			for _, hsrAsset in hsrCandidates do
+				collectTaggedPaths(hsrAsset, taggedPaths)
+			end
+		end
+	else
+		local hsrAssets = data.hsrAssets
+		if type(hsrAssets) == "table" then
+			for _, hsrCandidates in hsrAssets do
+				if type(hsrCandidates) == "table" then
+					for _, hsrAsset in hsrCandidates do
+						collectTaggedPaths(hsrAsset, taggedPaths)
+					end
+				end
+			end
 		end
 	end
 
-	if #unauthorizedDescendantPaths > 0 then
+	if #taggedPaths > 0 then
 		reporter:fail(ErrorSourceStrings.Keys.InstanceTagsFound, {
-			ProblematicDescendantPaths = table.concat(unauthorizedDescendantPaths, ", "),
+			ProblematicDescendantPaths = table.concat(taggedPaths, ", "),
 		})
 	end
 end

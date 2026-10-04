@@ -11,7 +11,7 @@ local UIBlox = InGameMenuDependencies.UIBlox
 
 local Button = UIBlox.App.Button.Button
 local ButtonType = UIBlox.App.Button.Enum.ButtonType
-local withStyle = UIBlox.Core.Style.withStyle
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 
 local InGameMenu = script.Parent.Parent.Parent
 
@@ -26,6 +26,11 @@ local RootedConnection = require(InGameMenu.Components.Connection.RootedConnecti
 local SetCurrentPage = require(InGameMenu.Actions.SetCurrentPage)
 
 local ImageSetLabel = UIBlox.Core.ImageSet.ImageSetLabel
+
+local Foundation = require(CorePackages.Packages.Foundation)
+local Image = Foundation.Image
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
 
 local CONTAINER_WIDTH = 304
 local TEXT_PADDING_TOP = 4
@@ -45,7 +50,14 @@ end
 function AddFriendsNow:render()
 	local props = self.props
 
-	return withStyle(function(style)
+	return withFoundationOrUIBloxStyle(function(tokens)
+		return {
+			Font = {
+				BaseSize = 1,
+				Body = { Font = tokens.Typography.BodyLarge.Font, RelativeSize = tokens.Typography.BodyLarge.FontSize },
+			},
+		}
+	end, function(style)
 		return withLocalization({
 			noFriendsText = "CoreScripts.InGameMenu.InviteFriends.NoFriends",
 			makeFriendsNow = "CoreScripts.InGameMenu.InviteFriends.MakeFriendsNow",
@@ -74,13 +86,21 @@ function AddFriendsNow:render()
 					SortOrder = Enum.SortOrder.LayoutOrder,
 				}),
 
-				Icon = Roact.createElement(ImageSetLabel, {
-					BackgroundTransparency = 1,
-					Image = Assets.Images.AddFriend,
-					Size = UDim2.new(0, 64, 0, 64),
-					ImageTransparency = 0.5,
-					LayoutOrder = 1,
-				}),
+				Icon = if FFlagCoreUiMigrateUIBloxToFoundation
+					then Roact.createElement(Image, {
+						Image = Assets.Images.AddFriend.Image,
+						imageRect = { offset = Assets.Images.AddFriend.ImageRectOffset, size = Assets.Images.AddFriend.ImageRectSize },
+						Size = UDim2.new(0, 64, 0, 64),
+						imageStyle = { Color3 = Color3.new(1, 1, 1), Transparency = 0.5 },
+						LayoutOrder = 1,
+					})
+					else Roact.createElement(ImageSetLabel, {
+						BackgroundTransparency = 1,
+						Image = Assets.Images.AddFriend,
+						Size = UDim2.new(0, 64, 0, 64),
+						ImageTransparency = 0.5,
+						LayoutOrder = 1,
+					}),
 
 				TextContainer = Roact.createElement("Frame", {
 					BackgroundTransparency = 1,

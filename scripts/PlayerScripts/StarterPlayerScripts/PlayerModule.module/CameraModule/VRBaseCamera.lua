@@ -12,14 +12,6 @@ local VR_FADE_SPEED = 10 -- 1/10 second
 local VR_SCREEN_EGDE_BLEND_TIME = 0.14
 local VR_SEAT_OFFSET = Vector3.new(0,4,0)
 
-local FFlagUserVRVehicleCamera
-do
-	local success, result = pcall(function()
-		return UserSettings():IsUserFeatureEnabled("UserVRVehicleCamera2")
-	end)
-	FFlagUserVRVehicleCamera = success and result
-end
-
 local VRService = game:GetService("VRService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
@@ -31,6 +23,8 @@ local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
 local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
 local CommonUtils = script.Parent.Parent:WaitForChild("CommonUtils")
 local FlagUtil = require(CommonUtils:WaitForChild("FlagUtil"))
+
+local FFlagUserVRRemoveLuaEdgeBlur = FlagUtil.getUserFlag("UserVRRemoveLuaEdgeBlur")
 
 --[[ The Module ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))
@@ -99,14 +93,7 @@ function VRBaseCamera:OnEnabledChanged()
 		
 		-- reset on options change
 		self.thirdPersonOptionChanged = VRService:GetPropertyChangedSignal("ThirdPersonFollowCamEnabled"):Connect(function()
-			if FFlagUserVRVehicleCamera then
-				self:Reset()
-			else
-				-- only need to reset third person options if in third person
-				if not self:IsInFirstPerson() then
-					self:Reset()
-				end 
-			end
+			self:Reset()
 		end)
 		
 		self.vrRecentered = VRService.UserCFrameChanged:Connect(function(userCFrame, _)
@@ -142,8 +129,10 @@ function VRBaseCamera:OnEnabledChanged()
 		end
 
 		-- reset VR effects
-		self.VREdgeBlurTimer = 0
-		self:UpdateEdgeBlur(player, 1)
+		if not FFlagUserVRRemoveLuaEdgeBlur then
+			self.VREdgeBlurTimer = 0
+			self:UpdateEdgeBlur(player, 1)
+		end
 		local VRFade = Lighting:FindFirstChild("VRFade")
 		if VRFade then
 			VRFade.Brightness = 0
@@ -231,8 +220,8 @@ function VRBaseCamera:UpdateFadeFromBlack(timeDelta: number)
 	end
 end
 
-function VRBaseCamera:StartVREdgeBlur(player)
-	if UserGameSettings.VignetteEnabled == false then
+function VRBaseCamera:StartVREdgeBlur(player, force)
+	if not force and UserGameSettings.VignetteEnabled == false then
 		return
 	end
 
@@ -421,5 +410,11 @@ function VRBaseCamera:getRotation(dt)
 end
 
 -----------------------------
+
+function VRBaseCamera:HandleSubjectDistance(prevController)
+	if prevController and prevController.IsInFirstPerson and prevController:IsInFirstPerson() then
+		self:SetCameraToSubjectDistance(0)
+	end
+end
 
 return VRBaseCamera

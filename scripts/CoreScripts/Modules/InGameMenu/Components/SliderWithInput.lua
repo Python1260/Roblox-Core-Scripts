@@ -10,9 +10,16 @@ local UIBlox = InGameMenuDependencies.UIBlox
 local Cryo = InGameMenuDependencies.Cryo
 local t = InGameMenuDependencies.t
 
-local withStyle = UIBlox.Core.Style.withStyle
-local withSelectionCursorProvider = UIBlox.App.SelectionImage.withSelectionCursorProvider
-local CursorKind = UIBlox.App.SelectionImage.CursorKind
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
+local Foundation = require(CorePackages.Packages.Foundation)
+local FFlagCoreUiMigrateUIBloxToFoundation = require(CorePackages.Workspace.Packages.SharedFlags).FFlagCoreUiMigrateUIBloxToFoundation
+
+local withSelectionCursorProvider = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.UNSTABLE.withCursorMigration
+	else UIBlox.App.SelectionImage.withSelectionCursorProvider
+local CursorKind = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.Enums.CursorType
+	else UIBlox.App.SelectionImage.CursorKind
 
 local InGameMenu = script.Parent.Parent
 
@@ -134,7 +141,19 @@ function SliderWithInput:renderWithSelectionCursor(getSelectionCursor)
 		LayoutOrder = props.LayoutOrder,
 	}, {
 		Slider = Roact.createElement(Slider, sliderProps),
-		TextContainer = withStyle(function(style)
+		TextContainer = withFoundationOrUIBloxStyle(function(tokens)
+			return {
+				Theme = {
+					TextMuted = { Color = tokens.Color.Content.Muted.Color3, Transparency = tokens.Color.Content.Muted.Transparency },
+					TextDefault = { Color = tokens.Color.Content.Default.Color3, Transparency = tokens.Color.Content.Default.Transparency },
+					BackgroundUIContrast = { Color = tokens.Color.OverMedia.OverMedia_0.Color3, Transparency = tokens.Color.OverMedia.OverMedia_0.Transparency },
+				},
+				Font = {
+					BaseSize = 1,
+					Body = { Font = tokens.Typography.BodyLarge.Font, RelativeSize = tokens.Typography.BodyLarge.FontSize, RelativeMinSize = tokens.Typography.BodyLarge.FontSize },
+				},
+			}
+		end, function(style)
 			local textTheme = props.disabled and style.Theme.TextMuted or style.Theme.TextDefault
 
 			return Roact.createElement(AssetImage.Label, {

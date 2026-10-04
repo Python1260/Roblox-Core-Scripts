@@ -1,6 +1,6 @@
 [package]
 name = "ServiceContractsProto"
-version = "1.0.721+20260331"
+version = "1.0.2735+20260924"
 readme = "README.md"
 content_root = "protos/gen/luau"
 files = [
@@ -10,6 +10,10 @@ files = [
     "google/**/*",
     "roblox/apppageplatform/badges/v1beta1/**/*",
     "roblox/apppageplatform/badges/v1beta1/*",
+    "roblox/apppageplatform/communityprofile/v1beta1/**/*",
+    "roblox/apppageplatform/communityprofile/v1beta1/*",
+    "roblox/apppageplatform/communities/v1beta1/**/*",
+    "roblox/apppageplatform/communities/v1beta1/*",
     "roblox/apppageplatform/shared/v1beta1/**/*",
     "roblox/apppageplatform/shared/v1beta1/*",
     "roblox/apppageplatform/experiencedetails/v1beta1/**/*",
@@ -22,7 +26,24 @@ files = [
     "roblox/apppageplatform/marketplacecatalog/v1beta1/*",
     "roblox/apppageplatform/charts/v1beta1/**/*",
     "roblox/apppageplatform/charts/v1beta1/*",
+    "roblox/apppageplatform/devstore/v1beta1/**/*",
+    "roblox/apppageplatform/devstore/v1beta1/*",
+    "roblox/apppageplatform/home/v1beta1/**/*",
+    "roblox/apppageplatform/home/v1beta1/*",
+    "roblox/apppageplatform/search/v1beta1/**/*",
+    "roblox/apppageplatform/search/v1beta1/*",
+    "roblox/apppageplatform/spotlightcollection/v1beta1/**/*",
+    "roblox/apppageplatform/spotlightcollection/v1beta1/*",
+    "roblox/apppageplatform/partychat/v1beta1/**/*",
+    "roblox/apppageplatform/partychat/v1beta1/*",
+    "roblox/apppageplatform/templates/v1beta1/**/*",
+    "roblox/apppageplatform/templates/v1beta1/*",
+    "roblox/apppageplatform/settings/v1beta1/**/*",
+    "roblox/apppageplatform/settings/v1beta1/*",
     "roblox/apppageplatform/*",
+    "roblox/posts/postasset/v1/**/*",
+    "roblox/posts/postasset/v1/*",
+    "roblox/posts/*",
 ]
 publish = true
 authors = [

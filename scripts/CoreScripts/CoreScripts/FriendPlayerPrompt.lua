@@ -4,14 +4,15 @@
 	// Version 1.0
 	// Written by: TheGamer101
 	// Description: Can prompt a user to send a friend request or unfriend a player.
-]]--
+]]
+--
 
 local StarterGui = game:GetService("StarterGui")
 local PlayersService = game:GetService("Players")
 local CoreGuiService = game:GetService("CoreGui")
 local AnalyticsService = game:GetService("RbxAnalyticsService")
+local IxpService = game:GetService("IXPService")
 local CorePackages = game:GetService("CorePackages")
-
 
 local RobloxGui = CoreGuiService.RobloxGui
 local LocalPlayer = PlayersService.LocalPlayer
@@ -26,10 +27,13 @@ local SocialUtil = require(CoreGuiModules.SocialUtil)
 local FriendingUtility = require(CoreGuiModules.FriendingUtility)
 
 local RobloxTranslator = require(CorePackages.Workspace.Packages.RobloxTranslator)
+local UserRelationshipModals = require(CorePackages.Workspace.Packages.UserRelationshipModals)
 
 local LegacyThumbnailUrls = require(CoreGuiModules.Common.LegacyThumbnailUrls)
 local FFlagRemoveHardCodedFriendLimitPrompt = require(CoreGuiModules.Flags.FFlagRemoveHardCodedFriendLimitPrompt)
-
+local FFlagFriendRequestModalRevamp = game:DefineFastFlag("FriendRequestModalRevampV4", false)
+local FFlagFriendRequestModalIxpEnabled = game:DefineFastFlag("FriendRequestModalIxpEnabled", false)
+local FStringFriendRequestModalIxpLayer = game:DefineFastString("FriendRequestModalIxpLayer", "")
 
 local THUMBNAIL_SIZE = 200
 local BUST_THUMBNAIL_SIZE = 420
@@ -51,7 +55,7 @@ local function LocalizedGetString(key, rtv)
 end
 
 function createFetchImageFunction(...)
-	local args = {...}
+	local args = { ... }
 	return function(imageLabel)
 		spawn(function()
 			local imageUrl = SocialUtil.GetPlayerImage(unpack(args))
@@ -63,8 +67,8 @@ function createFetchImageFunction(...)
 end
 
 function SendFriendRequest(playerToFriend)
-    AnalyticsService:ReportCounter("FriendPlayerPrompt-RequestFriendship")
-    AnalyticsService:TrackEvent("Game", "RequestFriendship", "FriendPlayerPrompt")
+	AnalyticsService:ReportCounter("FriendPlayerPrompt-RequestFriendship")
+	AnalyticsService:TrackEvent("Game", "RequestFriendship", "FriendPlayerPrompt")
 
 	local success = pcall(function()
 		LocalPlayer:RequestFriendship(playerToFriend)
@@ -73,7 +77,10 @@ function SendFriendRequest(playerToFriend)
 end
 
 function AtFriendLimit(player)
-	assert(not FFlagRemoveHardCodedFriendLimitPrompt, "Should not call AtFriendLimit when FFlagRemoveHardCodedFriendLimitPrompt is enabled")
+	assert(
+		not FFlagRemoveHardCodedFriendLimitPrompt,
+		"Should not call AtFriendLimit when FFlagRemoveHardCodedFriendLimitPrompt is enabled"
+	)
 	local friendCount = FriendingUtility:GetFriendCountAsync(player.UserId)
 	if friendCount == nil then
 		return false
@@ -85,14 +92,17 @@ function AtFriendLimit(player)
 end
 
 function DoPromptRequestFriendPlayer(playerToFriend)
-	if game:GetEngineFeature("AsyncRenamesUsedInLuaApps") then
-		if LocalPlayer:IsFriendsWithAsync(playerToFriend.UserId) then
-			return
-		end
-	else
-		if (LocalPlayer :: any):IsFriendsWith(playerToFriend.UserId) then
-			return
-		end
+	if LocalPlayer:IsFriendsWithAsync(playerToFriend.UserId) then
+		return
+	end
+
+	if FFlagFriendRequestModalIxpEnabled then
+		IxpService:LogFlagLinkedUserLayerExposure(FStringFriendRequestModalIxpLayer)
+	end
+
+	if FFlagFriendRequestModalRevamp then
+		UserRelationshipModals.launchPromptFriendRequestModal(playerToFriend.UserId)
+		return
 	end
 
 	local thumbnailUrl = ""
@@ -112,14 +122,24 @@ function DoPromptRequestFriendPlayer(playerToFriend)
 					CancelActive = false,
 					Image = thumbnailUrl,
 					ImageConsoleVR = thumbnailUrlConsole,
-					FetchImageFunction = createFetchImageFunction(playerToFriend.UserId, REGULAR_THUMBNAIL_IMAGE_SIZE, REGULAR_THUMBNAIL_IMAGE_TYPE),
-					FetchImageFunctionConsoleVR = createFetchImageFunction(playerToFriend.UserId, CONSOLE_THUMBNAIL_IMAGE_SIZE, CONSOLE_THUMBNAIL_IMAGE_TYPE),
+					FetchImageFunction = createFetchImageFunction(
+						playerToFriend.UserId,
+						REGULAR_THUMBNAIL_IMAGE_SIZE,
+						REGULAR_THUMBNAIL_IMAGE_TYPE
+					),
+					FetchImageFunctionConsoleVR = createFetchImageFunction(
+						playerToFriend.UserId,
+						CONSOLE_THUMBNAIL_IMAGE_SIZE,
+						CONSOLE_THUMBNAIL_IMAGE_TYPE
+					),
 					StripeColor = Color3.fromRGB(183, 34, 54),
 				})
 			else
 				if not FFlagRemoveHardCodedFriendLimitPrompt and AtFriendLimit(playerToFriend) then
-
-					local mainText = string.format("You can not send a friend request to %s because they are at the max friend limit.",  playerToFriend.Name)
+					local mainText = string.format(
+						"You can not send a friend request to %s because they are at the max friend limit.",
+						playerToFriend.Name
+					)
 
 					PromptCreator:CreatePrompt({
 						WindowTitle = "Error Sending Friend Request",
@@ -128,8 +148,16 @@ function DoPromptRequestFriendPlayer(playerToFriend)
 						CancelActive = false,
 						Image = thumbnailUrl,
 						ImageConsoleVR = thumbnailUrlConsole,
-						FetchImageFunction = createFetchImageFunction(playerToFriend.UserId, REGULAR_THUMBNAIL_IMAGE_SIZE, REGULAR_THUMBNAIL_IMAGE_TYPE),
-						FetchImageFunctionConsoleVR = createFetchImageFunction(playerToFriend.UserId, CONSOLE_THUMBNAIL_IMAGE_SIZE, CONSOLE_THUMBNAIL_IMAGE_TYPE),
+						FetchImageFunction = createFetchImageFunction(
+							playerToFriend.UserId,
+							REGULAR_THUMBNAIL_IMAGE_SIZE,
+							REGULAR_THUMBNAIL_IMAGE_TYPE
+						),
+						FetchImageFunctionConsoleVR = createFetchImageFunction(
+							playerToFriend.UserId,
+							CONSOLE_THUMBNAIL_IMAGE_SIZE,
+							CONSOLE_THUMBNAIL_IMAGE_TYPE
+						),
 						StripeColor = Color3.fromRGB(183, 34, 54),
 					})
 				else
@@ -139,7 +167,10 @@ function DoPromptRequestFriendPlayer(playerToFriend)
 							wait()
 						end
 
-                        local mainText = string.format("An error occurred while sending %s a friend request. Please try again later.", playerToFriend.Name)
+						local mainText = string.format(
+							"An error occurred while sending %s a friend request. Please try again later.",
+							playerToFriend.Name
+						)
 
 						PromptCreator:CreatePrompt({
 							WindowTitle = "Error Sending Friend Request",
@@ -148,8 +179,16 @@ function DoPromptRequestFriendPlayer(playerToFriend)
 							CancelActive = false,
 							Image = thumbnailUrl,
 							ImageConsoleVR = thumbnailUrlConsole,
-							FetchImageFunction = createFetchImageFunction(playerToFriend.UserId, REGULAR_THUMBNAIL_IMAGE_SIZE, REGULAR_THUMBNAIL_IMAGE_TYPE),
-							FetchImageFunctionConsoleVR = createFetchImageFunction(playerToFriend.UserId, CONSOLE_THUMBNAIL_IMAGE_SIZE, CONSOLE_THUMBNAIL_IMAGE_TYPE),
+							FetchImageFunction = createFetchImageFunction(
+								playerToFriend.UserId,
+								REGULAR_THUMBNAIL_IMAGE_SIZE,
+								REGULAR_THUMBNAIL_IMAGE_TYPE
+							),
+							FetchImageFunctionConsoleVR = createFetchImageFunction(
+								playerToFriend.UserId,
+								CONSOLE_THUMBNAIL_IMAGE_SIZE,
+								CONSOLE_THUMBNAIL_IMAGE_TYPE
+							),
 							StripeColor = Color3.fromRGB(183, 34, 54),
 						})
 					end
@@ -168,8 +207,16 @@ function DoPromptRequestFriendPlayer(playerToFriend)
 		CancelActive = true,
 		Image = thumbnailUrl,
 		ImageConsoleVR = thumbnailUrlConsole,
-		FetchImageFunction = createFetchImageFunction(playerToFriend.UserId, REGULAR_THUMBNAIL_IMAGE_SIZE, REGULAR_THUMBNAIL_IMAGE_TYPE),
-		FetchImageFunctionConsoleVR = createFetchImageFunction(playerToFriend.UserId, CONSOLE_THUMBNAIL_IMAGE_SIZE, CONSOLE_THUMBNAIL_IMAGE_TYPE),
+		FetchImageFunction = createFetchImageFunction(
+			playerToFriend.UserId,
+			REGULAR_THUMBNAIL_IMAGE_SIZE,
+			REGULAR_THUMBNAIL_IMAGE_TYPE
+		),
+		FetchImageFunctionConsoleVR = createFetchImageFunction(
+			playerToFriend.UserId,
+			CONSOLE_THUMBNAIL_IMAGE_SIZE,
+			CONSOLE_THUMBNAIL_IMAGE_TYPE
+		),
 		PromptCompletedCallback = promptCompletedCallback,
 	})
 end
@@ -199,14 +246,8 @@ function UnFriendPlayer(playerToUnfriend)
 end
 
 function DoPromptUnfriendPlayer(playerToUnfriend)
-	if game:GetEngineFeature("AsyncRenamesUsedInLuaApps") then
-		if not LocalPlayer:IsFriendsWithAsync(playerToUnfriend.UserId) then
-			return
-		end
-	else
-		if not (LocalPlayer :: any):IsFriendsWith(playerToUnfriend.UserId) then
-			return
-		end
+	if not LocalPlayer:IsFriendsWithAsync(playerToUnfriend.UserId) then
+		return
 	end
 
 	local thumbnailUrl = ""
@@ -220,7 +261,10 @@ function DoPromptUnfriendPlayer(playerToUnfriend)
 					wait()
 				end
 
-				local mainText = string.format("An error occurred while unfriending %s. Please try again later.", playerToUnfriend.Name)
+				local mainText = string.format(
+					"An error occurred while unfriending %s. Please try again later.",
+					playerToUnfriend.Name
+				)
 
 				PromptCreator:CreatePrompt({
 					WindowTitle = "Error Unfriending Person",
@@ -229,8 +273,16 @@ function DoPromptUnfriendPlayer(playerToUnfriend)
 					CancelActive = false,
 					Image = thumbnailUrl,
 					ImageConsoleVR = thumbnailUrlConsole,
-					FetchImageFunction = createFetchImageFunction(playerToUnfriend.UserId, REGULAR_THUMBNAIL_IMAGE_SIZE, REGULAR_THUMBNAIL_IMAGE_TYPE),
-					FetchImageFunctionConsoleVR = createFetchImageFunction(playerToUnfriend.UserId, CONSOLE_THUMBNAIL_IMAGE_SIZE, CONSOLE_THUMBNAIL_IMAGE_TYPE),
+					FetchImageFunction = createFetchImageFunction(
+						playerToUnfriend.UserId,
+						REGULAR_THUMBNAIL_IMAGE_SIZE,
+						REGULAR_THUMBNAIL_IMAGE_TYPE
+					),
+					FetchImageFunctionConsoleVR = createFetchImageFunction(
+						playerToUnfriend.UserId,
+						CONSOLE_THUMBNAIL_IMAGE_SIZE,
+						CONSOLE_THUMBNAIL_IMAGE_TYPE
+					),
 					StripeColor = Color3.fromRGB(183, 34, 54),
 				})
 			end
@@ -247,8 +299,16 @@ function DoPromptUnfriendPlayer(playerToUnfriend)
 		CancelActive = true,
 		Image = thumbnailUrl,
 		ImageConsoleVR = thumbnailUrlConsole,
-		FetchImageFunction = createFetchImageFunction(playerToUnfriend.UserId, REGULAR_THUMBNAIL_IMAGE_SIZE, REGULAR_THUMBNAIL_IMAGE_TYPE),
-		FetchImageFunctionConsoleVR = createFetchImageFunction(playerToUnfriend.UserId, CONSOLE_THUMBNAIL_IMAGE_SIZE, CONSOLE_THUMBNAIL_IMAGE_TYPE),
+		FetchImageFunction = createFetchImageFunction(
+			playerToUnfriend.UserId,
+			REGULAR_THUMBNAIL_IMAGE_SIZE,
+			REGULAR_THUMBNAIL_IMAGE_TYPE
+		),
+		FetchImageFunctionConsoleVR = createFetchImageFunction(
+			playerToUnfriend.UserId,
+			CONSOLE_THUMBNAIL_IMAGE_SIZE,
+			CONSOLE_THUMBNAIL_IMAGE_TYPE
+		),
 		PromptCompletedCallback = promptCompletedCallback,
 	})
 end

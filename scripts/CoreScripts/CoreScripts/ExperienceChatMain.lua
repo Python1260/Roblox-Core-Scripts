@@ -37,10 +37,7 @@ local RobloxTranslator = require(CorePackages.Workspace.Packages.RobloxTranslato
 local GameTranslator = require(RobloxGui.Modules.GameTranslator)
 local ApolloClient = require(RobloxGui.Modules.ApolloClient)
 local ExperienceChat = require(CorePackages.Workspace.Packages.ExpChat)
-local FFlagEnableSetCoreGuiEnabledExpChat = game:DefineFastFlag("FFlagEnableSetCoreGuiEnabledExpChat", false)
 local getFFlagAddApolloClientToExperienceChat = require(RobloxGui.Modules.Flags.getFFlagAddApolloClientToExperienceChat)
-local GetFFlagShowLikelySpeakingBubbles =
-	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagShowLikelySpeakingBubbles
 local ChromeEnabled = require(CorePackages.Workspace.Packages.Chrome).Enabled()
 local IsSpatialRobloxGuiEnabled = require(RobloxGui.Modules.VR.IsSpatialRobloxGuiEnabled)
 local getFFlagExpChatAlwaysRunTCS = require(CorePackages.Workspace.Packages.SharedFlags).getFFlagExpChatAlwaysRunTCS
@@ -49,11 +46,6 @@ local getIconVoiceIndicator = require(RobloxGui.Modules.VoiceChat.Components.get
 local onClickedVoiceIndicator = require(RobloxGui.Modules.VoiceChat.Components.onClickedVoiceIndicator)
 
 local getPermissions
-local onClickedLikelySpeakingBubble
-
-if GetFFlagShowLikelySpeakingBubbles() then
-	onClickedLikelySpeakingBubble = require(RobloxGui.Modules.VoiceChat.Components.onClickedLikelySpeakingBubble)
-end
 
 if ChromeEnabled then
 	getPermissions = require(RobloxGui.Modules.VoiceChat.Components.getPermissions)
@@ -102,13 +94,11 @@ local function findTextChannel(name: string): TextChannel
 	return textChannel
 end
 
-if FFlagEnableSetCoreGuiEnabledExpChat then
-	StarterGui.CoreGuiChangedSignal:Connect(function(coreGuiType, enabled)
-		if coreGuiType == Enum.CoreGuiType.All or coreGuiType == Enum.CoreGuiType.Chat then
-			ExperienceChat.Events.SetCoreGuiEnabledChanged(enabled)
-		end
-	end)
-end
+StarterGui.CoreGuiChangedSignal:Connect(function(coreGuiType, enabled)
+	if coreGuiType == Enum.CoreGuiType.All or coreGuiType == Enum.CoreGuiType.Chat then
+		ExperienceChat.Events.SetCoreGuiEnabledChanged(enabled)
+	end
+end)
 
 local createdDefaultChannels
 local validateLegacyBubbleChatSettings = require(RobloxGui.Modules.InGameChat.BubbleChat.Types).IChatSettings
@@ -117,6 +107,15 @@ if getFFlagExpChatAlwaysRunTCS() then
 else
 	createdDefaultChannels = TextChatService.ChatVersion == Enum.ChatVersion.TextChatService
 		and TextChatService.CreateDefaultTextChannels
+end
+
+if
+	game:GetEngineFeature("TextChatServiceProtectedChatEnabled")
+	and game:DefineFastFlag("ExpChatTextChannelWindow", false)
+	and (TextChatService :: any):IsProtectedChatEnabled()
+then
+	local TextChannelWindow = require(CorePackages.Workspace.Packages.TextChannelWindow)
+	TextChannelWindow.start()
 end
 
 ExperienceChat.mountClientApp({
@@ -129,7 +128,6 @@ ExperienceChat.mountClientApp({
 	validateLegacyBubbleChatSettings = if validateLegacyBubbleChatSettings
 		then validateLegacyBubbleChatSettings
 		else nil,
-	onClickedLikelySpeakingBubble = if onClickedLikelySpeakingBubble then onClickedLikelySpeakingBubble else nil,
 	translator = RobloxTranslator :: any,
 	gameTranslator = GameTranslator :: any,
 	parent = screenGui,

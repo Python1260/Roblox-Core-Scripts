@@ -6,28 +6,25 @@ local Foundation = require(CorePackages.Packages.Foundation)
 local React = require(CorePackages.Packages.React)
 local ChromeConstants = require(Chrome.ChromeShared.Unibar.Constants)
 local ChromeUtils = require(Chrome.ChromeShared.Service.ChromeUtils)
-local useMappedSignal = require(Chrome.ChromeShared.Hooks.useMappedSignal)
+local useMappedSignal = require(CorePackages.Workspace.Packages.Chrome).Hooks.useMappedSignal
 local usePartyIcon = require(Chrome.Integrations.Party.usePartyIcon)
-
-local RoactUtils = require(CorePackages.Workspace.Packages.RoactUtils)
-local dependencyArray = RoactUtils.Hooks.dependencyArray
 
 local MappedSignal = ChromeUtils.MappedSignal
 local useTokens = Foundation.Hooks.useTokens
 local UnibarStyle = require(CorePackages.Workspace.Packages.Chrome).UnibarStyle
 
 local SubMenuContext = require(Chrome.ChromeShared.Unibar.SubMenuContext)
+local InExperienceAppChatModal = require(CorePackages.Workspace.Packages.AppChat.InExperienceAppChatModal)
 
-local AppChat = require(CorePackages.Workspace.Packages.AppChat)
-local InExperienceAppChatModal = AppChat.App.InExperienceAppChatModal
-
-local getAppChatNavbarItemConfig = AppChat.Utils.getAppChatNavbarItemConfig
+local getAppChatNavbarItemConfig = require(CorePackages.Workspace.Packages.AppChat.getAppChatNavbarItemConfig)
 
 local ChromeSharedFlags = require(Chrome.ChromeShared.Flags)
 local FFlagTokenizeUnibarConstantsWithStyleProvider = ChromeSharedFlags.FFlagTokenizeUnibarConstantsWithStyleProvider
 
-local FFlagRemoveDependencyArrayAntipattern =
-	require(CorePackages.Workspace.Packages.SharedFlags).FFlagRemoveDependencyArrayAntipattern
+local FFlagEnableChatIconUnibarDropdownFixEnabled =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableChatIconUnibarDropdownFixEnabled
+
+local ArgoPartyExperimentation = require(CorePackages.Workspace.Packages.SocialExperiments).ArgoPartyExperimentation
 
 local AVATAR_SIZE = 24
 
@@ -80,24 +77,19 @@ local function ConnectIcon(_props: Props): React.ReactElement
 		currentSquadId, setCurrentSquadId = React.useState(InExperienceAppChatModal.default.currentSquadId)
 	end
 
-	React.useEffect(
-		function()
-			if props.isSquadIndicatorEnabled then
-				local connection = InExperienceAppChatModal.default.currentSquadIdSignal.Event:Connect(
-					function(currentSquadId)
-						setCurrentSquadId(currentSquadId)
-					end
-				)
-				return function()
-					connection:Disconnect()
+	React.useEffect(function()
+		if props.isSquadIndicatorEnabled then
+			local connection = InExperienceAppChatModal.default.currentSquadIdSignal.Event:Connect(
+				function(currentSquadId)
+					setCurrentSquadId(currentSquadId)
 				end
+			)
+			return function()
+				connection:Disconnect()
 			end
-			return function() end
-		end,
-		if FFlagRemoveDependencyArrayAntipattern
-			then { props.isSquadIndicatorEnabled :: any, setCurrentSquadId }
-			else dependencyArray(props.isSquadIndicatorEnabled, setCurrentSquadId)
-	)
+		end
+		return function() end
+	end, { props.isSquadIndicatorEnabled :: any, setCurrentSquadId })
 
 	if props.isSquadIndicatorEnabled then
 		if currentSquadId ~= "" then
@@ -125,28 +117,49 @@ local function ConnectIcon(_props: Props): React.ReactElement
 			else transparency
 	end
 
+	local iconStyle
+	if FFlagEnableChatIconUnibarDropdownFixEnabled then
+		local defaultTransparency = tokens.Color.Content.Default.Transparency
+		iconStyle = if submenuTransition
+			then submenuTransition:map(function(v)
+				return {
+					Color3 = tokens.Color.Content.Default.Color3,
+					Transparency = defaultTransparency + (1 - defaultTransparency) * (1 - v),
+				}
+			end)
+			else tokens.Color.Content.Default
+	end
+
 	return React.createElement(Foundation.View, {
 		Size = UDim2.new(0, iconSize, 0, iconSize),
 	}, {
-		Icon = React.createElement(Foundation.Image, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = icon.size:map(function(value)
-				return UDim2.fromOffset(value, value)
-			end),
-			backgroundStyle = if icon.image.backgroundColor
-				then {
-					Color3 = icon.image.backgroundColor,
-					Transparency = getTransparency(0),
-				}
-				else tokens.Color.None,
-			cornerRadius = UDim.new(0, tokens.Radius.Circle),
-			Image = icon.image.thumbnail,
-			imageStyle = {
-				Color3 = tokens.Color.Content.Emphasis.Color3,
-				Transparency = getTransparency(tokens.Color.Content.Emphasis.Transparency),
-			},
-		}),
+		Icon = if ArgoPartyExperimentation.getIsRenameEnabled()
+			then React.createElement(Foundation.Icon, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				name = visualConfig.icon,
+				variant = if visible then Foundation.Enums.IconVariant.Filled else Foundation.Enums.IconVariant.Regular,
+				style = if FFlagEnableChatIconUnibarDropdownFixEnabled then iconStyle else nil,
+			})
+			else React.createElement(Foundation.Image, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = icon.size:map(function(value)
+					return UDim2.fromOffset(value, value)
+				end),
+				backgroundStyle = if icon.image.backgroundColor
+					then {
+						Color3 = icon.image.backgroundColor,
+						Transparency = getTransparency(0),
+					}
+					else tokens.Color.None,
+				cornerRadius = UDim.new(0, tokens.Radius.Circle),
+				Image = icon.image.thumbnail,
+				imageStyle = {
+					Color3 = tokens.Color.Content.Emphasis.Color3,
+					Transparency = getTransparency(tokens.Color.Content.Emphasis.Transparency),
+				},
+			}),
 		Badge = if shouldShowBadge
 			then React.createElement(Foundation.View, {
 				Position = UDim2.new(1, -tokens.Stroke.Thicker, 0, tokens.Stroke.Thicker),
@@ -164,7 +177,10 @@ local function ConnectIcon(_props: Props): React.ReactElement
 					Transparency = getTransparency(tokens.Color.Surface.Surface_0.Transparency),
 					Thickness = tokens.Stroke.Thicker,
 				},
-				tag = "anchor-top-right radius-circle size-200 stroke-thicker",
+				tag = {
+					["anchor-top-right radius-circle size-200"] = true,
+					["stroke-thicker"] = not FFlagEnableChatIconUnibarDropdownFixEnabled,
+				},
 				ZIndex = 2,
 			})
 			else nil,

@@ -12,14 +12,6 @@ local VR_FADE_SPEED = 10 -- 1/10 second
 local VR_SCREEN_EGDE_BLEND_TIME = 0.14
 local VR_SEAT_OFFSET = Vector3.new(0,4,0)
 
-local FFlagUserVRVehicleCamera
-do
-	local success, result = pcall(function()
-		return UserSettings():IsUserFeatureEnabled("UserVRVehicleCamera2")
-	end)
-	FFlagUserVRVehicleCamera = success and result
-end
-
 local VRService = game:GetService("VRService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
@@ -32,16 +24,11 @@ local ZoomController = require(script.Parent:WaitForChild("ZoomController"))
 local CommonUtils = require(script.Parent.Parent:WaitForChild("CommonUtils"))
 local FlagUtil = CommonUtils.get("FlagUtil")
 
-local FFlagUserPlayerScriptsCameraInputNoBindables = FlagUtil.getUserFlag("UserPlayerScriptsCameraInputNoBindables")
+local FFlagUserVRRemoveLuaEdgeBlur = FlagUtil.getUserFlag("UserVRRemoveLuaEdgeBlur")
 
-local inputContexts
-local character
-local cameraGamepadReset
-if FFlagUserPlayerScriptsCameraInputNoBindables then
-	inputContexts = script.Parent.Parent:WaitForChild("InputContexts")
-	character = inputContexts:WaitForChild("Character")
-	cameraGamepadReset = character:WaitForChild("CameraGamepadReset") :: InputAction
-end
+local inputContexts = script.Parent.Parent:WaitForChild("InputContexts")
+local cameraContext = inputContexts:WaitForChild("CameraContext")
+local cameraGamepadResetAction = cameraContext:WaitForChild("CameraGamepadResetAction") :: InputAction
 
 --[[ The Module ]]--
 local BaseCamera = require(script.Parent:WaitForChild("BaseCamera"))
@@ -67,13 +54,9 @@ function VRBaseCamera.new()
 	self.needsReset = true
 	self.recentered = false
 
-	if FFlagUserPlayerScriptsCameraInputNoBindables then
-		self.gamepadResetConnection = cameraGamepadReset.Pressed:Connect(function()
-			self:GamepadReset()
-		end)
-	else
-		self.gamepadResetConnection = nil
-	end
+	self.gamepadResetConnection = cameraGamepadResetAction.Pressed:Connect(function()
+		self:GamepadReset()
+	end)
 
 	-- timer for step rotation
 	self:Reset()
@@ -111,24 +94,11 @@ function VRBaseCamera:OnEnabledChanged()
 	BaseCamera.OnEnabledChanged(self)
 
 	if self.enabled then
-		if FFlagUserPlayerScriptsCameraInputNoBindables then
-			cameraGamepadReset.Enabled = true
-		else
-			self.gamepadResetConnection = CameraInput.gamepadReset:Connect(function()
-				self:GamepadReset()
-			end)
-		end
+		cameraGamepadResetAction.Enabled = true
 
 		-- reset on options change
 		self.thirdPersonOptionChanged = VRService:GetPropertyChangedSignal("ThirdPersonFollowCamEnabled"):Connect(function()
-			if FFlagUserVRVehicleCamera then
-				self:Reset()
-			else
-				-- only need to reset third person options if in third person
-				if not self:IsInFirstPerson() then
-					self:Reset()
-				end 
-			end
+			self:Reset()
 		end)
 		
 		self.vrRecentered = VRService.UserCFrameChanged:Connect(function(userCFrame, _)
@@ -158,18 +128,13 @@ function VRBaseCamera:OnEnabledChanged()
 			self.cameraHeadScaleChangedConn = nil
 		end
 
-		if FFlagUserPlayerScriptsCameraInputNoBindables then
-			cameraGamepadReset.Enabled = false
-		else
-			if self.gamepadResetConnection then
-				self.gamepadResetConnection:Disconnect()
-				self.gamepadResetConnection = nil
-			end
-		end
+		cameraGamepadResetAction.Enabled = false
 
 		-- reset VR effects
-		self.VREdgeBlurTimer = 0
-		self:UpdateEdgeBlur(player, 1)
+		if not FFlagUserVRRemoveLuaEdgeBlur then
+			self.VREdgeBlurTimer = 0
+			self:UpdateEdgeBlur(player, 1)
+		end
 		local VRFade = Lighting:FindFirstChild("VRFade")
 		if VRFade then
 			VRFade.Brightness = 0
@@ -257,8 +222,8 @@ function VRBaseCamera:UpdateFadeFromBlack(timeDelta: number)
 	end
 end
 
-function VRBaseCamera:StartVREdgeBlur(player)
-	if UserGameSettings.VignetteEnabled == false then
+function VRBaseCamera:StartVREdgeBlur(player, force)
+	if not force and UserGameSettings.VignetteEnabled == false then
 		return
 	end
 
@@ -447,5 +412,11 @@ function VRBaseCamera:getRotation(dt)
 end
 
 -----------------------------
+
+function VRBaseCamera:HandleSubjectDistance(prevController)
+	if prevController and prevController.IsInFirstPerson and prevController:IsInFirstPerson() then
+		self:SetCameraToSubjectDistance(0)
+	end
+end
 
 return VRBaseCamera

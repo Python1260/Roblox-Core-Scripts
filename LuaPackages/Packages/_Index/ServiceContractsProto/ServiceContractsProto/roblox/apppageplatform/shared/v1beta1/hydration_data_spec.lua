@@ -28,12 +28,20 @@ type _HydrationDataSpecFields = {
 	content_type: _roblox_apppageplatform_shared_v1beta1_hydration_content_type.HydrationContentType,
 	id_binding: IdBinding?,
 	alias: string,
+	client_fetch: boolean,
+	required_fields: { string },
+	required: boolean,
+	client_hints: { string },
 }
 
 type _HydrationDataSpecPartialFields = {
 	content_type: _roblox_apppageplatform_shared_v1beta1_hydration_content_type.HydrationContentType?,
 	id_binding: IdBinding?,
 	alias: string?,
+	client_fetch: boolean?,
+	required_fields: { string }?,
+	required: boolean?,
+	client_hints: { string }?,
 }
 
 export type HydrationDataSpec = typeof(setmetatable({} :: _HydrationDataSpecFields, {} :: _HydrationDataSpecImpl))
@@ -74,6 +82,10 @@ do
 				else data.content_type,
 			id_binding = if data == nil or data.id_binding == nil then nil else data.id_binding,
 			alias = if data == nil or data.alias == nil then "" else data.alias,
+			client_fetch = if data == nil or data.client_fetch == nil then false else data.client_fetch,
+			required_fields = if data == nil or data.required_fields == nil then {} else data.required_fields,
+			required = if data == nil or data.required == nil then false else data.required,
+			client_hints = if data == nil or data.client_hints == nil then {} else data.client_hints,
 		}, _HydrationDataSpecImpl :: _HydrationDataSpecImpl)
 	end
 
@@ -110,6 +122,30 @@ do
 			output, cursor = proto.writeString(output, cursor, self.alias)
 		end
 
+		if self.client_fetch then
+			output, cursor = proto.writeTag(output, cursor, 4, proto.wireTypes.varint)
+			output, cursor = proto.writeVarInt(output, cursor, if self.client_fetch then 1 else 0)
+		end
+
+		if self.required_fields ~= nil and #self.required_fields > 0 then
+			for _, value in self.required_fields do
+				output, cursor = proto.writeTag(output, cursor, 5, proto.wireTypes.lengthDelimited)
+				output, cursor = proto.writeString(output, cursor, value)
+			end
+		end
+
+		if self.required then
+			output, cursor = proto.writeTag(output, cursor, 6, proto.wireTypes.varint)
+			output, cursor = proto.writeVarInt(output, cursor, if self.required then 1 else 0)
+		end
+
+		if self.client_hints ~= nil and #self.client_hints > 0 then
+			for _, value in self.client_hints do
+				output, cursor = proto.writeTag(output, cursor, 7, proto.wireTypes.lengthDelimited)
+				output, cursor = proto.writeString(output, cursor, value)
+			end
+		end
+
 		local shrunkBuffer = buffer.create(cursor)
 		buffer.copy(shrunkBuffer, 0, output, 0, cursor)
 		return shrunkBuffer
@@ -133,6 +169,16 @@ do
 						) or value
 					) :: any --[[ Luau: Enums are a string intersection which Luau is quick to dismantle ]]
 					continue
+				elseif field == 4 then
+					local value
+					value, cursor = proto.readVarInt(input, cursor)
+					self.client_fetch = value ~= 0
+					continue
+				elseif field == 6 then
+					local value
+					value, cursor = proto.readVarInt(input, cursor)
+					self.required = value ~= 0
+					continue
 				end
 
 				local _
@@ -147,6 +193,16 @@ do
 					local value
 					value, cursor = proto.readBuffer(input, cursor)
 					self.alias = buffer.tostring(value)
+					continue
+				elseif field == 5 then
+					local value
+					value, cursor = proto.readBuffer(input, cursor)
+					table.insert(self.required_fields, buffer.tostring(value))
+					continue
+				elseif field == 7 then
+					local value
+					value, cursor = proto.readBuffer(input, cursor)
+					table.insert(self.client_hints, buffer.tostring(value))
 					continue
 				end
 
@@ -198,6 +254,30 @@ do
 			output.alias = self.alias
 		end
 
+		if self.client_fetch then
+			output.clientFetch = self.client_fetch
+		end
+
+		if self.required_fields ~= nil and #self.required_fields > 0 then
+			local newOutput = {}
+			for _, value in self.required_fields do
+				table.insert(newOutput, value)
+			end
+			output.requiredFields = newOutput
+		end
+
+		if self.required then
+			output.required = self.required
+		end
+
+		if self.client_hints ~= nil and #self.client_hints > 0 then
+			local newOutput = {}
+			for _, value in self.client_hints do
+				table.insert(newOutput, value)
+			end
+			output.clientHints = newOutput
+		end
+
 		return output
 	end
 
@@ -234,6 +314,54 @@ do
 
 		if input.alias ~= nil then
 			self.alias = input.alias
+		end
+
+		if input.client_fetch ~= nil then
+			self.client_fetch = input.client_fetch
+		end
+
+		if input.clientFetch ~= nil then
+			self.client_fetch = input.clientFetch
+		end
+
+		if input.required_fields ~= nil then
+			local newOutput: { string } = {}
+			for _, value in input.required_fields do
+				table.insert(newOutput, value)
+			end
+
+			self.required_fields = newOutput
+		end
+
+		if input.requiredFields ~= nil then
+			local newOutput: { string } = {}
+			for _, value in input.requiredFields do
+				table.insert(newOutput, value)
+			end
+
+			self.required_fields = newOutput
+		end
+
+		if input.required ~= nil then
+			self.required = input.required
+		end
+
+		if input.client_hints ~= nil then
+			local newOutput: { string } = {}
+			for _, value in input.client_hints do
+				table.insert(newOutput, value)
+			end
+
+			self.client_hints = newOutput
+		end
+
+		if input.clientHints ~= nil then
+			local newOutput: { string } = {}
+			for _, value in input.clientHints do
+				table.insert(newOutput, value)
+			end
+
+			self.client_hints = newOutput
 		end
 
 		return self

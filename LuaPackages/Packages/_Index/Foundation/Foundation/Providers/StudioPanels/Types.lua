@@ -26,6 +26,7 @@ export type PanelPosition = {
 
 export type PanelHandle = {
 	container: PluginGui,
+	popoverId: string,
 	close: () -> (),
 	setSizeAsync: (size: Vector2) -> (),
 	updateAsync: (newConfig: PanelPosition & { targetWidgetUri: StudioUri }) -> (),
@@ -35,7 +36,10 @@ export type PanelsContext = {
 	registerPopoverAsync: (
 		anchorUri: StudioUri,
 		position: PanelPosition,
-		onClose: () -> ()
+		onClose: () -> (),
+		depth: number?,
+		parentPopoverId: string?,
+		isFocusable: boolean?
 	) -> (PanelHandle, () -> ()),
 }
 

@@ -3,34 +3,32 @@ local Foundation = script:FindFirstAncestor("Foundation")
 local composeStyleVariant = require(Foundation.Utility.composeStyleVariant)
 type VariantProps = composeStyleVariant.VariantProps
 
+local Flags = require(Foundation.Utility.Flags)
 local Tokens = require(Foundation.Providers.Style.Tokens)
 type Tokens = Tokens.Tokens
 
 local VariantsContext = require(Foundation.Providers.Style.VariantsContext)
 
-local InputSize = require(Foundation.Enums.InputSize)
-type InputSize = InputSize.InputSize
+local AvatarSize = require(Foundation.Enums.AvatarSize)
+type AvatarSize = AvatarSize.AvatarSize
 
 local UserPresence = require(Foundation.Enums.UserPresence)
 type UserPresence = UserPresence.UserPresence
 
-local IndicatorVariant = require(Foundation.Enums.IndicatorVariant)
-type IndicatorVariant = IndicatorVariant.IndicatorVariant
+local StatusIndicatorVariant = require(Foundation.Enums.StatusIndicatorVariant)
+type StatusIndicatorVariant = StatusIndicatorVariant.StatusIndicatorVariant
 
-local IndicatorShape = require(Foundation.Enums.IndicatorShape)
-type IndicatorShape = IndicatorShape.IndicatorShape
+local StatusIndicatorSize = require(Foundation.Enums.StatusIndicatorSize)
+type StatusIndicatorSize = StatusIndicatorSize.StatusIndicatorSize
+
+local StatusIndicatorShape = require(Foundation.Enums.StatusIndicatorShape)
+type StatusIndicatorShape = StatusIndicatorShape.StatusIndicatorShape
 
 local Types = require(Foundation.Components.Types)
 
 local indexBindable = require(Foundation.Utility.indexBindable)
 
 type AvatarVariantProps = {
-	indicatorBackplate: {
-		Position: UDim2,
-		tag: string,
-		padding: UDim2,
-		ZIndex: number,
-	},
 	container: {
 		tag: string,
 		stroke: Types.Stroke,
@@ -39,52 +37,100 @@ type AvatarVariantProps = {
 	avatar: {
 		tag: string,
 	},
-	indicator: { size: number, shape: IndicatorShape?, variant: IndicatorVariant?, isVisible: boolean },
+	statusIndicatorBackplate: {
+		Position: UDim2,
+		AnchorPoint: Vector2,
+		tag: string,
+		padding: UDim2,
+		ZIndex: number,
+	},
+	statusIndicatorMask: {
+		Position: UDim2,
+		AnchorPoint: Vector2,
+		ZIndex: number,
+		mask: Types.ColorStyle,
+	},
+	statusIndicator: {
+		size: StatusIndicatorSize?,
+		shape: StatusIndicatorShape?,
+		variant: StatusIndicatorVariant?,
+		isVisible: boolean,
+	},
 }
 
 local function variantsFactory(tokens: Tokens)
 	local common = {
 		container = { tag = "radius-circle" },
 		avatar = { tag = "size-full radius-circle" },
-		indicatorBackplate = {
-			ZIndex = 2,
-			tag = "position-bottom-right anchor-bottom-right auto-xy radius-circle bg-surface-0",
-			padding = UDim2.fromOffset(3, 3),
-		},
+		statusIndicatorBackplate = if Flags.FoundationStatusIndicatorMask
+			then nil :: never
+			else {
+				ZIndex = 2,
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.fromScale(1, 1),
+				tag = "auto-xy radius-circle bg-surface-0",
+				padding = UDim2.fromOffset(tokens.Size.Size_150 / 2, tokens.Size.Size_150 / 2),
+			},
+		statusIndicatorMask = if Flags.FoundationStatusIndicatorMask
+			then {
+				ZIndex = 2,
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(1, -tokens.Size.Size_150 / 2, 1, -tokens.Size.Size_150 / 2),
+				mask = tokens.Color.Surface.Surface_0,
+			}
+			else nil :: never,
 	}
 
-	local sizes: { [InputSize]: VariantProps } = {
-		[InputSize.XSmall] = { indicator = { size = tokens.Size.Size_150 } },
-		[InputSize.Small] = { indicator = { size = tokens.Size.Size_150 } },
-		[InputSize.Medium] = { indicator = { size = tokens.Size.Size_200 } },
-		[InputSize.Large] = { indicator = { size = tokens.Size.Size_200 } },
+	local sizes: { [AvatarSize]: VariantProps } = {
+		[AvatarSize.XSmall] = { statusIndicator = { size = StatusIndicatorSize.XSmall } },
+		[AvatarSize.Small] = { statusIndicator = { size = StatusIndicatorSize.XSmall } },
+		[AvatarSize.Medium] = { statusIndicator = { size = StatusIndicatorSize.Small } },
+		[AvatarSize.Large] = { statusIndicator = { size = StatusIndicatorSize.Small } },
+		[AvatarSize.XLarge] = { statusIndicator = { size = StatusIndicatorSize.Medium } },
+		[AvatarSize.Pictogram] = { statusIndicator = { size = StatusIndicatorSize.Pictogram } },
 	}
 
 	local presence: { [UserPresence]: VariantProps } = {
 		[UserPresence.InExperience] = {},
 		[UserPresence.Away] = {
-			indicator = { shape = IndicatorShape.Ring, variant = IndicatorVariant.Neutral },
+			statusIndicator = { shape = StatusIndicatorShape.Ring, variant = StatusIndicatorVariant.Neutral },
 		},
 		[UserPresence.Active] = {
-			indicator = { shape = IndicatorShape.Circle, variant = IndicatorVariant.Success },
+			statusIndicator = { shape = StatusIndicatorShape.Circle, variant = StatusIndicatorVariant.Success },
 		},
 		[UserPresence.None] = {},
 	}
 
-	local iconSizeStrokes: { [InputSize]: number } = {
-		[InputSize.XSmall] = tokens.Stroke.Standard,
-		-- It's 2px in deisgn, but we don't have a token for it, so let it be tokens.Stroke.Thick
-		[InputSize.Small] = tokens.Stroke.Thick,
-		[InputSize.Medium] = tokens.Stroke.Thick,
-		[InputSize.Large] = tokens.Stroke.Thicker,
+	local sizeStrokes: { [AvatarSize]: number } = {
+		[AvatarSize.Small] = tokens.Stroke.Thicker,
+		[AvatarSize.Medium] = tokens.Stroke.Thicker,
+		[AvatarSize.Large] = tokens.Stroke.Thicker,
+		[AvatarSize.XLarge] = tokens.Stroke.Thicker,
+		[AvatarSize.Pictogram] = tokens.Stroke.Thicker + tokens.Stroke.Standard,
 	}
 
-	return { common = common, sizes = sizes, presence = presence, iconSizeStrokes = iconSizeStrokes }
+	local iconSizeStrokes: { [AvatarSize]: number } = {
+		[AvatarSize.XSmall] = tokens.Stroke.Standard,
+		-- It's 2px in deisgn, but we don't have a token for it, so let it be tokens.Stroke.Thick
+		[AvatarSize.Small] = tokens.Stroke.Thick,
+		[AvatarSize.Medium] = tokens.Stroke.Thick,
+		[AvatarSize.Large] = tokens.Stroke.Thicker,
+		[AvatarSize.XLarge] = tokens.Stroke.Thicker,
+		[AvatarSize.Pictogram] = tokens.Stroke.Thicker,
+	}
+
+	return {
+		common = common,
+		sizes = sizes,
+		presence = presence,
+		iconSizeStrokes = iconSizeStrokes,
+		sizeStrokes = sizeStrokes,
+	}
 end
 
 return function(
 	tokens: Tokens,
-	size: InputSize,
+	size: AvatarSize,
 	presence: UserPresence,
 	backplateStyle: Types.ColorStyle?,
 	isIconSize: boolean
@@ -95,8 +141,7 @@ return function(
 	local strokeColor = if not isIconSize and presence == UserPresence.InExperience
 		then tokens.Color.System.Emphasis
 		else backplateStyle
-	local strokeThickness = if not isIconSize then tokens.Stroke.Thicker else props.iconSizeStrokes[size]
-
+	local strokeThickness = if isIconSize then props.iconSizeStrokes[size] else props.sizeStrokes[size]
 	return composeStyleVariant(props.common, props.sizes[size], props.presence[presence], {
 		container = {
 			stroke = if strokeColor
@@ -109,7 +154,7 @@ return function(
 			-- We only need the background for a real backplate when stroke is also used for the presence ring
 			backgroundStyle = backplateStyle,
 		},
-		indicator = {
+		statusIndicator = {
 			isVisible = hasIndicator,
 		},
 	})

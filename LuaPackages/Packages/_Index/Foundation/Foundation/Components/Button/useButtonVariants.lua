@@ -6,8 +6,8 @@ type InputSize = InputSize.InputSize
 local ButtonVariant = require(Foundation.Enums.ButtonVariant)
 type ButtonVariant = ButtonVariant.ButtonVariant
 
-local ColorMode = require(Foundation.Enums.ColorMode)
-type ColorMode = ColorMode.ColorMode
+local ColorNamespace = require(Foundation.Enums.ColorNamespace)
+type ColorNamespace = ColorNamespace.ColorNamespace
 
 local Types = require(Foundation.Components.Types)
 type ColorStyleValue = Types.ColorStyleValue
@@ -37,7 +37,7 @@ type ButtonVariantProps = {
 		style: ColorStyleValue,
 	},
 	text: {
-		tag: string,
+		tag: Types.Tags,
 	},
 	icon: {
 		size: UDim2,
@@ -67,7 +67,7 @@ local variantsMap = function(tokens: Tokens)
 				size = UDim2.fromOffset(tokens.Size.Size_300, tokens.Size.Size_300),
 			},
 			text = {
-				tag = "text-title-small",
+				tag = "text-label-small",
 			},
 		},
 		[InputSize.Small] = {
@@ -80,7 +80,7 @@ local variantsMap = function(tokens: Tokens)
 				size = UDim2.fromOffset(tokens.Size.Size_400, tokens.Size.Size_400),
 			},
 			text = {
-				tag = "text-title-small",
+				tag = "text-label-small",
 			},
 		},
 		[InputSize.Medium] = {
@@ -93,7 +93,7 @@ local variantsMap = function(tokens: Tokens)
 				size = UDim2.fromOffset(tokens.Size.Size_500, tokens.Size.Size_500),
 			},
 			text = {
-				tag = "text-title-medium",
+				tag = "text-label-medium",
 			},
 		},
 		[InputSize.Large] = {
@@ -106,7 +106,7 @@ local variantsMap = function(tokens: Tokens)
 				size = UDim2.fromOffset(tokens.Size.Size_600, tokens.Size.Size_600),
 			},
 			text = {
-				tag = "text-title-large",
+				tag = "text-label-large",
 			},
 		},
 	}
@@ -114,11 +114,16 @@ local variantsMap = function(tokens: Tokens)
 	return { common = common, sizes = sizes, types = sharedVariants.types }
 end
 
-return function(tokens: Tokens, size: InputSize, variant: ButtonVariant, colorMode: ColorMode?): ButtonVariantProps
+return function(
+	tokens: Tokens,
+	size: InputSize,
+	variant: ButtonVariant,
+	colorNamespace: ColorNamespace?
+): ButtonVariantProps
 	local variants = VariantsContext.useVariants("Button", variantsMap, tokens)
 	return composeStyleVariant(
 		variants.common,
 		variants.sizes[size],
-		variants.types[variant][colorMode or ColorMode.Color]
+		variants.types[variant][colorNamespace or ColorNamespace.Color]
 	)
 end

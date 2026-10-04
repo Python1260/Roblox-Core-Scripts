@@ -3,23 +3,29 @@ local Packages = Foundation.Parent
 local Dash = require(Packages.Dash)
 local React = require(Packages.React)
 
-local Flags = require(Foundation.Utility.Flags)
 local Icon = require(Foundation.Components.Icon)
 local IconButton = require(Foundation.Components.IconButton)
+local StoryIcons = require(Foundation.Utility.Stories.Shared.StoryIcons)
 local Text = require(Foundation.Components.Text)
 local View = require(Foundation.Components.View)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 
 local IconSize = require(Foundation.Enums.IconSize)
+local InputFocusBehavior = require(Foundation.Enums.InputFocusBehavior)
 local InputSize = require(Foundation.Enums.InputSize)
 local InputVariant = require(Foundation.Enums.InputVariant)
 local Radius = require(Foundation.Enums.Radius)
 
 local InternalTextInput = require(Foundation.Components.InternalTextInput)
 
+local ICON_CONTROL_OPTIONS = StoryIcons.buildIconControlOptions()
+
 local function Story(props)
 	local controls = props.controls
 	local tokens = useTokens()
+
+	local leadingIcon = StoryIcons.parseIconControl(controls.leadingComponentIcon)
+	local trailingIcon = StoryIcons.parseIconControl(controls.trailingComponentIcon)
 
 	local text, setText = React.useBinding("")
 	local numReturnPressed, setNumReturnPressed = React.useState(0)
@@ -49,27 +55,27 @@ local function Story(props)
 			InternalTextInput = React.createElement(InternalTextInput, {
 				text = text,
 				size = controls.size,
-				variant = if Flags.FoundationInternalTextInputVariants then controls.variant else nil,
+				variant = controls.variant,
 				hasError = controls.hasError,
 				isDisabled = controls.isDisabled,
 				numLines = controls.numLines,
-				radius = if Flags.FoundationInternalTextInputCornerRadius and controls.radius ~= React.None
-					then controls.radius
-					else nil,
+				focusBehavior = if controls.focusBehavior ~= React.None then controls.focusBehavior else nil,
+				hasClearButton = controls.hasClearButton,
+				radius = if controls.radius ~= React.None then controls.radius else nil,
 				onChanged = handleChange,
 				onReturnPressed = onReturnPressed,
 				placeholder = controls.placeholder,
-				leadingElement = if controls.leadingComponentIcon == React.None
-					then nil
-					else React.createElement(Icon, { name = controls.leadingComponentIcon, size = IconSize.Small }),
-				trailingElement = if controls.trailingComponentIcon == React.None
-					then nil
-					else React.createElement(IconButton, {
+				leadingElement = if leadingIcon
+					then React.createElement(Icon, { name = leadingIcon, size = IconSize.Small })
+					else nil,
+				trailingElement = if trailingIcon
+					then React.createElement(IconButton, {
 						onActivated = buttonPress,
 						isDisabled = controls.isDisabled,
 						size = IconSize.Small,
-						icon = controls.trailingComponentIcon,
-					}),
+						icon = trailingIcon,
+					})
+					else nil,
 				textInputType = if controls.textInputType == React.None then nil else controls.textInputType,
 				LayoutOrder = 1,
 			}),
@@ -94,7 +100,7 @@ return {
 	summary = "Internal text input",
 	stories = {
 		{
-			name = "Single-line",
+			name = "Playground",
 			story = function(props: any)
 				return React.createElement(
 					Story,
@@ -131,30 +137,18 @@ return {
 		hasError = false,
 		isDisabled = false,
 		size = Dash.values(InputSize),
-		variant = if Flags.FoundationInternalTextInputVariants then Dash.values(InputVariant) else nil,
+		variant = Dash.values(InputVariant),
 		numLines = 3,
 		width = 400,
-		radius = if Flags.FoundationInternalTextInputCornerRadius
-			then {
-				React.None,
-				unpack(Dash.values(Radius)),
-			}
-			else nil,
+		radius = {
+			React.None,
+			unpack(Dash.values(Radius)),
+		},
+		focusBehavior = { React.None, unpack(Dash.values(InputFocusBehavior)) },
+		hasClearButton = true,
 		placeholder = "Placeholder text",
-		leadingComponentIcon = {
-			"icons/placeholder/placeholderOn_small",
-			"icons/status/private_small",
-			"icons/common/search_small",
-			React.None,
-		},
-		trailingComponentIcon = {
-			"icons/placeholder/placeholderOff",
-			"icons/actions/edit/clear_small",
-			"icons/actions/info_small",
-			"icons/actions/viewOn",
-			"icons/actions/viewOff",
-			React.None,
-		},
+		leadingComponentIcon = ICON_CONTROL_OPTIONS,
+		trailingComponentIcon = ICON_CONTROL_OPTIONS,
 		textInputType = {
 			React.None,
 			Enum.TextInputType.Default,

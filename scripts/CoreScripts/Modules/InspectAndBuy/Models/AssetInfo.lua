@@ -26,9 +26,10 @@
 	}
 ]]
 local CorePackages = game:GetService("CorePackages")
-local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
-local CoreGui = game:GetService("CoreGui")
+local Cryo = require(CorePackages.Packages.Cryo)
 local Dash = require(CorePackages.Packages.Dash)
+local FFlagAXMarketplaceLicensing =
+	require(CorePackages.Workspace.Packages.AvatarExperienceFlags).FFlagAXMarketplaceLicensing
 
 local InspectAndBuyFolder = script.Parent.Parent
 
@@ -37,6 +38,8 @@ local Constants = require(InspectAndBuyFolder.Constants)
 local AvatarExperienceInspectAndBuy = require(CorePackages.Workspace.Packages.AvatarExperienceInspectAndBuy)
 local AvatarExperienceCommon = require(CorePackages.Workspace.Packages.AvatarExperienceCommon)
 local ItemRestrictions = AvatarExperienceCommon.Enums.ItemRestrictions
+local getRawItemLicensingInfo = AvatarExperienceCommon.Utils.getRawItemLicensingInfo
+local parseItemLicensing = AvatarExperienceCommon.Utils.parseItemLicensing
 
 type AvatarPreviewItem = AvatarExperienceInspectAndBuy.AvatarPreviewItem
 type AssetInfo = AvatarExperienceInspectAndBuy.AssetInfo
@@ -44,17 +47,8 @@ type BundleInfo = AvatarExperienceInspectAndBuy.BundleInfo
 type BulkPurchaseResultItem = AvatarExperienceInspectAndBuy.BulkPurchaseResultItem
 type ItemDetails = AvatarExperienceInspectAndBuy.ItemDetails
 
-local FFlagEnableRestrictedAssetSaleLocationInspectAndBuy =
-	require(CoreGui.RobloxGui.Modules.Flags.FFlagEnableRestrictedAssetSaleLocationInspectAndBuy)
-
 local GetFFlagIBEnableCollectiblesSystemSupport =
 	require(InspectAndBuyFolder.Flags.GetFFlagIBEnableCollectiblesSystemSupport)
-
-local FFlagAXParseAdditionalItemDetailsFromCatalog =
-	require(InspectAndBuyFolder.Flags.FFlagAXParseAdditionalItemDetailsFromCatalog)
-
-local FFlagIBV2Attribution = SharedFlags.FFlagIBV2Attribution
-
 
 local AssetInfo = {}
 
@@ -152,6 +146,9 @@ function AssetInfo.fromAvatarPreviewItem(avatarPreviewItem: AvatarPreviewItem): 
 	newAsset.isForSale = avatarPreviewItem.isPurchasable
 	newAsset.noPriceStatus = avatarPreviewItem.noPriceStatus
 	newAsset.meta = avatarPreviewItem.meta
+	if FFlagAXMarketplaceLicensing then
+		newAsset.itemLicensingInfo = parseItemLicensing(getRawItemLicensingInfo(avatarPreviewItem))
+	end
 
 	-- parse item restrictions
 	if avatarPreviewItem.itemRestrictions then
@@ -355,6 +352,12 @@ function AssetInfo.fromGetItemDetailsV2(itemDetails: ItemDetails): AssetInfo
 	newAsset.numFavorites = itemDetails.favoriteCount
 	newAsset.catalogPriceStatus = itemDetails.priceStatus
 
+	newAsset.timedOptions = itemDetails.timedOptions
+	local rawItemLicensingInfo = getRawItemLicensingInfo(itemDetails)
+	if FFlagAXMarketplaceLicensing and rawItemLicensingInfo ~= nil then
+		newAsset.itemLicensingInfo = parseItemLicensing(rawItemLicensingInfo) or Cryo.None
+	end
+
 	return newAsset
 end
 
@@ -368,28 +371,24 @@ function AssetInfo.fromGetItemDetails(itemDetails)
 	newAsset.hasResellers = itemDetails.HasResellers
 	newAsset.collectibleItemId = itemDetails.CollectibleItemId
 
-	if FFlagAXParseAdditionalItemDetailsFromCatalog then
-		local itemRestrictions = {}
-		if itemDetails.ItemRestrictions then
-			for _, value in itemDetails.ItemRestrictions do
-				itemRestrictions[value] = true
-			end
-			newAsset.itemRestrictions = itemRestrictions
+	local itemRestrictions = {}
+	if itemDetails.ItemRestrictions then
+		for _, value in itemDetails.ItemRestrictions do
+			itemRestrictions[value] = true
 		end
-
-		newAsset.saleLocationType = itemDetails.SaleLocationType
-		newAsset.remaining = itemDetails.UnitsAvailableForConsumption
-		newAsset.collectibleTotalQuantity = itemDetails.TotalQuantity
-		newAsset.collectibleLowestResalePrice = itemDetails.LowestResalePrice
-		newAsset.isOffSale = itemDetails.IsOffSale
-		newAsset.saleLocationType = itemDetails.SaleLocationType
-		newAsset.numFavorites = itemDetails.FavoriteCount
-		newAsset.catalogPriceStatus = itemDetails.PriceStatus
+		newAsset.itemRestrictions = itemRestrictions
 	end
 
-	if FFlagIBV2Attribution then
-		newAsset.creatingUniverseId = itemDetails.CreatingUniverseId
-	end
+	newAsset.saleLocationType = itemDetails.SaleLocationType
+	newAsset.remaining = itemDetails.UnitsAvailableForConsumption
+	newAsset.collectibleTotalQuantity = itemDetails.TotalQuantity
+	newAsset.collectibleLowestResalePrice = itemDetails.LowestResalePrice
+	newAsset.isOffSale = itemDetails.IsOffSale
+	newAsset.saleLocationType = itemDetails.SaleLocationType
+	newAsset.numFavorites = itemDetails.FavoriteCount
+	newAsset.catalogPriceStatus = itemDetails.PriceStatus
+
+	newAsset.creatingUniverseId = itemDetails.CreatingUniverseId
 
 	return newAsset
 end
@@ -445,13 +444,11 @@ function AssetInfo.getSaleDetailsForCollectibles(assetInfo)
 		if not assetInfo.collectibleIsLimited then
 			newAsset.isForSale = newAsset.isForSale and not newAsset.owned
 		end
-	elseif FFlagEnableRestrictedAssetSaleLocationInspectAndBuy then
+	else
 		newAsset.isForSale = assetInfo.isForSale and assetInfo.canBeSoldInThisGame
 		if assetInfo.canBeSoldInThisGame == nil then
 			newAsset.isForSale = assetInfo.isForSale
 		end
-	else
-		newAsset.isForSale = assetInfo.isForSale
 	end
 	return newAsset
 end

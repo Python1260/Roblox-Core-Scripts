@@ -1,6 +1,6 @@
 [package]
 name = "MarkdownCore"
-version = "0.0.2"
+version = "0.0.8"
 readme = "README.md"
 content_root = "src"
 files = [
@@ -16,10 +16,10 @@ authors = [
 description = "Core components and utils for markdown"
 keywords = ["bullet-list"]
 [dependencies.Dash]
-version = "^2.0.0"
+version = "^3.0.0"
 
 [dependencies.Foundation]
-version = "^1.63.1"
+version = "^1.111.0"
 
 [dependencies.React]
 version = "^17.3.6"
@@ -29,6 +29,9 @@ version = "^17.3.6"
 
 [dependencies.ReactRoblox]
 version = "^17.3.6"
+
+[dependencies.SafeFlags]
+version = "^0.1.1"
 [dev_dependencies.Jest]
 version = "= 3.13.3"
 

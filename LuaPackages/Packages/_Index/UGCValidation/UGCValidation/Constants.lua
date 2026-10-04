@@ -5,14 +5,13 @@ local Cryo = require(root.Parent.Cryo)
 
 local ValidationRulesUtil = require(root.util.ValidationRulesUtil)
 local ValidationEnums = require(root.validationSystem.ValidationEnums)
-local getFFlagUGCValidationFixConstantsTypoLeg = require(root.flags.getFFlagUGCValidationFixConstantsTypoLeg)
 local getFFlagUGCValidationEyebrowEyelashSupport = require(root.flags.getFFlagUGCValidationEyebrowEyelashSupport)
 local getFFlagUGCValidateCheckHSROwner = require(root.flags.getFFlagUGCValidateCheckHSROwner)
 local getFFlagUGCValidateCheckTexturePackOwner = require(root.flags.getFFlagUGCValidateCheckTexturePackOwner)
-
-local getFFlagUGCValidationMakeupSupport = require(root.flags.getFFlagUGCValidationMakeupSupport)
-
 local FFlagUGCValidateMakeupDecalUVProperties = game:DefineFastFlag("UGCValidateMakeupDecalUVProperties", false)
+local getFFlagUGCValidateAllowEmissives = require(root.flags.getFFlagUGCValidateAllowEmissives)
+local getFFlagUGCValidateMakeupCategoryParity = require(root.flags.getFFlagUGCValidateMakeupCategoryParity)
+local getFFlagUGCValidateDisallowAeroMeshData = require(root.flags.getFFlagUGCValidateDisallowAeroMeshData)
 
 -- switch this to Cryo.List.toSet when available
 local function convertArrayToTable(array)
@@ -74,6 +73,29 @@ Constants.R15_BODY_PARTS = {
 	"RightHand",
 }
 
+Constants.R15_CAGE_PARTS = {
+	"Head_OuterCage",
+
+	"UpperTorso_OuterCage",
+	"LowerTorso_OuterCage",
+
+	"LeftUpperLeg_OuterCage",
+	"LeftLowerLeg_OuterCage",
+	"LeftFoot_OuterCage",
+
+	"RightUpperLeg_OuterCage",
+	"RightLowerLeg_OuterCage",
+	"RightFoot_OuterCage",
+
+	"LeftUpperArm_OuterCage",
+	"LeftLowerArm_OuterCage",
+	"LeftHand_OuterCage",
+
+	"RightUpperArm_OuterCage",
+	"RightLowerArm_OuterCage",
+	"RightHand_OuterCage",
+}
+
 Constants.NAMED_R15_BODY_PARTS = {}
 for _, bodyPartName in Constants.R15_BODY_PARTS do
 	Constants.NAMED_R15_BODY_PARTS[bodyPartName] = bodyPartName
@@ -108,7 +130,12 @@ Constants.R15_STANDARD_JOINT_NAMES = {
 	["RightHand"] = true,
 }
 
-for _, bodyPart in Constants.R15_BODY_PARTS do
+Constants.ALLOWED_SKINNING_TRANSFER_JOINT_NAMES = {
+	RBX_Leader = true,
+	RBX_Follower = true,
+}
+
+for _, bodyPart in Constants.R15_BODY_PARTS do -- seems to be redundant since its already listed above. Dont copy this over to a new constants file ..
 	Constants.R15_STANDARD_JOINT_NAMES[bodyPart] = true
 end
 
@@ -209,11 +236,8 @@ Constants.ASSET_STATUS = {
 	MODERATED = "Moderated",
 }
 
-if getFFlagUGCValidationMakeupSupport() then
-	Constants.MAKEUP_INFO = ValidationRulesUtil:getMakeupRules()
-end
+Constants.MAKEUP_INFO = ValidationRulesUtil:getMakeupRules()
 
--- https://confluence.rbx.com/display/AVATAR/UGC+Accessory+Max+Sizes
 -- Measurements are doubled to account full size
 -- boundsOffset is used when measurements are non-symmetrical
 -- i.e. WaistAccessory is 3 behind, 2.5 front
@@ -253,13 +277,8 @@ Constants.BODYPART_TO_PARENT = {
 	["RightUpperLeg"] = nil,
 	["RightLowerLeg"] = "RightUpperLeg",
 }
-if getFFlagUGCValidationFixConstantsTypoLeg() then -- move back to array when cleaning up flag
-	Constants.BODYPART_TO_PARENT["RightFoot"] = "RightLowerLeg"
-	Constants.BODYPART_TO_PARENT["LeftFoot"] = "LeftLowerLeg"
-else
-	Constants.BODYPART_TO_PARENT["RightLeg"] = "RightLowerLeg"
-	Constants.BODYPART_TO_PARENT["LeftLeg"] = "LeftLowerLeg"
-end
+Constants.BODYPART_TO_PARENT["RightFoot"] = "RightLowerLeg"
+Constants.BODYPART_TO_PARENT["LeftFoot"] = "LeftLowerLeg"
 
 Constants.RenderVsWrapMeshMaxDiff = ValidationRulesUtil:getRules().MeshRules.CageMeshMaxDistanceFromRenderMesh
 
@@ -304,14 +323,12 @@ Constants.PROPERTIES = {
 	Attachment = {
 		Visible = false,
 	},
-	Decal = if getFFlagUGCValidationMakeupSupport()
-		then {
-			Color3 = Color3.new(1, 1, 1),
-			Transparency = 0,
-			UVOffset = if FFlagUGCValidateMakeupDecalUVProperties then Vector2.new(0, 0) else nil,
-			UVScale = if FFlagUGCValidateMakeupDecalUVProperties then Vector2.new(1, 1) else nil,
-		}
-		else nil,
+	Decal = {
+		Color3 = Color3.new(1, 1, 1),
+		Transparency = 0,
+		UVOffset = if FFlagUGCValidateMakeupDecalUVProperties then Vector2.new(0, 0) else nil,
+		UVScale = if FFlagUGCValidateMakeupDecalUVProperties then Vector2.new(1, 1) else nil,
+	},
 	SpecialMesh = {
 		MeshType = Enum.MeshType.FileMesh,
 		Offset = Vector3.new(0, 0, 0),
@@ -352,11 +369,15 @@ Constants.PROPERTIES = {
 		TopSurfaceInput = Enum.InputType.NoInput,
 
 		BackSurface = Enum.SurfaceType.Smooth,
-		BottomSurface = Enum.SurfaceType.Smooth,
+		BottomSurface = {
+			[Constants.COMPARISON_METHODS.FOUND_IN] = { Enum.SurfaceType.Smooth, Enum.SurfaceType.Inlet },
+		},
 		FrontSurface = Enum.SurfaceType.Smooth,
 		LeftSurface = Enum.SurfaceType.Smooth,
 		RightSurface = Enum.SurfaceType.Smooth,
-		TopSurface = Enum.SurfaceType.Smooth,
+		TopSurface = {
+			[Constants.COMPARISON_METHODS.FOUND_IN] = { Enum.SurfaceType.Smooth, Enum.SurfaceType.Studs },
+		},
 
 		-- ====== Extra Context checks ======
 		--Transparency = { [Constants.COMPARISON_METHODS.EXACT_EQ] = 0 },
@@ -377,6 +398,9 @@ Constants.PROPERTIES = {
 	Part = {
 		Shape = Enum.PartType.Block,
 	},
+	MeshPart = {
+		FluidFidelity = if getFFlagUGCValidateDisallowAeroMeshData() then Enum.FluidFidelity.Automatic else nil,
+	},
 	SurfaceAppearance = {
 		AlphaMode = if getFFlagUGCValidationEyebrowEyelashSupport()
 			then {
@@ -396,9 +420,14 @@ Constants.PROPERTIES = {
 				},
 			}
 			else Enum.AlphaMode.Overlay,
-		EmissiveMaskContent = Content.none,
-		EmissiveStrength = 1,
-		EmissiveTint = Color3.new(1, 1, 1),
+		EmissiveMaskContent = if getFFlagUGCValidateAllowEmissives() then nil else Content.none,
+		EmissiveStrength = if getFFlagUGCValidateAllowEmissives()
+			then {
+				[Constants.COMPARISON_METHODS.GREATER_EQ] = 0,
+				[Constants.COMPARISON_METHODS.SMALLER_EQ] = 40,
+			}
+			else 1,
+		EmissiveTint = if getFFlagUGCValidateAllowEmissives() then nil else Color3.new(1, 1, 1),
 	},
 	WrapLayer = {
 		-- ====== Simple checks ======
@@ -462,12 +491,14 @@ Constants.CONTENT_ID_FIELDS = {
 	SpecialMesh = { "MeshId", "TextureId" },
 	MeshPart = { "MeshId", "TextureID" },
 	SurfaceAppearance = { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" },
-	Decal = if getFFlagUGCValidationMakeupSupport()
-		then { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" }
-		else nil,
+	Decal = { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" },
 	WrapLayer = { "CageMeshId", "ReferenceMeshId" },
 	WrapTarget = { "CageMeshId" },
 	Animation = { "AnimationId" },
+}
+
+Constants.CONTENT_FIELDS_WITHOUT_CONTENTID = {
+	SurfaceAppearance = { "EmissiveMaskContent" },
 }
 
 if getFFlagUGCValidateCheckTexturePackOwner() then
@@ -485,6 +516,46 @@ Constants.CONTENT_ID_REQUIRED_FIELDS = {
 	Animation = { AnimationId = true },
 }
 
+-- Content ID fields whose value can be supplied by an in-experience editable instead of an
+-- asset URL. The field is editable-backed when its paired Content property has
+-- SourceType == Object. Classes/fields omitted here (e.g. SpecialMesh, Animation) have no
+-- editable equivalent, so an empty value is always missing.
+Constants.CONTENT_ID_EDITABLE_PROPERTY = {
+	MeshPart = { MeshId = "MeshContent", TextureID = "TextureContent" },
+	WrapTarget = { CageMeshId = "CageMeshContent" },
+	WrapLayer = { CageMeshId = "CageMeshContent", ReferenceMeshId = "ReferenceMeshContent" },
+	SurfaceAppearance = {
+		ColorMap = "ColorMapContent",
+		MetalnessMap = "MetalnessMapContent",
+		NormalMap = "NormalMapContent",
+		RoughnessMap = "RoughnessMapContent",
+	},
+}
+
+-- Every Content-typed property (a value exposing SourceType/Uri/Object) an avatar asset can carry,
+-- keyed by ClassName. A non-nil .Object here is a live unsaved editable. Superset of
+-- CONTENT_ID_EDITABLE_PROPERTY: also covers the Content props those id-keyed maps omit
+-- (EmissiveMaskContent, Decal, WrapTextureTransfer).
+Constants.CONTENT_TYPED_PROPERTIES_BY_CLASS = {
+	MeshPart = { "MeshContent", "TextureContent" },
+	WrapTarget = { "CageMeshContent" },
+	WrapLayer = { "CageMeshContent", "ReferenceMeshContent" },
+	SurfaceAppearance = {
+		"ColorMapContent",
+		"MetalnessMapContent",
+		"NormalMapContent",
+		"RoughnessMapContent",
+		"EmissiveMaskContent",
+	},
+	Decal = {
+		"ColorMapContent",
+		"MetalnessMapContent",
+		"NormalMapContent",
+		"RoughnessMapContent",
+	},
+	WrapTextureTransfer = { "ReferenceCageMeshContent" },
+}
+
 Constants.MESH_CONTENT_ID_FIELDS = {
 	SpecialMesh = { "MeshId" },
 	MeshPart = { "MeshId" },
@@ -496,9 +567,7 @@ Constants.TEXTURE_CONTENT_ID_FIELDS = {
 	SpecialMesh = { "TextureId" },
 	MeshPart = { "TextureID" },
 	SurfaceAppearance = { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" },
-	Decal = if getFFlagUGCValidationMakeupSupport()
-		then { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" }
-		else nil,
+	Decal = { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" },
 }
 
 Constants.ASSET_RENDER_MESH_MAX_TRIANGLES = {
@@ -551,6 +620,9 @@ Constants.ApplicationJson = "application/json"
 -- see validateAttributes for more info
 Constants.GUIDAttributeName = "RBXGUID"
 Constants.GUIDAttributeMaxLength = 100
+-- Keep these in sync with the corresponding HumanoidConstants names in the engine.
+Constants.EmoteIsUGCAttributeName = "RBXisUGCEmote"
+Constants.EmoteMaxPartTranslationAttributeName = "RBXmaxPartTranslation"
 
 Constants.AlternateMeshIdAttributeName = "RBX_ALT_MESH_ID"
 Constants.MESH_CONTENT_TYPE = {
@@ -565,6 +637,16 @@ Constants.MESH_CONTENT_TYPE_TO_FIELD_NAME = {
 	[Constants.MESH_CONTENT_TYPE.INNER_CAGE] = "ReferenceMeshId",
 }
 
+Constants.ANIMATION_ASSET_INFO = {
+	[Enum.AssetType.ClimbAnimation] = { modelName = "ClimbAnimation", stringValueNames = { "climb" } },
+	[Enum.AssetType.FallAnimation] = { modelName = "FallAnimation", stringValueNames = { "fall" } },
+	[Enum.AssetType.IdleAnimation] = { modelName = "IdleAnimation", stringValueNames = { "idle" } },
+	[Enum.AssetType.JumpAnimation] = { modelName = "JumpAnimation", stringValueNames = { "jump" } },
+	[Enum.AssetType.RunAnimation] = { modelName = "RunAnimation", stringValueNames = { "run" } },
+	[Enum.AssetType.SwimAnimation] = { modelName = "SwimAnimation", stringValueNames = { "swim", "swimidle" } },
+	[Enum.AssetType.WalkAnimation] = { modelName = "WalkAnimation", stringValueNames = { "walk" } },
+}
+
 Constants.AllAssetUploadCategories = {
 	-- For tests that run on all assets
 	ValidationEnums.UploadCategory.TORSO_AND_LIMBS,
@@ -574,11 +656,25 @@ Constants.AllAssetUploadCategories = {
 	ValidationEnums.UploadCategory.EMOTE_ANIMATION,
 }
 
+table.insert(Constants.AllAssetUploadCategories, ValidationEnums.UploadCategory.ANIMATION)
+
+Constants.AllAssetUploadCategoriesIncludingMakeup = {}
+for _, category in Constants.AllAssetUploadCategories do
+	table.insert(Constants.AllAssetUploadCategoriesIncludingMakeup, category)
+end
+table.insert(Constants.AllAssetUploadCategoriesIncludingMakeup, ValidationEnums.UploadCategory.MAKEUP)
+
+if getFFlagUGCValidateMakeupCategoryParity() then
+	table.insert(Constants.AllAssetUploadCategories, ValidationEnums.UploadCategory.MAKEUP)
+end
+
 Constants.AllBundleUploadCategories = {
 	-- For tests that run on all bundles
 	ValidationEnums.UploadCategory.FULL_BODY,
 	ValidationEnums.UploadCategory.BOTH_SHOES,
 }
+
+table.insert(Constants.AllBundleUploadCategories, ValidationEnums.UploadCategory.ANIMATION_PACK)
 
 Constants.AllUploadCategories = {} -- For tests that run every upload
 for _, category in ValidationEnums.UploadCategory do

@@ -6,11 +6,15 @@ local React = require(Packages.React)
 
 local IconName = BuilderIcons.Icon
 
-local Calendar = require(script.Parent.Calendar)
+local Calendar = require(script.Parent.Calendar.Calendar)
+local DateTimeParsingUtilities = require(script.Parent.Utilities.DateTimeParsingUtilities)
+local DateTimePickerBeta = require(script.Parent.DateTimePickerBeta)
+local DateTimePickerPropsModule = require(script.Parent.DateTimePickerProps)
 local DateTimeUtilities = require(script.Parent.DateTimeUtilities)
 
 local Button = require(Foundation.Components.Button)
 local ButtonVariant = require(Foundation.Enums.ButtonVariant)
+local DateTimePickerVariant = require(Foundation.Enums.DateTimePickerVariant)
 local Flags = require(Foundation.Utility.Flags)
 local GuiService = require(Foundation.Utility.Wrappers.Services).GuiService
 local InputSize = require(Foundation.Enums.InputSize)
@@ -18,84 +22,39 @@ local Popover = require(Foundation.Components.Popover)
 local PopoverSide = require(Foundation.Enums.PopoverSide)
 local TextInput = require(Foundation.Components.TextInput)
 local Translator = require(Foundation.Utility.Localization.Translator)
-local Types = require(Foundation.Components.Types)
 local View = require(Foundation.Components.View)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 local withCommonProps = require(Foundation.Utility.withCommonProps)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
-local FFlagFoundationDateTimePickerScreenSize = Flags.FoundationDateTimePickerScreenSize
-local FFlagFoundationDateTimePickerDefaultDateFix = Flags.FoundationDateTimePickerDefaultDateFix
-
-local DateTimePickerVariant = require(Foundation.Enums.DateTimePickerVariant)
-type DateTimePickerVariant = DateTimePickerVariant.DateTimePickerVariant
-
-type Bindable<T> = Types.Bindable<T>
-type Selection = Types.Selection
-type SelectionGroup = Types.SelectionGroup
-
-export type DateTimePickerProps = {
-	-- Default dates selected. If not provided, the current date will be used
-	-- If variant is Dual, then the first date will be used as the start date and the second date (if provided) will be used as the end date.
-	defaultDates: (DateTime | { DateTime })?,
-	-- Whether the input has an error
-	hasError: boolean?,
-	-- Hint text for the text input
-	hint: string?,
-	-- Whether the input is disabled
-	isDisabled: boolean?,
-	-- Whether the input is required
-	isRequired: boolean?,
-	-- Label used for the text input
-	label: string,
-	-- On input text change. dateTimes are nil if not valid DateTimes. endDateTime is the end date if variant is Dual
-	onChanged: (startDateTime: DateTime?, endDateTime: DateTime?) -> (),
-	-- Selectable date range (inclusive). Note, these dates will be rounded to the start of the day for date-only comparison
-	selectableDateRange: {
-		startDate: DateTime,
-		endDate: DateTime,
-	}?,
-	-- Variant of the date time picker
-	variant: DateTimePickerVariant?,
-	-- Width of the text input component
-	width: UDim?,
-
-	-- Selection behavior
-	selection: Types.Selection?,
-	selectionGroup: Types.Bindable<boolean>? | Types.SelectionGroup?,
-} & Types.CommonProps
+export type DateTimePickerProps = DateTimePickerPropsModule.DateTimePickerProps
 
 local defaultProps = {
-	defaultDates = if FFlagFoundationDateTimePickerDefaultDateFix then nil else { DateTime.now() },
 	variant = DateTimePickerVariant.Single,
 	testId = "--foundation-date-time-picker",
 }
 
-local function DateTimePicker(dateTimePickerProps: DateTimePickerProps)
+local function DateTimePicker(dateTimePickerProps: DateTimePickerProps): React.ReactNode
+	if Flags.FoundationDateTimePickerBetaUpdate then
+		return React.createElement(DateTimePickerBeta, dateTimePickerProps)
+	end
+
 	local props: DateTimePickerProps = withDefaults(dateTimePickerProps, defaultProps)
 
 	local tokens = useTokens()
 	local isOpen, setIsOpen = React.useState(false)
 	local textInputRef = React.useRef(nil)
 
-	local resolvedDefaultDates
-	if FFlagFoundationDateTimePickerDefaultDateFix then
-		resolvedDefaultDates = React.useMemo(function(): { DateTime }?
-			local dates = props.defaultDates
-			if dates then
-				if typeof(dates) ~= "table" then
-					return { dates :: DateTime }
-				end
-				return dates :: { DateTime }
+	local resolvedDefaultDates = React.useMemo(function(): { DateTime }?
+		local dates = props.defaultDates
+		if dates then
+			if typeof(dates) ~= "table" then
+				return { dates :: DateTime }
 			end
-			return nil
-		end, { props.defaultDates })
-	else
-		resolvedDefaultDates = props.defaultDates :: { DateTime }?
-		if props.defaultDates and typeof(props.defaultDates) ~= "table" then
-			resolvedDefaultDates = { props.defaultDates :: DateTime }
+			return dates :: { DateTime }
 		end
-	end
+		return nil
+	end, { props.defaultDates })
 
 	local inputText, setInputText = React.useState(
 		if resolvedDefaultDates
@@ -123,13 +82,11 @@ local function DateTimePicker(dateTimePickerProps: DateTimePickerProps)
 		setIsOpen(true)
 	end, {})
 
-	local onFocusGained = if FFlagFoundationDateTimePickerScreenSize
-		then React.useCallback(function()
-			if GuiService.ViewportDisplaySize ~= Enum.DisplaySize.Small then
-				showDateTimePicker()
-			end
-		end, { showDateTimePicker, GuiService.ViewportDisplaySize } :: { unknown })
-		else nil
+	local onFocusGained = React.useCallback(function()
+		if GuiService.ViewportDisplaySize ~= Enum.DisplaySize.Small then
+			showDateTimePicker()
+		end
+	end, { showDateTimePicker, GuiService.ViewportDisplaySize } :: { unknown })
 
 	-- Since we allow user input we need to parse the text to a DateTime object before calling onChanged
 	local updateInputText = React.useCallback(function(txt: string)
@@ -146,12 +103,10 @@ local function DateTimePicker(dateTimePickerProps: DateTimePickerProps)
 			local dateTime2 = DateTimeUtilities.getDateTimeFromText(dateTimes[2])
 			props.onChanged(dateTime1, dateTime2)
 		else
-			-- trim whitespace from the start and end of the text
-			local trimmedText = txt:match("^%s*(.-)%s*$") or ""
-			local dateTime = DateTimeUtilities.getDateTimeFromText(trimmedText)
+			local dateTime = DateTimeUtilities.getDateTimeFromText(DateTimeParsingUtilities.trimInputText(txt))
 			props.onChanged(dateTime)
 		end
-	end, { props.onChanged })
+	end, { props.onChanged, props.variant } :: { unknown })
 
 	-- We update calendarDate only when it is a valid DateTime.
 	-- Thus we can directly call onChanged when apply is activated
@@ -177,11 +132,12 @@ local function DateTimePicker(dateTimePickerProps: DateTimePickerProps)
 		{
 			calendarDates,
 			closeDateTimePicker,
+			props.variant,
 		} :: { unknown }
 	)
 
 	local isApplyButtonDisabled = function()
-		if FFlagFoundationDateTimePickerDefaultDateFix and not calendarDates then
+		if not calendarDates then
 			return false
 		elseif
 			props.variant == DateTimePickerVariant.Single or props.variant == DateTimePickerVariant.SingleWithTime
@@ -214,7 +170,7 @@ local function DateTimePicker(dateTimePickerProps: DateTimePickerProps)
 				key = "date-input",
 				label = props.label,
 				onChanged = updateInputText,
-				onFocusGained = if FFlagFoundationDateTimePickerScreenSize then onFocusGained else showDateTimePicker,
+				onFocusGained = onFocusGained,
 				placeholder = Translator:FormatByKey("CommonUI.Controls.Label.SelectDate"),
 				ref = textInputRef,
 				selectableDateRange = props.selectableDateRange,
@@ -247,7 +203,7 @@ local function DateTimePicker(dateTimePickerProps: DateTimePickerProps)
 				showStartDateTimeCalendarInput = props.variant ~= DateTimePickerVariant.SingleWithTime,
 				showEndDateTimeCalendarInput = props.variant == DateTimePickerVariant.Dual,
 				showTimeDropdown = props.variant == DateTimePickerVariant.SingleWithTime,
-				testId = `--foundation-calendar`,
+				testId = "--foundation-calendar",
 			}),
 			BottomBar = React.createElement(View, {
 				LayoutOrder = 2,

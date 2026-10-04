@@ -2,8 +2,7 @@
 local makeConfigurable = require(script.Core.Config.makeConfigurable)
 local UIBloxDefaultConfig = require(script.UIBloxDefaultConfig)
 
-local LazyRequire = require(script.Parent.LazyRequire)
-local createLazyComponent = LazyRequire.createLazyComponent
+local createLazyComponent = require(script.Utility.createLazyComponent)
 
 local Fonts = require(script.App.Style.Fonts)
 local ImagesTypes = require(script.App.ImageSet.ImagesTypes)
@@ -14,7 +13,7 @@ local ControlStateEnum = require(script.Core.Control.Enum.ControlState)
 
 local React = require(script.Parent.React)
 
-export type Font = Fonts.Font
+export type Font = Fonts.FontInfo
 export type FontPalette = Fonts.FontPalette
 
 export type ImageSetImage = ImagesTypes.ImageSetImage
@@ -23,6 +22,7 @@ export type Images = ImagesTypes.Images
 export type Theme = StyleTypes.Theme
 export type ThemeItem = StyleTypes.ThemeItem
 export type AppStyle = StyleTypes.AppStyle
+export type Tokens = StyleTypes.PublicTokens
 
 export type ResponsiveLayoutConfig<T = number> = ResponsiveLayoutConfigReader.Config<T>
 
@@ -34,7 +34,7 @@ local function initializeLibrary(configs)
 	local strict = require(script.Utility.strict)
 
 	local function lazify<Props>(fn: () -> React.FC<Props> | React.ComponentType<Props>): React.FC<Props>
-		return createLazyComponent(fn)
+		return createLazyComponent(fn) :: React.FC<Props>
 	end
 
 	local UIBlox = {}
@@ -103,6 +103,7 @@ local function initializeLibrary(configs)
 			ExpandableText = strict({
 				GetCanExpand = require(script.Core.Text.ExpandableText.ExpandableTextUtils).getCanExpand,
 			}),
+			GetTextSize = require(script.Core.Text.GetTextSize),
 			EmojiTextLabel = lazify(function()
 				return require(script.Core.Text.EmojiTextLabel.EmojiTextLabel)
 			end),
@@ -203,20 +204,11 @@ local function initializeLibrary(configs)
 			LoadableImage = lazify(function()
 				return require(script.App.Loading.LoadableImage)
 			end),
-			LoadingSpinner = lazify(function()
-				return require(script.App.Loading.LoadingSpinner)
-			end),
 		}),
 
 		InputButton = strict({
 			RadioButtonList = lazify(function()
 				return require(script.App.InputButton.RadioButtonList)
-			end),
-			CheckboxList = lazify(function()
-				return require(script.App.InputButton.CheckboxList)
-			end),
-			Checkbox = lazify(function()
-				return require(script.App.InputButton.Checkbox)
 			end),
 		}),
 

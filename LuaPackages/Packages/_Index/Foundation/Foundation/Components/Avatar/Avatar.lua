@@ -5,10 +5,12 @@ local React = require(Packages.React)
 
 local Dash = require(Packages.Dash)
 
+local Flags = require(Foundation.Utility.Flags)
 local Image = require(Foundation.Components.Image)
-local Indicator = require(script.Parent.Indicator)
+local StatusIndicator = require(Foundation.Components.StatusIndicator)
 local Types = require(Foundation.Components.Types)
 local View = require(Foundation.Components.View)
+local mapBindable = require(Foundation.Utility.mapBindable)
 local withCommonProps = require(Foundation.Utility.withCommonProps)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
@@ -20,24 +22,28 @@ local useAvatarVariants = require(script.Parent.useAvatarVariants)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 local usePresentationContext = require(Foundation.Providers.Style.PresentationContext).usePresentationContext
 
-local InputSize = require(Foundation.Enums.InputSize)
-type InputSize = InputSize.InputSize
+local AvatarSize = require(Foundation.Enums.AvatarSize)
+type AvatarSize = AvatarSize.AvatarSize
 local UserPresence = require(Foundation.Enums.UserPresence)
 type UserPresence = UserPresence.UserPresence
 
 local getAvatarSize = require(script.Parent.getAvatarSize)
+type Bindable<T> = Types.Bindable<T>
 
 export type AvatarProps = {
 	-- Roblox user id
-	userId: number,
+	userId: Bindable<number>,
 	backgroundStyle: Types.ColorStyle?,
 	backplateStyle: Types.ColorStyle?,
-	size: InputSize?,
+	size: AvatarSize?,
 	userPresence: UserPresence?,
+	-- When true, requests the thumbnail service to composite the user's
+	-- equipped profile frame into the headshot server-side.
+	includeProfileFrame: boolean?,
 } & Types.CommonProps
 
 local defaultProps = {
-	size = InputSize.Medium,
+	size = AvatarSize.Medium,
 	userPresence = UserPresence.None :: UserPresence,
 	testId = "--foundation-avatar",
 }
@@ -62,18 +68,42 @@ local function Avatar(avatarProps: AvatarProps, ref: React.Ref<GuiObject>?)
 		}),
 		{
 			Image = React.createElement(Image, {
-				Image = getRbxThumb(ThumbnailType.AvatarHeadShot, props.userId, ThumbnailSize.Medium),
+				Image = mapBindable(props.userId, function(userId)
+					return getRbxThumb(
+						ThumbnailType.AvatarHeadShot,
+						userId,
+						ThumbnailSize.Medium,
+						{ includeProfileFrame = props.includeProfileFrame }
+					)
+				end),
 				tag = variantProps.avatar.tag,
 				backgroundStyle = props.backgroundStyle,
+				testId = `{props.testId}--image`,
 			}),
-			Indicator = if variantProps.indicator.isVisible
-				then React.createElement(
-					View,
-					Dash.join(variantProps.indicatorBackplate, {
-						testId = `{props.testId}--indicator`,
-					}),
-					React.createElement(Indicator, variantProps.indicator :: any)
-				)
+			Indicator = if variantProps.statusIndicator.isVisible
+				then if Flags.FoundationStatusIndicatorMask
+					then React.createElement(StatusIndicator, {
+						testId = `{props.testId}--status-indicator`,
+						variant = variantProps.statusIndicator.variant,
+						shape = variantProps.statusIndicator.shape,
+						size = variantProps.statusIndicator.size,
+						mask = variantProps.statusIndicatorMask.mask,
+						ZIndex = variantProps.statusIndicatorMask.ZIndex,
+						AnchorPoint = variantProps.statusIndicatorMask.AnchorPoint,
+						Position = variantProps.statusIndicatorMask.Position,
+					})
+					else React.createElement(
+						View,
+						Dash.join(variantProps.statusIndicatorBackplate, {
+							testId = `{props.testId}--indicator-backplate`,
+						}),
+						React.createElement(StatusIndicator, {
+							testId = `{props.testId}--status-indicator`,
+							variant = variantProps.statusIndicator.variant,
+							shape = variantProps.statusIndicator.shape,
+							size = variantProps.statusIndicator.size,
+						})
+					)
 				else nil,
 		}
 	)

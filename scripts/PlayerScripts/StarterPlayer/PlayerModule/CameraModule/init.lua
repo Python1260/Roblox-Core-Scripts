@@ -47,7 +47,7 @@ local USER_GAME_SETTINGS_PROPERTIES =
 
 --[[ Roblox Services ]]--
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService") -- remove with FFlagUserPlayerModuleHiddenAPI
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VRService = game:GetService("VRService")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
@@ -55,7 +55,7 @@ local UserGameSettings = UserSettings():GetService("UserGameSettings")
 local CommonUtils = require(script.Parent:WaitForChild("CommonUtils"))
 local ConnectionUtil = CommonUtils.get("ConnectionUtil")
 local FlagUtil = CommonUtils.get("FlagUtil")
-local FFlagUserPlayerModuleHiddenAPI = FlagUtil.getUserFlag("UserPlayerModuleHiddenAPI")
+
 
 -- Static camera utils
 local CameraUtils = require(script:WaitForChild("CameraUtils"))
@@ -190,10 +190,6 @@ function CameraModule.new()
 	self:ActivateCameraController()
 	self:ActivateOcclusionModule(Players.LocalPlayer.DevCameraOcclusionMode)
 	self:OnCurrentCameraChanged() -- Does initializations and makes first camera controller
-	if not FFlagUserPlayerModuleHiddenAPI then
-		RunService:BindToRenderStep("cameraRenderUpdate", Enum.RenderPriority.Camera.Value, function(dt) self:Update({}, dt) end)
-	end
-
 	-- Connect listeners to camera-related properties
 	for _, propertyName in pairs(PLAYER_CAMERA_PROPERTIES) do
 		Players.LocalPlayer:GetPropertyChangedSignal(propertyName):Connect(function()
@@ -418,6 +414,9 @@ function CameraModule:ActivateCameraController()
 	if self.activeCameraController then
 		-- deactivate the old controller and activate the new one
 		if self.activeCameraController ~= newCameraController then
+			if newCameraController.HandleSubjectDistance then
+				newCameraController:HandleSubjectDistance(self.activeCameraController)
+			end
 			self.activeCameraController:Enable(false)
 			self.activeCameraController = newCameraController
 			self.activeCameraController:Enable(true)
@@ -557,7 +556,7 @@ function CameraModule:Update(data, dt)
 
 		local newCameraCFrame, newCameraFocus = self.activeCameraController:Update(dt)
 
-		if self.activeOcclusionModule then
+		if self.activeOcclusionModule and not self.activeCameraController.skipOcclusion then
 			newCameraCFrame, newCameraFocus = self.activeOcclusionModule:Update(dt, newCameraCFrame, newCameraFocus)
 		end
 
@@ -569,10 +568,6 @@ function CameraModule:Update(data, dt)
 		-- Update to character local transparency as needed based on camera-to-subject distance
 		if self.activeTransparencyController then
 			self.activeTransparencyController:Update(dt)
-		end
-
-		if CameraInput.getInputEnabled() then
-			CameraInput.resetInputForFrameEnd()
 		end
 	end
 end
@@ -629,13 +624,8 @@ function CameraModule:OnMouseLockToggled()
 	end
 end
 
-if FFlagUserPlayerModuleHiddenAPI then
-	if RunService:IsClient() then
-		return CameraModule.new()
-	else
-		return CameraModule
-	end
+if RunService:IsClient() then
+	return CameraModule.new()
 else
-	CameraModule.new()
-	return {}
+	return CameraModule
 end

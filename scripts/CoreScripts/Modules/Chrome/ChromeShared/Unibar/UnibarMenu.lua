@@ -10,18 +10,19 @@ local GetFFlagDebugEnableUnibarDummyIntegrations = SharedFlags.GetFFlagDebugEnab
 local GetFIntIconSelectionTimeout = SharedFlags.GetFIntIconSelectionTimeout
 local GetFFlagChromeCentralizedConfiguration = SharedFlags.GetFFlagChromeCentralizedConfiguration
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
-local GetFFlagSimpleChatUnreadMessageCount = SharedFlags.GetFFlagSimpleChatUnreadMessageCount
 local FFlagAddUILessMode = SharedFlags.FFlagAddUILessMode
 local FIntAddUILessModeVariant = SharedFlags.FIntAddUILessModeVariant
-local FFlagEnableInExperienceAvatarSwitcher = SharedFlags.FFlagEnableInExperienceAvatarSwitcher
+local FFlagAppNavMyStatsTab = SharedFlags.FFlagAppNavMyStatsTab
 
 local ChromeFlags = require(script.Parent.Parent.Parent.Flags)
 local FFlagUnibarMenuOpenSubmenu = ChromeFlags.FFlagUnibarMenuOpenSubmenu
 
 local ChromeSharedFlags = require(Root.Flags)
 local FFlagTokenizeUnibarConstantsWithStyleProvider = ChromeSharedFlags.FFlagTokenizeUnibarConstantsWithStyleProvider
+local FFlagEnablePlaytestModeUnibar = SharedFlags.FFlagEnablePlaytestModeUnibar
 local UIBlox = require(CorePackages.Packages.UIBlox)
 local useStyle = UIBlox.Core.Style.useStyle
+local PlaytestModeThemeProvider = require(Root.Unibar.PlaytestModeThemeProvider)
 local ChromeService = require(Root.Service)
 local UnibarStyle = require(CorePackages.Workspace.Packages.Chrome).UnibarStyle
 
@@ -30,6 +31,7 @@ local SubMenu = require(Root.Unibar.SubMenu)
 local WindowManager = require(Root.Unibar.WindowManager)
 local ShortcutBar = require(Root.Shortcuts.ShortcutBar)
 local Constants = require(Root.Unibar.Constants)
+local buildMenuOrder = require(Root.Unibar.buildMenuOrder)
 
 local useChromeMenuItems = require(Root.Hooks.useChromeMenuItems)
 local useObservableValue = require(Root.Hooks.useObservableValue)
@@ -48,7 +50,6 @@ local createEffect = Signals.createEffect
 -- APPEXP-2053 TODO: Remove all use of RobloxGui from ChromeShared
 local PartyConstants = require(Root.Parent.Integrations.Party.Constants)
 local isConnectUnibarEnabled = require(Root.Parent.Integrations.Connect.isConnectUnibarEnabled)
-local isConnectDropdownEnabled = require(Root.Parent.Integrations.Connect.isConnectDropdownEnabled)
 
 local GamepadConnector = if FFlagEnableConsoleExpControls
 	then require(Root.Parent.Parent.TopBar.Components.GamepadConnector)
@@ -67,6 +68,8 @@ if isInExperienceUIVREnabled then
 	SubMenuVisibilitySignal = Observable.ObservableValue.new(true)
 end
 
+local ArgoPartyExperimentation = require(CorePackages.Workspace.Packages.SocialExperiments).ArgoPartyExperimentation
+
 type Array<T> = { [number]: T }
 type Table = { [any]: any }
 
@@ -75,32 +78,30 @@ if not GetFFlagChromeCentralizedConfiguration() then
 		-- Configure the menu.  Top level ordering, integration availability.
 		-- Integration availability signals will ultimately filter items out so no need for granular filtering here.
 		-- ie. Voice Mute integration will only be shown is voice is enabled/active
-		local nineDot = { "leaderboard", "emotes", "backpack" }
+		local nineDot = buildMenuOrder()
 
-		-- append to end of nine-dot
-		table.insert(nineDot, "respawn")
-		-- prepend trust_and_safety to nine-dot menu
-		table.insert(nineDot, 1, "trust_and_safety")
-
-		if isConnectDropdownEnabled() then
-			table.insert(nineDot, 1, "connect_dropdown")
-		end
-
-		local v4Ordering = { "toggle_mic_mute", "chat", "nine_dot" }
-		table.insert(v4Ordering, 2, "join_voice")
+		local v4Ordering = { "nine_dot", "chat", "toggle_mic_mute" }
+		table.insert(v4Ordering, 3, "join_voice")
 
 		if GetFFlagDebugEnableUnibarDummyIntegrations() then
-			table.insert(v4Ordering, 1, "dummy_window")
-			table.insert(v4Ordering, 1, "dummy_window_2")
+			table.insert(v4Ordering, "dummy_window")
+			table.insert(v4Ordering, "dummy_window_2")
 		end
 
 		if isConnectUnibarEnabled() then
-			table.insert(v4Ordering, 1, "connect_unibar")
+			table.insert(
+				v4Ordering,
+				if ArgoPartyExperimentation.getIsRenameEnabled() then "party_entrypoint" else "connect_unibar"
+			)
 		end
 
 		local toggleMicIndex = table.find(v4Ordering, "toggle_mic_mute")
 		if toggleMicIndex then
-			table.insert(v4Ordering, toggleMicIndex + 1, PartyConstants.TOGGLE_MIC_INTEGRATION_ID)
+			table.insert(v4Ordering, toggleMicIndex, PartyConstants.TOGGLE_MIC_INTEGRATION_ID)
+		end
+
+		if FFlagAppNavMyStatsTab then
+			table.insert(v4Ordering, "assistant_build")
 		end
 
 		if isInExperienceUIVREnabled and isSpatial() then
@@ -108,27 +109,6 @@ if not GetFFlagChromeCentralizedConfiguration() then
 			ChromeService:configureMenu({ vrControls, v4Ordering })
 		else
 			ChromeService:configureMenu({ v4Ordering })
-		end
-
-		if isInExperienceUIVREnabled then
-			if not isSpatial() then
-				table.insert(nineDot, 2, "camera_entrypoint")
-				table.insert(nineDot, 2, "selfie_view")
-			end
-		else
-			table.insert(nineDot, 2, "camera_entrypoint")
-			table.insert(nineDot, 2, "selfie_view")
-		end
-
-		if FFlagEnableInExperienceAvatarSwitcher then
-			table.insert(nineDot, 3, Constants.AVATAR_SWITCHER_ID)
-		end
-
-		-- TO-DO: Replace GuiService:IsTenFootInterface() once APPEXP-2014 has been merged
-		-- selene: allow(denylist_filter)
-		local isNotVROrConsole = not isSpatial() and not GuiService:IsTenFootInterface()
-		if isNotVROrConsole then
-			table.insert(nineDot, 4, "music_entrypoint")
 		end
 
 		ChromeService:configureSubMenu("nine_dot", nineDot)
@@ -550,9 +530,6 @@ function Unibar(props: UnibarProp)
 				visible = pinned or visibleBinding :: any,
 				toggleTransition = toggleSubmenuTransition,
 				integration = item,
-				disableBadgeNumber = if GetFFlagSimpleChatUnreadMessageCount() and item.id == "chat"
-					then true
-					else false,
 			}) :: any
 			xOffset += iconCellWidth
 			if pinned then
@@ -784,8 +761,11 @@ local function SubMenuWrapper(props)
 		local currentSubMenu = useObservableValue(ChromeService:currentSubMenu())
 		SubMenuVisibilitySignal:set(currentSubMenu ~= nil)
 	end
-	local renderFunc = React.useCallback(function()
-		return React.createElement(SubMenu, { subMenuHostRef = props.subMenuHostRef }) :: any
+	local renderFunc = React.useCallback(function(panelSize: Vector2)
+		return React.createElement(SubMenu, {
+			subMenuHostRef = props.subMenuHostRef,
+			panelSize = panelSize,
+		}) :: any
 	end, {
 		props.subMenuHostRef,
 	})
@@ -883,6 +863,30 @@ local UnibarMenu = function(props: UnibarMenuProp)
 		end
 	end, {})
 
+	local unibarComponent: React.ReactNode = if isInExperienceUIVREnabled and isSpatial()
+		then React.createElement(UnibarPills, {
+			menuFrameRef = menuFrame,
+			subMenuHostRef = subMenuHostRef,
+		})
+		else React.createElement(Unibar, {
+			menuFrameRef = menuFrame,
+			subMenuHostRef = if FFlagUnibarMenuOpenSubmenu then subMenuHostRef else nil,
+			onAreaChanged = props.onAreaChanged,
+			onMinWidthChanged = props.onMinWidthChanged,
+		})
+
+	if FFlagEnablePlaytestModeUnibar then
+		unibarComponent = React.createElement("Frame", {
+			AutomaticSize = Enum.AutomaticSize.XY,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, {
+			PlaytestModeThemeProvider = React.createElement(PlaytestModeThemeProvider, nil, {
+				Unibar = unibarComponent,
+			}),
+		})
+	end
+
 	return {
 		React.createElement("Frame", {
 			Name = "UnibarMenu",
@@ -913,17 +917,7 @@ local UnibarMenu = function(props: UnibarMenuProp)
 				VerticalAlignment = Enum.VerticalAlignment.Top,
 				Padding = UDim.new(0, menuSubmenuPadding),
 			}) :: any,
-			if isInExperienceUIVREnabled and isSpatial()
-				then React.createElement(UnibarPills, {
-					menuFrameRef = menuFrame,
-					subMenuHostRef = subMenuHostRef,
-				}) :: any
-				else React.createElement(Unibar, {
-					menuFrameRef = menuFrame,
-					subMenuHostRef = if FFlagUnibarMenuOpenSubmenu then subMenuHostRef else nil,
-					onAreaChanged = props.onAreaChanged,
-					onMinWidthChanged = props.onMinWidthChanged,
-				}) :: any,
+			unibarComponent,
 			if isInExperienceUIVREnabled
 				then React.createElement(SubMenuWrapper, { subMenuHostRef = subMenuHostRef }) :: any
 				else React.createElement(SubMenu, { subMenuHostRef = subMenuHostRef }) :: any,

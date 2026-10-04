@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local RobloxReplicatedStorage = game:GetService("RobloxReplicatedStorage")
 local VoiceChatService = game:GetService("VoiceChatService")
 local SoundService = game:GetService("SoundService")
+local CoreGui = game:GetService("CoreGui")
 local CorePackages = game:GetService("CorePackages")
 local AvatarChatService = game:GetService("AvatarChatService")
 
@@ -9,12 +10,9 @@ local GetFFlagAvatarChatServiceEnabled =
 	require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagAvatarChatServiceEnabled
 
 local FFlagDebugLogVoiceDefault = game:DefineFastFlag("DebugLogVoiceDefault", false)
-local FFlagSetNewDeviceToFalse = game:DefineFastFlag("SetNewDeviceToFalse", false)
-local FFlagFixNewPlayerCheck = game:DefineFastFlag("FixNewPlayerCheck", false)
-local FFlagOnlyMakeInputsForVoiceUsers = game:DefineFastFlag("OnlyMakeInputsForVoiceUsers", false)
-local FFlagSendLikelySpeakingUsers = game:DefineFastFlag("SendLikelySpeakingUsers", false)
-local FFlagReceiveLikelySpeakingUsersEvent = game:DefineFastFlag("ReceiveLikelySpeakingUsersEventV3", false)
 local FFlagUseAudioInstanceAdded = game:GetEngineFeature("AudioInstanceAddedApiEnabled")
+
+local FFlagExpChatDictation = require(CorePackages.Workspace.Packages.SharedFlags).FFlagExpChatDictation
 
 local function log(...)
 	if FFlagDebugLogVoiceDefault then
@@ -94,22 +92,6 @@ local function hookupDeviceInputToEmitter(character: Instance, input: Instance)
 	wire.TargetInstance = emitter
 end
 
--- Deprecated, remove with FFlagFixNewPlayerCheck
-local function untrackDevice(device: AudioDeviceInput)
-	if device.Player then
-		local deviceList = playerDevices[device.Player]
-		deviceList[device] = nil
-	end
-
-	local connections = audioDevices[device]
-	if not connections then
-		log("Attempting to remove connections from untracked AudioDeviceInput")
-		return
-	end
-	(connections :: AudioDeviceConnections).onPlayerChanged:Disconnect()
-	audioDevices[device] = nil
-end
-
 local function untrackDeviceForPlayer(device: AudioDeviceInput, player: Player?)
 	if player then
 		local deviceList = playerDevices[player]
@@ -127,7 +109,19 @@ local function untrackDeviceForPlayer(device: AudioDeviceInput, player: Player?)
 	audioDevices[device] = nil
 end
 
+-- The voice path always parents its AudioDeviceInputs under a Player. Any
+-- AudioDeviceInput that lives under CoreGui is owned by a CoreScripts
+-- consumer (today: dictation; potentially others later) that manages its
+-- own lifecycle, so the voice tracking flow must skip it.
+local function isIgnoredAudioInput(device: AudioDeviceInput): boolean
+	return device:IsDescendantOf(CoreGui)
+end
+
 local function trackDevice(device: AudioDeviceInput)
+	if FFlagExpChatDictation and isIgnoredAudioInput(device) then
+		return
+	end
+
 	local player = device.Player
 	if player then
 		playerDevices[player] = upsertDeviceList(playerDevices[player], device)
@@ -136,38 +130,26 @@ local function trackDevice(device: AudioDeviceInput)
 	local connections = {}
 	local oldPlayer = player
 	connections.onPlayerChanged = device:GetPropertyChangedSignal("Player"):Connect(function()
-		if FFlagFixNewPlayerCheck then
-			untrackDeviceForPlayer(device, oldPlayer)
-		else
-			untrackDevice(device)
-		end
+		untrackDeviceForPlayer(device, oldPlayer)
 		oldPlayer = device.Player
 		trackDevice(device)
 	end)
 
 	audioDevices[device] = connections :: AudioDeviceConnections
-	if FFlagFixNewPlayerCheck then
-		device.Destroying:Connect(function()
-			untrackDeviceForPlayer(device, device.Player)
-		end)
-	else
-		device.Destroying:Connect(function()
-			untrackDevice(device)
-		end)
-	end
+	device.Destroying:Connect(function()
+		untrackDeviceForPlayer(device, device.Player)
+	end)
 end
 
 local function createAudioDevice(forPlayer: Player)
-	if FFlagOnlyMakeInputsForVoiceUsers then
-		local ok, result = pcall(function()
-			return VoiceChatService:IsVoiceEnabledForUserIdAsync(forPlayer.UserId)
-		end)
-		if not ok then
-			log('Error getting voice enabled status: "', result, '"')
-		end
-		if not ok or not result then
-			return
-		end
+	local ok, result = pcall(function()
+		return VoiceChatService:IsVoiceEnabledForUserIdAsync(forPlayer.UserId)
+	end)
+	if not ok then
+		log('Error getting voice enabled status: "', result, '"')
+	end
+	if not ok or not result then
+		return
 	end
 	local input = Instance.new("AudioDeviceInput")
 	input.Player = forPlayer
@@ -215,9 +197,10 @@ if (VoiceChatService :: any).UseNewAudioApi then
 		SoundService.AudioInstanceAdded:Connect(function(inst)
 			if inst:IsA("AudioDeviceInput") then
 				local device = inst :: AudioDeviceInput
-				if FFlagSetNewDeviceToFalse then
-					device.Active = false
+				if FFlagExpChatDictation and isIgnoredAudioInput(device) then
+					return
 				end
+				device.Active = false
 				trackDevice(device)
 			end
 		end)
@@ -225,9 +208,10 @@ if (VoiceChatService :: any).UseNewAudioApi then
 		game.DescendantAdded:Connect(function(inst)
 			if inst:IsA("AudioDeviceInput") then
 				local device = inst :: AudioDeviceInput
-				if FFlagSetNewDeviceToFalse then
-					device.Active = false
+				if FFlagExpChatDictation and isIgnoredAudioInput(device) then
+					return
 				end
+				device.Active = false
 				trackDevice(device)
 			end
 		end)
@@ -236,9 +220,10 @@ if (VoiceChatService :: any).UseNewAudioApi then
 	for _, inst in SoundService:GetAudioInstances() do
 		if inst:IsA("AudioDeviceInput") then
 			local device = inst :: AudioDeviceInput
-			if FFlagSetNewDeviceToFalse then
-				device.Active = false
+			if FFlagExpChatDictation and isIgnoredAudioInput(device) then
+				continue
 			end
+			device.Active = false
 			trackDevice(device)
 		end
 	end
@@ -256,48 +241,3 @@ if (VoiceChatService :: any).UseNewAudioApi then
 	end)
 end
 
-if FFlagSendLikelySpeakingUsers then
-	-- We use an unreliable event here because it isn't a big deal if a user doesn't see the latest likely speaking users
-	local SendLikelySpeakingUsers = Instance.new("UnreliableRemoteEvent")
-	SendLikelySpeakingUsers.Name = "SendLikelySpeakingUsers"
-	SendLikelySpeakingUsers.Parent = RobloxReplicatedStorage
-	local likelySpeakingPlayers: { [number]: boolean } = {}
-	local canPollLikelySpeaking: { [number]: boolean } = {}
-	log("Setting up likely speaking users")
-	Players.PlayerAdded:Connect(function(player)
-		local ok, result = pcall(function()
-			return VoiceChatService:IsVoiceEnabledForUserIdAsync(player.UserId)
-		end)
-		canPollLikelySpeaking[player.UserId] = true
-		if ok and result then
-			log("Sending likely speaking user for ", player.Name)
-			likelySpeakingPlayers[player.UserId] = true
-			-- Is there a way to lower priority on this?
-			SendLikelySpeakingUsers:FireAllClients(likelySpeakingPlayers)
-		elseif not ok then
-			log("Error getting voice enabled status: ", result, " for ", player.Name)
-		end
-	end)
-	Players.PlayerRemoving:Connect(function(player)
-		-- We don't need to send any events here. This is only to stop likelySpeakingPlayers from growing excessively large
-		likelySpeakingPlayers[player.UserId] = nil
-		canPollLikelySpeaking[player.UserId] = nil
-	end)
-
-	if FFlagReceiveLikelySpeakingUsersEvent then
-		-- This allows clients to poll for LikelySpeakingUsers
-		log("Setting Up ReceiveLikelySpeakingUsers")
-		local ReceiveLikelySpeakingUsers = Instance.new("RemoteEvent")
-		ReceiveLikelySpeakingUsers.Name = "ReceiveLikelySpeakingUsers"
-		ReceiveLikelySpeakingUsers.Parent = RobloxReplicatedStorage
-		ReceiveLikelySpeakingUsers.OnServerEvent:Connect(function(player)
-			log("Got Ping Request from ", player.Name)
-			-- Players can only call this once per session
-			if canPollLikelySpeaking[player.UserId] then
-				canPollLikelySpeaking[player.UserId] = nil
-				SendLikelySpeakingUsers:FireClient(player, likelySpeakingPlayers)
-				log("Sending likely speaking users to ", player.Name)
-			end
-		end)
-	end
-end

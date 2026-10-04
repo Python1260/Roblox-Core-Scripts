@@ -2,14 +2,11 @@ local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 local Dash = require(Packages.Dash)
 
-local ColorMode = require(Foundation.Enums.ColorMode)
-type ColorMode = ColorMode.ColorMode
+local ColorNamespace = require(Foundation.Enums.ColorNamespace)
+type ColorNamespace = ColorNamespace.ColorNamespace
 
 local InputSize = require(Foundation.Enums.InputSize)
 type InputSize = InputSize.InputSize
-
-local ButtonVariant = require(Foundation.Enums.ButtonVariant)
-type ButtonVariant = ButtonVariant.ButtonVariant
 
 local Types = require(Foundation.Components.Types)
 type ColorStyleValue = Types.ColorStyleValue
@@ -34,9 +31,9 @@ local getSharedVariants = require(Foundation.Components.Button.getSharedVariants
 type CloseAffordanceVariantProps = {
 	container: {
 		tag: string,
-		size: UDim2,
+		size: UDim2?,
 		radius: number,
-		padding: UDim,
+		padding: UDim?,
 		stateLayer: StateLayer?,
 	},
 	content: {
@@ -54,81 +51,106 @@ local variantsMap = function(tokens: Tokens)
 
 	local sharedVariants = getSharedVariants(tokens)
 
-	local sizes: { [InputSize]: VariantProps } = {
-		[InputSize.XSmall] = {
-			container = {
-				size = UDim2.fromOffset(
-					sharedVariants.sizes[InputSize.XSmall].container.height,
-					sharedVariants.sizes[InputSize.XSmall].container.height
-				),
-				padding = UDim.new(0, tokens.Size.Size_100),
+	local sizes: { [boolean]: { [InputSize]: VariantProps } } = {
+		[true] = {
+			[InputSize.XSmall] = {
+				container = {
+					size = UDim2.fromOffset(
+						sharedVariants.sizes[InputSize.XSmall].container.height,
+						sharedVariants.sizes[InputSize.XSmall].container.height
+					),
+					padding = UDim.new(0, tokens.Size.Size_100),
+				},
+				content = {
+					iconSize = IconSize.Small,
+				},
 			},
-			content = {
-				iconSize = IconSize.Small,
+			[InputSize.Small] = {
+				container = {
+					size = UDim2.fromOffset(
+						sharedVariants.sizes[InputSize.Small].container.height,
+						sharedVariants.sizes[InputSize.Small].container.height
+					),
+					padding = UDim.new(0, tokens.Size.Size_150),
+				},
+				content = {
+					iconSize = IconSize.Medium,
+				},
+			},
+			[InputSize.Medium] = {
+				container = {
+					size = UDim2.fromOffset(
+						sharedVariants.sizes[InputSize.Medium].container.height,
+						sharedVariants.sizes[InputSize.Medium].container.height
+					),
+					padding = UDim.new(0, tokens.Size.Size_200),
+				},
+				content = {
+					iconSize = IconSize.Large,
+				},
 			},
 		},
-		[InputSize.Small] = {
-			container = {
-				size = UDim2.fromOffset(
-					sharedVariants.sizes[InputSize.Small].container.height,
-					sharedVariants.sizes[InputSize.Small].container.height
-				),
-				padding = UDim.new(0, tokens.Size.Size_150),
-			},
-			content = {
-				iconSize = IconSize.Medium,
-			},
-		},
-		[InputSize.Medium] = {
-			container = {
-				size = UDim2.fromOffset(
-					sharedVariants.sizes[InputSize.Medium].container.height,
-					sharedVariants.sizes[InputSize.Medium].container.height
-				),
-				padding = UDim.new(0, tokens.Size.Size_200),
-			},
-			content = {
-				iconSize = IconSize.Large,
-			},
+		[false] = {
+			[InputSize.XSmall] = { content = { iconSize = IconSize.XSmall } },
+			[InputSize.Small] = { content = { iconSize = IconSize.Small } },
+			[InputSize.Medium] = { content = { iconSize = IconSize.Large } },
 		},
 	}
 
-	local types: { [CloseAffordanceVariant]: { [ColorMode]: VariantProps } } = {
-		[CloseAffordanceVariant.OverMedia] = Dash.map(ColorMode, function(_)
+	local types: { [CloseAffordanceVariant]: { [ColorNamespace]: VariantProps } } = {
+		[CloseAffordanceVariant.OverMedia] = Dash.map(ColorNamespace, function()
 			return {
-				container = {
-					radius = tokens.Radius.Circle,
-					tag = "bg-over-media-100",
-				},
+				container = { tag = "bg-over-media-100" },
 				content = { style = tokens.Color.Content.Emphasis },
 			}
 		end),
-		[CloseAffordanceVariant.Utility] = Dash.map(ColorMode, function(colorMode: ColorMode)
+		[CloseAffordanceVariant.Utility] = Dash.map(ColorNamespace, function(colorNamespace: ColorNamespace)
 			return {
 				container = {
-					radius = tokens.Radius.Medium,
 					stateLayer = {
-						mode = Constants.COLOR_MODE_TO_STATE_LAYER_MODE[false][colorMode],
+						mode = Constants.COLOR_NAMESPACE_TO_STATE_LAYER_MODE[false][colorNamespace],
 					},
 				},
-				content = { style = tokens[colorMode].Content.Emphasis },
+				content = { style = tokens[colorNamespace].Content.Emphasis },
 			}
 		end),
 	}
 
-	return { common = common, sizes = sizes, types = types }
+	local padding: { [boolean]: VariantProps } = {
+		[true] = { container = { radius = tokens.Radius.Medium } },
+		[false] = { container = { radius = 0 } },
+	}
+
+	local circular: { [boolean]: VariantProps } = {
+		[true] = { container = { radius = tokens.Radius.Circle } },
+		[false] = {},
+	}
+
+	return {
+		common = common,
+		types = types,
+		sizes = sizes,
+		padding = padding,
+		circular = circular,
+	}
 end
 
 return function(
 	tokens: Tokens,
 	size: InputSize,
 	variant: CloseAffordanceVariant,
-	colorMode: ColorMode?
+	colorNamespace: ColorNamespace?,
+	hasPadding: boolean,
+	isCircular: boolean
 ): CloseAffordanceVariantProps
 	local variants = VariantsContext.useVariants("CloseAffordance", variantsMap, tokens)
+	local isShapeCircular = variant == CloseAffordanceVariant.OverMedia or isCircular
+
 	return composeStyleVariant(
 		variants.common,
-		variants.sizes[size],
-		variants.types[variant][colorMode or ColorMode.Color]
+		variants.types[variant][colorNamespace or ColorNamespace.Color],
+		variants.sizes[hasPadding][size],
+		variants.padding[hasPadding],
+		variants.circular[isShapeCircular]
 	)
 end

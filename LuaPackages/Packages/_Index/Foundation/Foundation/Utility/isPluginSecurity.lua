@@ -1,12 +1,13 @@
 local Foundation = script:FindFirstAncestor("Foundation")
-local CoreGui = require(Foundation.Utility.Wrappers).Services.CoreGui
-
-local success, _ = pcall(function()
-	local _ = CoreGui.Name
-end)
+local Wrappers = require(Foundation.Utility.Wrappers)
 
 local function isPluginSecurity(): boolean
-	return success
+	local coreGui = Wrappers.Services.CoreGui
+	local childAccessSuccess, _ = pcall(function()
+		local _ = coreGui:GetChildren()
+	end)
+
+	return childAccessSuccess
 end
 
 return isPluginSecurity

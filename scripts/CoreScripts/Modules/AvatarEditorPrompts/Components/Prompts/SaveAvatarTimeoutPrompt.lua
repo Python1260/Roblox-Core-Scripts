@@ -32,9 +32,15 @@ local function SaveAvatarTimeoutPrompt()
 		dispatch(CloseOpenPromptThunk)
 	end, { dispatch } :: { any })
 
-	local ruleKey = if details then labelAbuseTypeMapping[details.labelTranslationKey] else nil
+	local abuseTypeTranslationKey: string?
+	if details and labelAbuseTypeMapping then
+		local mapped = labelAbuseTypeMapping[details.labelTranslationKey]
+		abuseTypeTranslationKey = if mapped then mapped else "Feature.NotApproved.Label.AbuseType.Other"
+	else
+		abuseTypeTranslationKey = "Feature.NotApproved.Label.AbuseType.Other"
+	end
 	local localizedRule = useLocalization({
-		rule = ruleKey,
+		rule = abuseTypeTranslationKey,
 	})
 	local localized = useLocalization({
 		titleText = "Feature.Timeout.Prompt.SaveTitleText",

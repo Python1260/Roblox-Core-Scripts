@@ -10,7 +10,7 @@ local INPUT_TO_TEXT: { [InputSize]: InputLabelSize } = {
 	[InputSize.Large] = InputLabelSize.Large,
 	[InputSize.Medium] = InputLabelSize.Medium,
 	[InputSize.Small] = InputLabelSize.Small,
-	[InputSize.XSmall] = InputLabelSize.Small,
+	[InputSize.XSmall] = InputLabelSize.XSmall,
 }
 
 --[[

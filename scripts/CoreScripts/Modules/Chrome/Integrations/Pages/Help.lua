@@ -1,0 +1,29 @@
+local Chrome = script:FindFirstAncestor("Chrome")
+local CorePackages = game:GetService("CorePackages")
+
+local ChromeService = require(Chrome.Service)
+local CommonIcon = require(Chrome.Integrations.CommonIcon)
+
+local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
+local SideSheetPlacement = ChromePackage.Enums.SideSheetPlacement
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
+
+local InGameMenuIntegrationUtils = require(script.Parent.InGameMenuIntegrationUtils)
+
+local pageOpenSignal = InGameMenuIntegrationUtils.createPageOpenSignal("HelpPage")
+
+return ChromeService:register({
+	initialAvailability = ChromeService.AvailabilitySignal.Available,
+	id = "help",
+	label = "CoreScripts.Feedback.Help.MainHeader",
+	sideSheetPlacement = if isPioneerLaunch() then SideSheetPlacement.AboveFold else SideSheetPlacement.BelowFold,
+	activated = function(self)
+		InGameMenuIntegrationUtils.toggleIGMPage("HelpPage", pageOpenSignal:get())
+	end,
+	isActivated = pageOpenSignal,
+	components = {
+		Icon = function(props)
+			return CommonIcon("CircleQuestion", nil, pageOpenSignal)
+		end,
+	},
+})

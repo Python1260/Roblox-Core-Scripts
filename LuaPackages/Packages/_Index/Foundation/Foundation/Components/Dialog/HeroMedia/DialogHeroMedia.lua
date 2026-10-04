@@ -11,7 +11,6 @@ local View = require(Foundation.Components.View)
 local DialogSize = require(Foundation.Enums.DialogSize)
 type DialogSize = DialogSize.DialogSize
 
-local Gradient = require(Foundation.Components.Gradient)
 local useDialog = require(script.Parent.Parent.useDialog)
 local withDefaults = require(Foundation.Utility.withDefaults)
 local useDialogVariants = require(script.Parent.Parent.useDialogVariants).useDialogVariants
@@ -19,6 +18,7 @@ local useDialogVariants = require(script.Parent.Parent.useDialogVariants).useDia
 type Bindable<T> = Types.Bindable<T>
 type AspectRatio = Types.AspectRatio
 type ColorStyle = Types.ColorStyle
+type ScaleType = Bindable<Enum.ScaleType>
 
 export type DialogHeroMediaProps = {
 	media: Bindable<string>,
@@ -26,6 +26,7 @@ export type DialogHeroMediaProps = {
 	backgroundStyle: ColorStyle?,
 	height: UDim?,
 	aspectRatio: AspectRatio?,
+	scaleType: ScaleType?,
 }
 
 local defaultProps = {
@@ -52,33 +53,16 @@ local function DialogHeroMedia(mediaProps: DialogHeroMediaProps)
 		LayoutOrder = Constants.MIN_LAYOUT_ORDER,
 		testId = `{dialogContext.testId}--hero-media`,
 	}, {
-		RoundedCorners = React.createElement(Image, {
-			Image = props.media,
-			imageStyle = props.mediaStyle,
-			backgroundStyle = props.backgroundStyle,
-			aspectRatio = props.aspectRatio,
-			Position = UDim2.fromOffset(-offsetX, 0),
-			Size = UDim2.new(1, offsetX * 2, props.height.Scale, props.height.Offset),
-			ZIndex = 0,
-		}, {
-			TransparencyGradient = React.createElement(Gradient, {
-				fillDirection = Enum.FillDirection.Vertical,
-				top = false,
-			}),
-		}),
 		Image = React.createElement(Image, {
 			Image = props.media,
 			imageStyle = props.mediaStyle,
 			backgroundStyle = props.backgroundStyle,
 			tag = variants.heroMedia.tag,
 			aspectRatio = props.aspectRatio,
+			ScaleType = props.scaleType,
+			testId = `{dialogContext.testId}--hero-media-image`,
 			Position = UDim2.fromOffset(-offsetX, 0),
 			Size = UDim2.new(1, offsetX * 2, props.height.Scale, props.height.Offset),
-		}, {
-			TransparencyGradient = React.createElement(Gradient, {
-				fillDirection = Enum.FillDirection.Vertical,
-				top = true,
-			}),
 		}),
 	})
 end

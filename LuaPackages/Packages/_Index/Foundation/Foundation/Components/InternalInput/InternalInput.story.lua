@@ -3,7 +3,6 @@ local Packages = Foundation.Parent
 local Dash = require(Packages.Dash)
 local React = require(Packages.React)
 
-local Flags = require(Foundation.Utility.Flags)
 local Text = require(Foundation.Components.Text)
 local View = require(Foundation.Components.View)
 local useTokens = require(Foundation.Providers.Style.useTokens)
@@ -33,20 +32,14 @@ local function Story(props)
 			label = {
 				text = controls.labelText,
 				position = controls.labelPosition,
+				hint = controls.hintText,
 			},
-			customVariantProps = if Flags.FoundationToggleVisualUpdate
-				then {
-					tag = "row align-x-center align-y-center gap-small",
-					size = UDim2.fromOffset(200, 50),
-					cursorRadius = UDim.new(0, 8),
-					colors = { checkedStyle = tokens.Color.System[controls.checkedStyle] },
-				}
-				else {
-					tag = "row align-x-center align-y-center gap-small",
-					size = UDim2.fromOffset(200, 50),
-					cursorRadius = UDim.new(0, 8),
-					checkedStyle = tokens.Color.System[controls.checkedStyle],
-				},
+			customVariantProps = {
+				tag = "row align-x-center align-y-center gap-small",
+				size = UDim2.fromOffset(200, 50),
+				cursorRadius = UDim.new(0, 8),
+				colors = { checkedStyle = tokens.Color.System[controls.checkedStyle] },
+			},
 			LayoutOrder = 1,
 		}, {
 			Content = if isChecked
@@ -61,11 +54,17 @@ end
 
 return {
 	summary = "Internal Input Component",
-	story = Story,
+	stories = {
+		{
+			name = "Playground",
+			story = Story,
+		},
+	},
 	controls = {
 		isDisabled = false,
 		size = Dash.values(InputSize),
 		labelText = "Input Label",
+		hintText = "Hint text",
 		labelPosition = {
 			Enum.HorizontalAlignment.Right,
 			Enum.HorizontalAlignment.Left,

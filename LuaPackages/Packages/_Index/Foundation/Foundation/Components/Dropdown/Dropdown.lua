@@ -11,9 +11,11 @@ local withCommonProps = require(Foundation.Utility.withCommonProps)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
 local InputSize = require(Foundation.Enums.InputSize)
+local InputVariant = require(Foundation.Enums.InputVariant)
 local PopoverAlign = require(Foundation.Enums.PopoverAlign)
 local PopoverSide = require(Foundation.Enums.PopoverSide)
 local Radius = require(Foundation.Enums.Radius)
+type InputVariant = InputVariant.InputVariant
 type InputSize = InputSize.InputSize
 type Radius = Radius.Radius
 
@@ -25,9 +27,13 @@ type OnItemActivated = Types.OnItemActivated
 type BaseMenuItem = BaseMenu.BaseMenuItem
 type BaseMenuItems<Item> = BaseMenu.BaseMenuItems<Item>
 type BaseMenuItemGroup<Item> = BaseMenu.BaseMenuItemGroup<Item>
+export type LeadingAccessory = BaseMenu.LeadingAccessory
+export type TrailingAccessory = BaseMenu.TrailingAccessory
 export type DropdownItem = {
 	id: ItemId,
 	icon: string?,
+	leading: (string | LeadingAccessory)?,
+	trailing: TrailingAccessory?,
 	isDisabled: boolean?,
 	isChecked: boolean?,
 	text: string,
@@ -44,6 +50,8 @@ export type DropdownProps = {
 	onItemChanged: OnItemActivated,
 	-- Whether the dropdown is in an error state
 	hasError: boolean?,
+	-- Style variant of the dropdown
+	variant: InputVariant?,
 	-- Whether the dropdown is disabled
 	isDisabled: boolean?,
 	-- Width of the component
@@ -54,12 +62,16 @@ export type DropdownProps = {
 	size: InputSize?,
 	-- Maximum height after which the menu starts scrolling
 	maxHeight: number?,
-	-- Selection behavior
+	-- Ref to the open menu's scrolling frame. Only resolves while the menu is open and
+	-- scrollable; lets callers scroll it, e.g. to the selection.
+	scrollingFrameRef: React.Ref<ScrollingFrame>?,
+	-- Selection behavior applied to the open menu's popover surface (focus trap configuration).
 	selection: Types.Selection?,
 	selectionGroup: Types.Bindable<boolean>? | Types.SelectionGroup?,
-} & Types.CommonProps
+} & Types.SelectionProps & Types.CommonProps
 
 local defaultProps = {
+	variant = InputVariant.Standard,
 	width = UDim.new(0, 400),
 	size = InputSize.Medium,
 	testId = "--foundation-dropdown",
@@ -71,6 +83,15 @@ local function Dropdown(dropdownProps: DropdownProps, ref: React.Ref<GuiObject>?
 	local props = withDefaults(dropdownProps, defaultProps)
 	local isMenuOpen, setIsMenuOpen = React.useState(false)
 	local inputRef = React.useRef(nil :: GuiObject?)
+	local inputInstance, setInputInstance = React.useState(nil :: GuiObject?)
+	local inputRefCallback = React.useCallback(function(instance: GuiObject?)
+		inputRef.current = instance
+		setInputInstance(instance)
+	end, {})
+	React.useImperativeHandle(ref, function()
+		return inputInstance
+	end, { inputInstance })
+
 	-- This may cause blinking for UDim.new(1, 0) size if the menu is open from the start. Shouldn't be the case?
 	local absoluteWidth, setAbsoluteWidth = React.useBinding(props.width)
 
@@ -100,11 +121,11 @@ local function Dropdown(dropdownProps: DropdownProps, ref: React.Ref<GuiObject>?
 
 	return React.createElement(Popover.Root, {
 		isOpen = isMenuOpen,
-		ref = ref,
 	}, {
 		DropdownControl = React.createElement(
 			DropdownControl,
 			withCommonProps(props, {
+				variant = props.variant,
 				onActivated = toggleIsMenuOpen,
 				hasError = props.hasError,
 				isDisabled = props.isDisabled,
@@ -115,7 +136,12 @@ local function Dropdown(dropdownProps: DropdownProps, ref: React.Ref<GuiObject>?
 				size = props.size,
 				label = props.label,
 				hint = props.hint,
-				inputRef = inputRef,
+				inputRef = inputRefCallback,
+				Selectable = props.Selectable,
+				NextSelectionUp = props.NextSelectionUp,
+				NextSelectionDown = props.NextSelectionDown,
+				NextSelectionLeft = props.NextSelectionLeft,
+				NextSelectionRight = props.NextSelectionRight,
 			})
 		),
 		-- Use anchorRef prop instead of children so we get the correct position
@@ -142,6 +168,7 @@ local function Dropdown(dropdownProps: DropdownProps, ref: React.Ref<GuiObject>?
 				maxHeight = props.maxHeight,
 				onActivated = onActivated,
 				radius = Radius.Medium,
+				scrollingFrameRef = props.scrollingFrameRef,
 				testId = `{props.testId}--menu`,
 			})
 		),

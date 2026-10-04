@@ -386,7 +386,8 @@ local function onFaceControlsAdded(player, faceControls)
 
 	if playerFaceControls[player.UserId] then
 		-- if FaceControls is found, enable A2C (only if mic is on)
-		if VoiceChatServiceManager and not VoiceChatServiceManager.localMuted then
+		local isMicOn = VoiceChatServiceManager and VoiceChatServiceManager.localMuted == false
+		if isMicOn then
 			playerTrace("FaceControls found -> enabling A2C (Mic is ON)...", player)
 			FaceAnimatorService.AudioAnimationEnabled = true
 		else

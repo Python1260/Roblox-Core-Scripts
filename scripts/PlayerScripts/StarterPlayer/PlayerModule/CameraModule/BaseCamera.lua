@@ -17,27 +17,11 @@ local CameraToggleStateController = require(script.Parent:WaitForChild("CameraTo
 local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
 local CameraUI = require(script.Parent:WaitForChild("CameraUI"))
 
-local FFlagUserPlayerScriptsCameraInputNoBindables = FlagUtil.getUserFlag("UserPlayerScriptsCameraInputNoBindables")
-local FFlagUserPlayerScriptsCameraRotationUsesIAS = FlagUtil.getUserFlag("UserPlayerScriptsCameraRotationUsesIAS")
-
-local inputContexts
-local character
-local cameraGamepadZoom
-if FFlagUserPlayerScriptsCameraInputNoBindables then
-	inputContexts = script.Parent.Parent:WaitForChild("InputContexts")
-	character = inputContexts:WaitForChild("Character")
-	cameraGamepadZoom = character:WaitForChild("CameraGamepadZoom") :: InputAction
-end
+local inputContexts = script.Parent.Parent:WaitForChild("InputContexts")
+local cameraContext = inputContexts:WaitForChild("CameraContext")
+local cameraGamepadZoomAction = cameraContext:WaitForChild("CameraGamepadZoomAction") :: InputAction
 
 local player = Players.LocalPlayer
-
-local FFlagUserFixGamepadMaxZoom
-do
-	local success, result = pcall(function()
-		return UserSettings():IsUserFeatureEnabled("UserFixGamepadMaxZoom")
-	end)
-	FFlagUserFixGamepadMaxZoom = success and result
-end
 
 local UNIT_Z = Vector3.new(0,0,1)
 local X1_Y0_Z1 = Vector3.new(1,0,1)	--Note: not a unit vector, used for projecting onto XZ plane
@@ -135,13 +119,9 @@ function BaseCamera.new()
 	self.cameraFrozen = false
 	self.subjectStateChangedConn = nil
 
-	if FFlagUserPlayerScriptsCameraInputNoBindables then
-		self.gamepadZoomPressConnection = cameraGamepadZoom.Pressed:Connect(function()
-			self:GamepadZoomPress()
-		end)
-	else
-		self.gamepadZoomPressConnection = nil
-	end
+	self.gamepadZoomPressConnection = cameraGamepadZoomAction.Pressed:Connect(function()
+		self:GamepadZoomPress()
+	end)
 
 	-- Mouse locked formerly known as shift lock mode
 	self.mouseLockOffset = ZERO_VECTOR3
@@ -158,15 +138,7 @@ function BaseCamera:GetModuleName()
 end
 
 local function onSelectedObjectChanged()
-	if FFlagUserPlayerScriptsCameraInputNoBindables then
-		cameraGamepadZoom.Enabled = not GuiService.SelectedObject
-	else
-		if GuiService.SelectedObject then
-			CameraInput.gamepadZoomPress.Enabled = false
-		else
-			CameraInput.gamepadZoomPress.Enabled = true
-		end
-	end
+	cameraGamepadZoomAction.Enabled = not GuiService.SelectedObject
 end
 
 function BaseCamera:_setUpConfigurations()
@@ -488,16 +460,8 @@ function BaseCamera:GamepadZoomPress()
 		
 		if zoom < player.CameraMinZoomDistance then
 			zoom = player.CameraMinZoomDistance
-			if FFlagUserFixGamepadMaxZoom then
-				-- no more zoom levels to check, all the remaining ones
-				-- are < min
-				if max == zoom then
-					break
-				end
-			end
-		end
-
-		if not FFlagUserFixGamepadMaxZoom then
+			-- no more zoom levels to check, all the remaining ones
+			-- are < min
 			if max == zoom then
 				break
 			end
@@ -530,13 +494,7 @@ function BaseCamera:OnEnabledChanged()
 
 		CameraInput.setInputEnabled(true)
 
-		if FFlagUserPlayerScriptsCameraInputNoBindables then
-			cameraGamepadZoom.Enabled = true
-		else
-			self.gamepadZoomPressConnection = CameraInput.gamepadZoomPress:Connect(function()
-				self:GamepadZoomPress()
-			end)
-		end
+		cameraGamepadZoomAction.Enabled = true
 
 		if player.CameraMode == Enum.CameraMode.LockFirstPerson then
 			self.currentSubjectDistance = 0.5
@@ -555,14 +513,7 @@ function BaseCamera:OnEnabledChanged()
 
 		CameraInput.setInputEnabled(false)
 
-		if FFlagUserPlayerScriptsCameraInputNoBindables then
-			cameraGamepadZoom.Enabled = false
-		else
-			if self.gamepadZoomPressConnection then
-				self.gamepadZoomPressConnection:Disconnect()
-				self.gamepadZoomPressConnection = nil
-			end
-		end
+		cameraGamepadZoomAction.Enabled = false
 		-- Clean up additional event listeners and reset a bunch of properties
 		self:Cleanup()
 	end
@@ -607,9 +558,7 @@ function BaseCamera:UpdateMouseBehavior()
 		else
 			CameraUtils.restoreRotationType()
 
-			local rotationActivated = if FFlagUserPlayerScriptsCameraRotationUsesIAS
-				then CameraInput.getPanActivated()
-				else CameraInput.getRotationActivated()
+			local rotationActivated = CameraInput.getPanActivated()
 			if rotationActivated then
 				CameraUtils.setMouseBehaviorOverride(Enum.MouseBehavior.LockCurrentPosition)
 			else

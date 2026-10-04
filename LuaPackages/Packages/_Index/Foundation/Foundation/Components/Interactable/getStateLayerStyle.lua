@@ -5,14 +5,12 @@ local Types = require(Foundation.Components.Types)
 type Tokens = Tokens.Tokens
 type StateLayer = Types.StateLayer
 
-local ColorMode = require(Foundation.Enums.ColorMode)
-type ColorMode = ColorMode.ColorMode
+local ColorNamespace = require(Foundation.Enums.ColorNamespace)
+type ColorNamespace = ColorNamespace.ColorNamespace
 local StateLayerMode = require(Foundation.Enums.StateLayerMode)
 type StateLayerMode = StateLayerMode.StateLayerMode
 local ControlState = require(Foundation.Enums.ControlState)
 type ControlState = ControlState.ControlState
-
-local Flags = require(Foundation.Utility.Flags)
 
 function guiStateToStateLayer(guiState: ControlState): "Idle" | "Press" | "Hover"
 	if guiState == ControlState.Pressed then
@@ -28,29 +26,24 @@ end
 
 function stateLayerModeToTokenNamespace(mode: StateLayerMode?)
 	if mode == StateLayerMode.Default then
-		return ColorMode.Color
+		return ColorNamespace.Color
 	elseif mode == StateLayerMode.Inverse then
-		return ColorMode.Inverse
+		return ColorNamespace.Inverse
 	elseif mode == StateLayerMode.Light then
-		return ColorMode.LightMode
+		return ColorNamespace.LightMode
 	elseif mode == StateLayerMode.Dark then
-		return ColorMode.DarkMode
+		return ColorNamespace.DarkMode
 	end
 	-- Default to Color
-	return ColorMode.Color
+	return ColorNamespace.Color
 end
 
 local function getStateLayerStyle(
 	tokens: Tokens,
-	-- TODO: clean up with FFlagFoundationBindableStateLayer as "mode"
-	stateLayerOrMode: StateLayer? | StateLayerMode?,
+	mode: StateLayerMode?,
 	guiState: ControlState
 ): { Color3: Color3, Transparency: number }
-	local colorNamespace = stateLayerModeToTokenNamespace(
-		if Flags.FoundationBindableStateLayer
-			then stateLayerOrMode :: StateLayerMode?
-			else (stateLayerOrMode :: StateLayer?) and (stateLayerOrMode :: StateLayer).mode :: StateLayerMode?
-	)
+	local colorNamespace = stateLayerModeToTokenNamespace(mode)
 	local stateLayerState = guiStateToStateLayer(guiState)
 
 	local stateLayerStyle = (tokens[colorNamespace] :: typeof(tokens.Color)).State[stateLayerState]

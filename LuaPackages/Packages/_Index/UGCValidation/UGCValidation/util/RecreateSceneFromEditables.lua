@@ -7,8 +7,13 @@
 local root = script.Parent.Parent
 local Types = require(root.util.Types)
 local AssetService = game:GetService("AssetService")
-local getFFlagUGCValidationAddPBRToSharedData = require(root.flags.getFFlagUGCValidationAddPBRToSharedData)
+local ValidationEnums = require(root.validationSystem.ValidationEnums)
 local R15plusUtils = require(root.util.R15plusUtils)
+local RigBuilder = require(root.util.RigBuilder)
+local buildEmoteKeyframeSequenceFromCurveAnim = require(root.util.buildEmoteKeyframeSequenceFromCurveAnim)
+local getEngineFeatureEngineUGCValidateEmoteAnimationExport =
+	require(root.flags.getEngineFeatureEngineUGCValidateEmoteAnimationExport)
+local getFFlagUGCValidateAllowEmissives = require(root.flags.getFFlagUGCValidateAllowEmissives)
 
 local RecreateSceneFromEditables = {}
 
@@ -34,28 +39,29 @@ local function copyMeshPart(
 	-- Creates a new meshpart from the saved editable mesh, as our gltf upload path expects meshcontent to be editable
 	-- Need to copy over attachment points and facs
 	local newMeshPart = AssetService:CreateMeshPartAsync(Content.fromObject(meshData.editable))
-	if getFFlagUGCValidationAddPBRToSharedData() then
-		if editablePBRData and not editablePBRData.isPBR and editablePBRData.Texture then
-			newMeshPart.TextureContent = Content.fromObject(editablePBRData.Texture.editable)
-		elseif editablePBRData and editablePBRData.isPBR then
-			local surfaceAppearance = Instance.new("SurfaceAppearance")
-			if editablePBRData.ColorMap then
-				surfaceAppearance.ColorMapContent = Content.fromObject(editablePBRData.ColorMap.editable)
-			end
-			if editablePBRData.MetalnessMap then
-				surfaceAppearance.MetalnessMapContent = Content.fromObject(editablePBRData.MetalnessMap.editable)
-			end
-			if editablePBRData.NormalMap then
-				surfaceAppearance.NormalMapContent = Content.fromObject(editablePBRData.NormalMap.editable)
-			end
-			if editablePBRData.RoughnessMap then
-				surfaceAppearance.RoughnessMapContent = Content.fromObject(editablePBRData.RoughnessMap.editable)
-			end
-
-			surfaceAppearance.Parent = newMeshPart
+	if editablePBRData and not editablePBRData.isPBR and editablePBRData.Texture then
+		newMeshPart.TextureContent = Content.fromObject(editablePBRData.Texture.editable)
+	elseif editablePBRData and editablePBRData.isPBR then
+		local surfaceAppearance = Instance.new("SurfaceAppearance")
+		if editablePBRData.ColorMap then
+			surfaceAppearance.ColorMapContent = Content.fromObject(editablePBRData.ColorMap.editable)
 		end
-	elseif editablePBRData then
-		newMeshPart.TextureContent = Content.fromObject((editablePBRData :: any).editable)
+		if editablePBRData.MetalnessMap then
+			surfaceAppearance.MetalnessMapContent = Content.fromObject(editablePBRData.MetalnessMap.editable)
+		end
+		if editablePBRData.NormalMap then
+			surfaceAppearance.NormalMapContent = Content.fromObject(editablePBRData.NormalMap.editable)
+		end
+		if editablePBRData.RoughnessMap then
+			surfaceAppearance.RoughnessMapContent = Content.fromObject(editablePBRData.RoughnessMap.editable)
+		end
+		if getFFlagUGCValidateAllowEmissives() then
+			if editablePBRData.EmissiveMask then
+				surfaceAppearance.EmissiveMaskContent = Content.fromObject(editablePBRData.EmissiveMask.editable)
+			end
+		end
+
+		surfaceAppearance.Parent = newMeshPart
 	end
 
 	newMeshPart.Name = originalMeshPart.Name
@@ -102,7 +108,66 @@ local function copyMeshPart(
 	return newMeshPart
 end
 
+-- For R15+ emotes: create BoneInstances for animated joints that don't exist as
+-- BaseParts in the model. Walks the Pose hierarchy; a Pose whose name matches an
+-- existing BasePart is a standard R15 joint (recurse under it), otherwise it's an
+-- R15+ joint and we create a Bone parented to the last known body part. The C++
+-- exporter discovers these bones via visitDescendants and includes them in the export.
+local function addBonesFromPoses(pose: Instance, lastBodyPart: Instance, exportScene: Model)
+	for _, childPose in pose:GetChildren() do
+		if childPose:IsA("Pose") then
+			local jointName = childPose.Name
+			local existingPart = exportScene:FindFirstChild(jointName)
+			if existingPart and existingPart:IsA("BasePart") then
+				addBonesFromPoses(childPose, existingPart, exportScene)
+			else
+				local bone = Instance.new("Bone")
+				bone.Name = jointName
+				bone.Parent = lastBodyPart
+				addBonesFromPoses(childPose, bone, exportScene)
+			end
+		end
+	end
+end
+
+local function createEmoteExportScene(sharedData: Types.SharedData): Model
+	-- Use a default R15 character as the export scene directly. The visible
+	-- MeshParts trigger the GltfExporter bone-creation path (hasSkinnedChildren).
+	local exportScene = RigBuilder.createDefaultCharacter(false)
+
+	-- Build KeyframeSequence from CurveAnimation (preserves full joint hierarchy).
+	local keyframeSequence = nil
+	if sharedData.curveAnimations and #sharedData.curveAnimations > 0 then
+		keyframeSequence = buildEmoteKeyframeSequenceFromCurveAnim(sharedData.curveAnimations[1])
+	end
+
+	-- An emote upload is defined by its curve animation; a missing KeyframeSequence
+	-- here means the upstream data is malformed. Fail fast rather than silently
+	-- exporting an animation-less scene that fails confusingly downstream.
+	if not keyframeSequence then
+		error("Emote export requires a curve animation, but none was available")
+	end
+
+	keyframeSequence.Parent = exportScene
+
+	local keyframes = keyframeSequence:GetChildren()
+	local rootPart = exportScene:FindFirstChild("HumanoidRootPart")
+	if #keyframes > 0 and rootPart and rootPart:IsA("BasePart") then
+		addBonesFromPoses(keyframes[1], rootPart, exportScene)
+	end
+
+	exportScene:PivotTo(CFrame.new())
+	return exportScene
+end
+
 function RecreateSceneFromEditables.createModelForGltfExport(sharedData: Types.SharedData)
+	if
+		getEngineFeatureEngineUGCValidateEmoteAnimationExport()
+		and sharedData.uploadCategory == ValidationEnums.UploadCategory.EMOTE_ANIMATION
+	then
+		return createEmoteExportScene(sharedData)
+	end
+
 	local exportScene = Instance.new("Model")
 	local objects: { Instance } = sharedData.rootInstance:GetDescendants()
 	table.insert(objects, sharedData.rootInstance)
@@ -131,6 +196,10 @@ function RecreateSceneFromEditables.createModelForGltfExport(sharedData: Types.S
 		if innerCageData then
 			local cageMesh = createCagePart(sceneMeshPart, renderMeshData, innerCageData, "InnerCage")
 			cageMesh.Parent = exportScene
+		end
+
+		if sharedData.uploadCategory == ValidationEnums.UploadCategory.FULL_BODY then
+			sceneMeshPart.Name = `{meshName}_Geo`
 		end
 	end
 

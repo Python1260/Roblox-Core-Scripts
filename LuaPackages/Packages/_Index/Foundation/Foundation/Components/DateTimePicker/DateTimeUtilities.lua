@@ -1,12 +1,25 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 
-local Flags = require(Foundation.Utility.Flags)
 local LocalizationService = require(Foundation.Utility.Wrappers).Services.LocalizationService
 local Translator = require(Foundation.Utility.Localization.Translator)
 
-local FFlagFoundationDateTimePickerDSTFix = Flags.FFlagFoundationDateTimePickerDSTFix
 local DATE_COMPOSITE_TOKEN = "L"
 local TIME_COMPOSITE_TOKEN = "LT"
+
+export type DateRange = {
+	startDate: DateTime,
+	endDate: DateTime,
+}
+
+-- Roblox types ToLocalTime() as { any }; this is the typed boundary for calendar code.
+export type DateTimeLocalTime = {
+	Year: number,
+	Month: number,
+	Day: number,
+	Hour: number,
+	Minute: number,
+	Second: number,
+}
 
 local monthMap = {
 	[1] = Translator:FormatByKey("CommonUI.Controls.Label.January"),
@@ -46,6 +59,11 @@ local function getDaysInMonth(month: number, year: number): number
 	return daysInMonth[month]
 end
 
+-- Prefer this over dateTime:ToLocalTime() :: DateTimeLocalTime so the { any } cast stays in one place.
+local function toLocalTime(dateTime: DateTime): DateTimeLocalTime
+	return dateTime:ToLocalTime() :: DateTimeLocalTime
+end
+
 -- Utility function to get the day of the week for the first day of a month (0 for Sunday, 6 for Saturday)
 local function getFirstDayOfWeek(month: number, year: number): number
 	local dateTime = DateTime.fromLocalTime(year, month, 1)
@@ -72,24 +90,18 @@ end
 
 -- Helper function to round a DateTime to the start of the day
 local function roundToStartOfDay(dateTime: DateTime): number
-	local localTime = dateTime:ToLocalTime()
+	local localTime = toLocalTime(dateTime)
 	return DateTime.fromLocalTime(localTime.Year, localTime.Month, localTime.Day).UnixTimestamp
 end
 
 -- Rounds a DateTime object down to the nearest minute
 local function roundDownToNearestMinute(dateTime: DateTime): DateTime
-	local localTime = dateTime:ToLocalTime()
+	local localTime = toLocalTime(dateTime)
 	return DateTime.fromLocalTime(localTime.Year, localTime.Month, localTime.Day, localTime.Hour, localTime.Minute, 0)
 end
 
 -- Check if a date is within range
-local function isDateWithinRange(
-	date: DateTime,
-	selectableDateRange: {
-		startDate: DateTime,
-		endDate: DateTime,
-	}
-): boolean
+local function isDateWithinRange(date: DateTime, selectableDateRange: DateRange): boolean
 	-- Round all timestamps to the start of the day for date-only comparison
 	local startTimestamp = roundToStartOfDay(selectableDateRange.startDate)
 	local endTimestamp = roundToStartOfDay(selectableDateRange.endDate)
@@ -202,12 +214,10 @@ local function getDateTimeFromText(dateTimeStr: string): DateTime?
 			-- https://devforum.roblox.com/t/datetime-localtime-inconsistency/3548279/2
 			-- https://roblox.slack.com/archives/C04NQD0Q0M6/p1761089479708459
 			-- https://roblox.atlassian.net/browse/CLI-147909
-			if FFlagFoundationDateTimePickerDSTFix then
-				local isDst = os.date("*t", dateTime.UnixTimestamp).isdst
-				if isDst then
-					local unixTimestamp = dateTime.UnixTimestamp
-					dateTime = DateTime.fromUnixTimestamp(unixTimestamp - 3600)
-				end
+			local isDst = os.date("*t", dateTime.UnixTimestamp).isdst
+			if isDst then
+				local unixTimestamp = dateTime.UnixTimestamp
+				dateTime = DateTime.fromUnixTimestamp(unixTimestamp - 3600)
 			end
 			return dateTime
 		end
@@ -242,18 +252,17 @@ local function formatLocalTime(dateTime: DateTime, includeTime: boolean?)
 end
 
 return {
-	DATE_COMPOSITE_TOKEN = DATE_COMPOSITE_TOKEN,
-	TIME_COMPOSITE_TOKEN = TIME_COMPOSITE_TOKEN,
 	formatLocalTime = formatLocalTime,
+	getDateTimeFromText = getDateTimeFromText,
 	getDaysInMonth = getDaysInMonth,
 	getFirstDayOfWeek = getFirstDayOfWeek,
 	getLastDayOfWeek = getLastDayOfWeek,
 	getNextMonthInfo = getNextMonthInfo,
 	getPrevMonthInfo = getPrevMonthInfo,
 	isDateWithinRange = isDateWithinRange,
-	getDateTimeFromText = getDateTimeFromText,
 	monthMap = monthMap,
 	roundDownToNearestMinute = roundDownToNearestMinute,
 	roundToStartOfDay = roundToStartOfDay,
+	toLocalTime = toLocalTime,
 	weekdays = weekdays,
 }

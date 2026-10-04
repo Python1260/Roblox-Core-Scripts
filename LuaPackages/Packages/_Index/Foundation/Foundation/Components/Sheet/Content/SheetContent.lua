@@ -1,9 +1,12 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
+local Dash = require(Packages.Dash)
 local React = require(Packages.React)
+local ReactUtils = require(Packages.ReactUtils)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 
-local Flags = require(Foundation.Utility.Flags)
+local Constants = require(Foundation.Constants)
+local StateLayerAffordance = require(Foundation.Enums.StateLayerAffordance)
 
 local Sheet = script:FindFirstAncestor("Sheet")
 local SheetContext = require(Sheet.SheetContext)
@@ -14,22 +17,29 @@ local Types = require(Foundation.Components.Types)
 local View = require(Foundation.Components.View)
 local isScrollingFrameOverflowingY = require(Foundation.Utility.isScrollingFrameOverflowingY)
 
+local useComposedRef = ReactUtils.useComposedRef
+
 export type SheetContentProps = {
+	isContentFullBleed: boolean?,
 	scrollingFrameRef: React.Ref<ScrollingFrame>?,
 	children: React.ReactNode,
 } & Types.SelectionProps
 
+-- selene: allow(high_cyclomatic_complexity)
 local function SheetContent(props: SheetContentProps, ref: React.Ref<GuiObject>?)
 	local tokens = useTokens()
 	local sheet = React.useContext(SheetContext)
 
 	local innerScrollingEnabled = sheet.innerScrollingEnabled
 	local setInnerScrollY = sheet.setInnerScrollY
+	local innerScrollingRef = sheet.innerScrollingRef
 	local actionsHeight = sheet.actionsHeight
 	local sheetContentHeight = sheet.sheetContentHeight
 	local setHasActionsDivider = sheet.setHasActionsDivider
 	local bottomPadding = sheet.bottomPadding
 	local hasHeader = sheet.hasHeader
+	local hasFullBleed = sheet.hasFullBleed
+	local fullBleedHeight = sheet.fullBleedHeight
 	local sheetType = sheet.sheetType
 	local testId = sheet.testId
 	assert(
@@ -43,10 +53,7 @@ local function SheetContent(props: SheetContentProps, ref: React.Ref<GuiObject>?
 		"SheetContent must be used within a Sheet"
 	)
 
-	local hasOverflowY, setHasOverflowY
-	if Flags.FoundationSheetContentSelectable then
-		hasOverflowY, setHasOverflowY = React.useBinding(false)
-	end
+	local hasOverflowY, setHasOverflowY = React.useBinding(false)
 
 	local updateScrollState = React.useCallback(function(rbx: ScrollingFrame)
 		setInnerScrollY(rbx.CanvasPosition.Y)
@@ -54,61 +61,75 @@ local function SheetContent(props: SheetContentProps, ref: React.Ref<GuiObject>?
 		local isOverflowing = isScrollingFrameOverflowingY(rbx, 1)
 
 		setHasActionsDivider(isOverflowing)
-
-		if Flags.FoundationSheetContentSelectable then
-			setHasOverflowY(isOverflowing)
-		end
+		setHasOverflowY(isOverflowing)
 	end, { setHasActionsDivider, setInnerScrollY } :: { unknown })
 
-	local viewSizeY, setViewSizeY
-	if Flags.FoundationAddHeightPropToCenterSheet then
-		viewSizeY, setViewSizeY = React.useBinding(0)
-	end
-	local updateScrollViewCanvasSize = if Flags.FoundationAddHeightPropToCenterSheet
-		then React.useCallback(function(rbx: GuiObject)
-			setViewSizeY(rbx.AbsoluteSize.Y)
-		end, {})
-		else nil
+	local viewSizeY, setViewSizeY = React.useBinding(0)
+	local updateScrollViewCanvasSize = React.useCallback(function(rbx: GuiObject)
+		setViewSizeY(rbx.AbsoluteSize.Y)
+	end, {})
 
 	local isBottomSheet = sheetType == SheetType.Bottom
 
+	local horizontalPadding = if props.isContentFullBleed then nil else UDim.new(0, tokens.Padding.Small)
+
 	local isSelectableEnabled = if props.Selectable == nil then true else props.Selectable
-	local selectable = if Flags.FoundationSheetContentSelectable and hasOverflowY
+	local selectable = if hasOverflowY
 		then hasOverflowY:map(function(overflow: boolean)
 			return isSelectableEnabled and overflow
 		end)
 		else nil
 
+	local isVerticalSheetGesture = sheet.isVerticalSheetGesture
+
+	-- Workaround: View with onActivated=noop acts as an interaction
+	-- sink to block accidental taps on content during vertical drags.
+	local interactionSinkElement = React.createElement("Folder", nil, {
+		ContentInteractionSink = if isVerticalSheetGesture
+			then React.createElement(View, {
+				Size = UDim2.fromScale(1, 1),
+				Selectable = false,
+				ZIndex = 2,
+				testId = `{testId}--content--interaction-sink`,
+				stateLayer = {
+					affordance = StateLayerAffordance.None,
+				},
+				onActivated = Dash.noop,
+			})
+			else nil,
+	})
+
+	local scrollingFrameRef = useComposedRef(
+		innerScrollingRef :: React.Ref<any>,
+		props.scrollingFrameRef :: React.Ref<any>?
+	) :: React.Ref<any>
+
 	return React.createElement(
 		ScrollView,
 		{
-			scrollingFrameRef = props.scrollingFrameRef,
+			scrollingFrameRef = scrollingFrameRef,
 			ZIndex = 1,
-			selection = if Flags.FoundationSheetContentSelectable
-				then {
-					Selectable = selectable,
-					NextSelectionUp = props.NextSelectionUp,
-					NextSelectionDown = props.NextSelectionDown,
-					NextSelectionLeft = props.NextSelectionLeft,
-					NextSelectionRight = props.NextSelectionRight,
-				}
-				else nil,
+			selection = {
+				Selectable = selectable,
+				NextSelectionUp = props.NextSelectionUp,
+				NextSelectionDown = props.NextSelectionDown,
+				NextSelectionLeft = props.NextSelectionLeft,
+				NextSelectionRight = props.NextSelectionRight,
+			},
 			scroll = {
 				ScrollingEnabled = innerScrollingEnabled,
 				AutomaticCanvasSize = Enum.AutomaticSize.Y,
-				CanvasSize = if Flags.FoundationAddHeightPropToCenterSheet and sheetContentHeight
+				CanvasSize = if sheetContentHeight
 					then viewSizeY:map(function(sizeY: number)
 						return UDim2.new(1, 0, 0, sizeY)
 					end)
 					else UDim2.fromScale(1, 0),
 				ScrollingDirection = Enum.ScrollingDirection.Y,
 			},
-			Size = if Flags.FoundationAddHeightPropToCenterSheet and sheetContentHeight
-				then UDim2.fromScale(1, 1)
-				else nil,
+			Size = if sheetContentHeight then UDim2.fromScale(1, 1) else nil,
 			padding = {
 				top = hasHeader:map(function(value: boolean)
-					return if value
+					return if value or hasFullBleed
 						then UDim.new(0, 0)
 						else UDim.new(0, if isBottomSheet then tokens.Padding.Small else tokens.Margin.Small)
 				end),
@@ -117,8 +138,8 @@ local function SheetContent(props: SheetContentProps, ref: React.Ref<GuiObject>?
 						return UDim.new(0, value + bottomPadding + tokens.Margin.Small)
 					end)
 					else UDim.new(0, tokens.Padding.Small),
-				left = UDim.new(0, tokens.Padding.Small),
-				right = UDim.new(0, tokens.Padding.Small),
+				left = horizontalPadding,
+				right = horizontalPadding,
 			},
 			ClipsDescendants = if isBottomSheet then hasHeader else true,
 			onCanvasPositionChanged = function(rbx: ScrollingFrame)
@@ -132,8 +153,23 @@ local function SheetContent(props: SheetContentProps, ref: React.Ref<GuiObject>?
 		},
 		React.createElement(View, {
 			onAbsoluteSizeChanged = updateScrollViewCanvasSize,
-			tag = "col align-x-center gap-medium size-full-0 auto-y padding-x-medium",
-		}, props.children)
+			tag = {
+				["col align-x-center gap-medium size-full-0 auto-y"] = true,
+				["padding-x-medium"] = not props.isContentFullBleed,
+			},
+		}, {
+			FullBleedSpacer = if hasFullBleed and fullBleedHeight
+				then React.createElement(View, {
+					Size = fullBleedHeight:map(function(value: number)
+						return UDim2.new(1, 0, 0, math.max(0, value))
+					end),
+					LayoutOrder = Constants.MIN_LAYOUT_ORDER,
+					testId = `{testId}--content--full-bleed-spacer`,
+				})
+				else nil,
+			Children = React.createElement(React.Fragment, nil, props.children),
+			ContentInteractionSinkContainer = interactionSinkElement,
+		})
 	)
 end
 

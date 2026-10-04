@@ -13,6 +13,8 @@ type HintTextProps = {
 	text: string,
 	-- Whether the input is in an error state
 	hasError: boolean?,
+	-- Whether the input is disabled
+	isDisabled: boolean?,
 } & Types.CommonProps
 
 local function HintText(props: HintTextProps, ref: React.Ref<GuiObject>?)
@@ -22,8 +24,9 @@ local function HintText(props: HintTextProps, ref: React.Ref<GuiObject>?)
 			Text = props.text,
 			tag = {
 				["size-full-0 auto-y text-caption-small text-align-x-left text-align-y-top text-wrap"] = true,
-				["content-default"] = not props.hasError,
 				["content-action-alert"] = props.hasError,
+				["content-muted"] = props.isDisabled and not props.hasError,
+				["content-default"] = not props.isDisabled and not props.hasError,
 			} :: { [string]: boolean },
 			ref = ref,
 		})

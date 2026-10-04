@@ -7,8 +7,6 @@ local Sheet = script:FindFirstAncestor("Sheet")
 local SheetContext = require(Sheet.SheetContext)
 local SheetType = require(Sheet.SheetType)
 
-local Flags = require(Foundation.Utility.Flags)
-
 local CloseAffordance = require(Foundation.Components.CloseAffordance)
 local CloseAffordanceVariant = require(Foundation.Enums.CloseAffordanceVariant)
 local View = require(Foundation.Components.View)
@@ -24,6 +22,7 @@ local function SheetHeader(props: SheetHeaderProps, ref: React.Ref<GuiObject>?)
 
 	local innerScrollY = sheet.innerScrollY
 	local setHasHeader = sheet.setHasHeader
+	local hasFullBleed = sheet.hasFullBleed
 	local sheetType = sheet.sheetType
 	local closeSheet = sheet.closeSheet
 	local testId = sheet.testId
@@ -50,13 +49,7 @@ local function SheetHeader(props: SheetHeaderProps, ref: React.Ref<GuiObject>?)
 	}, {
 		Content = React.createElement(View, {
 			LayoutOrder = 1,
-			tag = {
-				["row items-center gap-small auto-y"] = true,
-				["align-y-center size-full-1400 margin-left-small padding-y-small padding-right-medium"] = Flags.FoundationSheetHeaderSmallerPadding,
-				["size-full-0 margin-x-small margin-bottom-small"] = not Flags.FoundationSheetHeaderSmallerPadding,
-				["padding-top-small"] = not Flags.FoundationSheetHeaderSmallerPadding and isBottomSheet,
-				["margin-top-small"] = not Flags.FoundationSheetHeaderSmallerPadding and not isBottomSheet,
-			},
+			tag = "row align-y-center items-center gap-small size-full-1400 auto-y margin-left-small padding-y-small padding-right-medium",
 		}, {
 			SubContent = React.createElement(View, {
 				LayoutOrder = 1,
@@ -67,7 +60,7 @@ local function SheetHeader(props: SheetHeaderProps, ref: React.Ref<GuiObject>?)
 					onActivated = closeSheet,
 					ref = closeAffordanceRef,
 					NextSelectionDown = contentStartRef,
-					variant = CloseAffordanceVariant.Utility,
+					variant = if hasFullBleed then CloseAffordanceVariant.OverMedia else CloseAffordanceVariant.Utility,
 					LayoutOrder = 2,
 					testId = `{testId}--header--close-affordance`,
 				})

@@ -1,9 +1,6 @@
 --[[
-	Reusable helpers for working with exp-chat message and channel data.
-	Mirrors logic from exp-chat's ChannelTab.lua and message reducers.
-
-	Designed to be portable: when ready, move this file to exp-chat-shared and
-	update the require path.
+	Abuse-reporting helpers for filtering exp-chat messages and shaping report
+	picker items. Shared channel-tab behavior belongs in exp-chat-shared.
 ]]
 local Players = game:GetService("Players")
 local TextChatService = game:GetService("TextChatService")
@@ -13,18 +10,22 @@ local CHANNEL_GENERAL = "RBXGeneral"
 local CHANNEL_SYSTEM = "RBXSystem"
 local CHANNEL_TEAM_PREFIX = "RBXTeam"
 local CHANNEL_WHISPER_PREFIX = "RBXWhisper"
+local CHANNEL_GLOBAL = "RBXGlobal"
+
+local CorePackages = game:GetService("CorePackages")
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagEnableGlobalChatAbuseReporting = SharedFlags.FFlagEnableGlobalChatAbuseReporting
+local FFlagAbuseReportAttributedRBXSystemMessages = SharedFlags.FFlagAbuseReportAttributedRBXSystemMessages
 
 local ExpChatMessageHelpers = {}
 
 ExpChatMessageHelpers.CHANNEL_GENERAL = CHANNEL_GENERAL
+ExpChatMessageHelpers.CHANNEL_GLOBAL = CHANNEL_GLOBAL
 
 -- Mirrors what exp-chat checks in mountClientApp to decide whether the channel
 -- bar is visible. Developer opt-in: add ChannelTabsConfiguration under
 -- TextChatService and set Enabled = true.
 function ExpChatMessageHelpers.areChannelTabsEnabled(): boolean
-	if not game:GetEngineFeature("EnableChannelTabsConfiguration") then
-		return false
-	end
 	local config = TextChatService:FindFirstChildOfClass("ChannelTabsConfiguration")
 	return config ~= nil and config.Enabled
 end
@@ -41,19 +42,21 @@ function ExpChatMessageHelpers.localizeString(translator: any?, text: string): s
 	return if ok and type(result) == "string" then result else text
 end
 
--- TODO: [future] re-use existing helpers from exp-chat? (abech)
--- TODO: [future] do any experience (ab)use system messages when having alternate chat
---       interfaces? (abech)
+-- Experiences can allow users to send on RBXSystem, so sender attribution determines
+-- reportability instead of the channel name.
 function ExpChatMessageHelpers.isSystemMessage(message): boolean
-	if message.textChannel and message.textChannel.Name == CHANNEL_SYSTEM then
+	if
+		not FFlagAbuseReportAttributedRBXSystemMessages
+		and message.textChannel
+		and message.textChannel.Name == CHANNEL_SYSTEM
+	then
 		return true
 	end
 	return if not message.userId or message.userId == "0" then true else false
 end
 
--- Mirrors the naming logic in exp-chat ChannelTab.lua's GameLocalization.connect.
--- Duplication is intentional to avoid modifying exp-chat; a follow-up can
--- extract a shared utility.
+-- Legacy rollback path while the shared channel-tab display-label flag is off.
+-- The active shared behavior lives in ExpChatShared.ChannelTabDisplayLabel.
 -- Note: the Messages reducer remaps RBXSystem -> RBXGeneral before storing into
 -- windowMessagesInOrderByTabId, so the RBXSystem branch is omitted here.
 function ExpChatMessageHelpers.formatChannelLabel(channelName: string, textChannel: TextChannel?): string
@@ -73,15 +76,43 @@ function ExpChatMessageHelpers.formatChannelLabel(channelName: string, textChann
 			end
 		end
 		return "Whisper"
+	elseif FFlagEnableGlobalChatAbuseReporting and channelName == CHANNEL_GLOBAL then
+		return "Global"
 	end
 	return channelName
 end
 
--- TODO: [future] reuse implementation from exp-chat? (abech)
+-- Formats report-picker rows; exp-chat's rendered-message pipeline has a different contract.
 function ExpChatMessageHelpers.formatMessageLabel(message): string
 	local prefix = message.prefixText or ""
 	local text = message.text or ""
 	return if #prefix > 0 then prefix .. " " .. text else text
+end
+
+function ExpChatMessageHelpers.getMessageUsername(message): string?
+	local userId = tonumber(message.userId)
+	-- GetPlayerByUserId only returns players still in this server instance. It
+	-- returns nil when the sender left, was never in this instance (e.g. universe
+	-- chat), or has not finished loading. TextSource below may cover those; any
+	-- remaining gaps are filled async in inExpChatMessagesLoader via UserProfileStore.
+	if userId and userId ~= 0 then
+		local player = Players:GetPlayerByUserId(userId)
+		if player then
+			return player.Name
+		end
+	end
+
+	-- exp-chat only stores textChatMessageInstance when certain flags are enabled.
+	-- so not reliable.
+	local textChatMessageInstance = message.textChatMessageInstance
+	if textChatMessageInstance then
+		local textSource = textChatMessageInstance.TextSource
+		if textSource and textSource.Username and #textSource.Username > 0 then
+			return textSource.Username
+		end
+	end
+
+	return nil
 end
 
 -- Resolves an ordered list of message IDs into selectable list items,
@@ -94,6 +125,13 @@ function ExpChatMessageHelpers.collectItems(byMessageId, messageIds)
 			table.insert(items, {
 				id = message.messageId,
 				label = ExpChatMessageHelpers.formatMessageLabel(message),
+				meta = {
+					textChannel = message.textChannel,
+					userId = tostring(message.userId),
+					presetId = message.presetId,
+					presetChatVersion = message.presetChatVersion,
+					username = ExpChatMessageHelpers.getMessageUsername(message),
+				},
 			})
 		end
 	end
@@ -103,7 +141,11 @@ end
 -- Prepends "[Sent privately]" to whisper message labels. Only needed when
 -- channel tabs are disabled and all messages appear in a single flat list;
 -- with tabs enabled, whispers are already in their own group.
-function ExpChatMessageHelpers.annotateWhisperItems(items, byMessageId)
+function ExpChatMessageHelpers.annotateWhisperItems(
+	items: { { id: any, label: string, meta: any? } },
+	byMessageId,
+	sentPrivatelyLabel: string
+)
 	for _, item in ipairs(items) do
 		local message = byMessageId[item.id]
 		if
@@ -112,8 +154,7 @@ function ExpChatMessageHelpers.annotateWhisperItems(items, byMessageId)
 			and typeof(message.textChannel.Name) == "string"
 			and string.sub(message.textChannel.Name, 1, #CHANNEL_WHISPER_PREFIX) == CHANNEL_WHISPER_PREFIX
 		then
-			-- TODO: [future] localization
-			item.label = "[Sent privately] " .. item.label
+			item.label = string.format("[%s] %s", sentPrivatelyLabel, item.label)
 		end
 	end
 end

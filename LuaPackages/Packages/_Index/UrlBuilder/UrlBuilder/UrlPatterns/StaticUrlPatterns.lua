@@ -37,6 +37,13 @@ return function(UrlBuilder)
 		redeem = UrlBuilder.fromString("www:redeem"),
 		amazonStore = UrlBuilder.fromString("https://www.amazon.com/roblox"),
 		help = UrlBuilder.fromString(isQQ() and "corp:faq" or "www:help"),
+		safetyDashboard = {
+			main = UrlBuilder.fromString("www:safety-dashboard?t_source={source|app}"),
+			violation = UrlBuilder.fromString("www:safety-dashboard?vid={id}&t_source={source|app}"),
+			violations = function(input)
+				return UrlBuilder.fromString("www:safety-dashboard?t_source={source|app}")(input) .. "#/violations"
+			end,
+		},
 		appealsPortal = {
 			-- link the Report & Appeals standalone portal (e.g. not part of settings)
 			main = UrlBuilder.fromString("www:report-appeals?t_source={source|app}"),
@@ -44,6 +51,10 @@ return function(UrlBuilder)
 			-- The URL builder does not support paramters in the hash
 			-- so we send that as a query parameter instead and handle it in the portal
 			violation = UrlBuilder.fromString("www:report-appeals?vid={id}&t_source={source|app}"),
+		},
+		supportCenter = {
+			main = UrlBuilder.fromString("www:support-center"),
+			ticket = UrlBuilder.fromString("www:support-center#!/tickets/{universeId}/{ticketId}"),
 		},
 		email = {
 			getSetEmail = UrlBuilder.fromString("accountSettings:v1/email"),
@@ -90,6 +101,7 @@ return function(UrlBuilder)
 			parentalControls = UrlBuilder.fromString("www:my/account#!/parental-controls"),
 			billing = UrlBuilder.fromString("www:my/account#!/billing"),
 			subscriptions = UrlBuilder.fromString("www:my/account#!/subscriptions"),
+			robux = UrlBuilder.fromString("www:my/account#!/robux"),
 			notifications = UrlBuilder.fromString("www:my/account#!/notifications"),
 			appPermissions = UrlBuilder.fromString("www:my/account#!/app-permissions"),
 			screentimeSettings = UrlBuilder.fromString("www:my/account#!/privacy/Screentime"),
@@ -99,6 +111,7 @@ return function(UrlBuilder)
 			blockedUsersSettings = UrlBuilder.fromString("www:my/account#!/privacy/BlockedUsers"),
 			experienceChatSettings = UrlBuilder.fromString("www:my/account#!/privacy/Communication/ExperienceChat"),
 			partySettings = UrlBuilder.fromString("www:my/account#!/privacy/Communication/Party"),
+			partySettingsV2 = UrlBuilder.fromString("www:my/account#!/privacy/Communication/PartyAndPartyChat"),
 			communicationSettings = UrlBuilder.fromString("www:my/account#!/privacy/Communication"),
 			voiceSettings = UrlBuilder.fromString("www:my/account#!/privacy/Communication/Voice"),
 			tradingInventorySettings = UrlBuilder.fromString("www:my/account#!/privacy/TradingAndInventory"),

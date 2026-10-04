@@ -19,6 +19,9 @@ type IconSize = IconSize.IconSize
 local InputLabelSize = require(Foundation.Enums.InputLabelSize)
 type InputLabelSize = InputLabelSize.InputLabelSize
 
+local InputVariant = require(Foundation.Enums.InputVariant)
+type InputVariant = InputVariant.InputVariant
+
 local composeStyleVariant = require(Foundation.Utility.composeStyleVariant)
 type VariantProps = composeStyleVariant.VariantProps
 
@@ -26,74 +29,72 @@ local Tokens = require(Foundation.Providers.Style.Tokens)
 type Tokens = Tokens.Tokens
 
 local VariantsContext = require(Foundation.Providers.Style.VariantsContext)
-
-local Flags = require(Foundation.Utility.Flags)
+local getInputVariantsFactory = require(Foundation.Components.InputField.getInputVariantsFactory)
 
 type DropdownVariantProps = {
-	container: { tag: string },
+	container: {
+		bgStyle: ColorStyleValue?,
+		strokeStyle: ColorStyleValue?,
+		strokeThickness: number,
+		tag: string,
+	},
 	text: { tag: string },
 	arrow: { size: IconSize },
 }
 
-type State = ControlState | "Error"
-
-local function variantsFactory(tokens: Tokens)
+local function variantsFactory()
 	local common = {
 		container = {
-			tag = "row flex-x-between align-y-center stroke-standard stroke-position-inner",
+			tag = "row flex-x-between align-y-center",
 		},
-		text = { tag = "shrink auto-xy text-truncate-split" },
+		text = {
+			tag = "shrink auto-xy text-truncate-split content-emphasis",
+		},
 	}
 
 	local sizes: { [InputSize]: VariantProps } = {
 		[InputSize.XSmall] = {
-			container = { tag = "gap-xxsmall size-full-600 padding-small radius-small" },
+			container = {
+				tag = "gap-small size-full-600 padding-small radius-small",
+			},
 			text = { tag = "text-body-small" },
-			arrow = { size = if Flags.FoundationDropdownControlIconFix then IconSize.XSmall else InputSize.Small },
+			arrow = { size = IconSize.XSmall },
 		},
 		[InputSize.Small] = {
-			container = { tag = "gap-xxsmall size-full-800 padding-medium radius-medium" },
+			container = {
+				tag = "gap-small size-full-800 padding-medium radius-medium",
+			},
 			text = { tag = "text-body-small" },
-			arrow = { size = if Flags.FoundationDropdownControlIconFix then IconSize.Small else InputSize.Small },
+			arrow = { size = IconSize.Small },
 		},
 		[InputSize.Medium] = {
-			container = { tag = "size-full-1000 padding-medium radius-medium" },
+			container = {
+				tag = "gap-small size-full-1000 padding-medium radius-medium",
+			},
 			text = { tag = "text-body-medium" },
-			arrow = { size = if Flags.FoundationDropdownControlIconFix then IconSize.Medium else InputSize.Medium },
+			arrow = { size = IconSize.Medium },
 		},
 		[InputSize.Large] = {
-			container = { tag = "size-full-1200 padding-medium radius-medium" },
+			container = {
+				tag = "gap-small size-full-1200 padding-medium radius-medium",
+			},
 			text = { tag = "text-body-large" },
-			arrow = { size = if Flags.FoundationDropdownControlIconFix then IconSize.Large else InputSize.Large },
+			arrow = { size = IconSize.Large },
 		},
 	}
 
-	local states: { [State]: VariantProps } = {
+	local states: { [ControlState]: VariantProps } = {
 		[ControlState.Disabled] = {
-			container = { tag = "stroke-muted" },
+			container = nil :: never,
 			text = { tag = "content-muted" },
 		},
 		[ControlState.Initialize] = {
-			container = { tag = "stroke-default" },
+			container = nil :: never,
 			text = { tag = "content-default" },
 		},
-		[ControlState.Default] = {
-			container = { tag = "stroke-default" },
-			text = { tag = "content-default" },
-		},
-		[ControlState.Hover] = {
-			container = { tag = "stroke-emphasis" },
-			text = { tag = "content-emphasis" },
-		},
-		[ControlState.Pressed] = {
-			container = { tag = "stroke-emphasis" },
-			text = { tag = "content-emphasis" },
-		},
-		-- TODO: Error states do not currently have hover / etc effects
-		Error = {
-			container = { tag = "stroke-alert" },
-			text = { tag = "content-default" },
-		},
+		[ControlState.Default] = nil :: never,
+		[ControlState.Hover] = nil :: never,
+		[ControlState.Pressed] = nil :: never,
 	}
 
 	-- Placeholder existence should take precendent of content styling in any case.
@@ -115,15 +116,27 @@ end
 return function(
 	tokens: Tokens,
 	size: InputSize,
+	variant: InputVariant,
 	controlState: ControlState,
 	isPlaceholderShown: boolean,
-	hasError: boolean
+	hasError: boolean,
+	focused: boolean,
+	hover: boolean
 ): DropdownVariantProps
 	local props = VariantsContext.useVariants("Dropdown", variantsFactory, tokens)
-	local state = if hasError then "Error" else controlState
+	local inputProps = VariantsContext.useVariants("InputField", getInputVariantsFactory, tokens)
+	local variantAttributes = inputProps.variants[variant or InputVariant.Standard]
+
 	return composeStyleVariant(
+		inputProps.common,
 		props.common,
+		inputProps.sizes[size],
 		props.sizes[size],
-		if isPlaceholderShown then props.placeholderStates[state] else props.states[state :: State]
+		if variant ~= InputVariant.Utility then variantAttributes else {},
+		inputProps.hoverState[hover],
+		inputProps.focusedState[focused],
+		inputProps.errorState[hasError],
+		if isPlaceholderShown then props.placeholderStates[controlState] else props.states[controlState],
+		if variant == InputVariant.Utility then variantAttributes else {}
 	)
 end

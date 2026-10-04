@@ -48,33 +48,33 @@ export type MenuNavigationPromptTokens = {
 return function(_, tokens: DesignTokens): MenuNavigationPromptTokens
 	return {
 		Color = {
-			backgroundUiColor = tokens.Semantic.Color.BackgroundUi.Default,
-			separatorColor = tokens.Semantic.Color.Common.Divider,
-			textColor = tokens.Semantic.Color.Text.Emphasis,
-			buttonColor = tokens.Semantic.Color.Text.Emphasis,
-			buttonTextColor = tokens.Semantic.Color.BackgroundUi.Default,
+			backgroundUiColor = tokens.Color.Surface.Surface_300,
+			separatorColor = tokens.Color.Stroke.Emphasis,
+			textColor = tokens.Color.Content.Emphasis,
+			buttonColor = tokens.Color.Content.Emphasis,
+			buttonTextColor = tokens.Color.Surface.Surface_300,
 		},
 		Size = {
 			displayWidth = 1920,
 			promptWidth = 1080,
 			imageWidth = 566,
 			imageHeight = 324,
-			buttonHeight = tokens.Global.Size_600,
-			iconSize = tokens.Global.Size_200,
+			buttonHeight = tokens.Size.Size_1200,
+			iconSize = tokens.Size.Size_400,
 		},
 		Space = {
-			titlePadding = tokens.Global.Space_150,
-			bodyPadding = tokens.Global.Space_300,
-			iconPadding = tokens.Global.Space_50,
+			titlePadding = tokens.Size.Size_300,
+			bodyPadding = tokens.Size.Size_600,
+			iconPadding = tokens.Size.Size_100,
 		},
 		Radius = {
-			cornerRadius = tokens.Semantic.Radius.Medium,
-			buttonRadius = tokens.Semantic.Radius.Small,
+			cornerRadius = tokens.Radius.Medium,
+			buttonRadius = tokens.Radius.Small,
 		},
 		Typography = {
-			label = tokens.Semantic.Typography.Subheader,
-			header = tokens.Semantic.Typography.Header,
-			caption = tokens.Semantic.Typography.Body,
+			label = tokens.Typography.TitleLarge,
+			header = tokens.Typography.HeadingSmall,
+			caption = tokens.Typography.BodyLarge,
 		},
 	}
 end

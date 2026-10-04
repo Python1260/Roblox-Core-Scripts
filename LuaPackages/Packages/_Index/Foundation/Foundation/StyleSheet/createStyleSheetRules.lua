@@ -5,18 +5,20 @@ local React = require(Packages.React)
 local StyleRule = require(StyleSheetRoot.StyleRule)
 local Types = require(StyleSheetRoot.Rules.Types)
 
+local ColorMode = require(Foundation.Enums.ColorMode)
 local Device = require(Foundation.Enums.Device)
 local Flags = require(Foundation.Utility.Flags)
-local Theme = require(Foundation.Enums.Theme)
+local getOverrideAttributes = require(StyleSheetRoot.getOverrideAttributes)
 local scaleValue = require(Foundation.Utility.scaleValue)
 
-type Theme = Theme.Theme
+type ColorMode = ColorMode.ColorMode
 type Device = Device.Device
 type StyleRule = Types.StyleRule
 type StyleAttribute<T> = Types.StyleAttribute<T>
 type StyleRuleNoTag = Types.StyleRuleNoTag
+type OverrideAttributes = getOverrideAttributes.OverrideAttributes
 
-export type AttributesCache = { [string]: number }
+export type AttributesCache = { [string]: unknown }
 
 local function insertRule(ruleNodes: { React.ReactNode }, rule: StyleRuleNoTag, tag: string)
 	local properties = rule.properties
@@ -26,7 +28,17 @@ local function insertRule(ruleNodes: { React.ReactNode }, rule: StyleRuleNoTag, 
 	local pseudo = if rule.pseudo ~= nil then " ::" .. rule.pseudo else ""
 	local selector = tagSelector .. modifier .. pseudo
 
-	if rule.pseudo ~= nil then
+	if Flags.FoundationStyleRulePseudoName then
+		if rule.pseudoName ~= nil then
+			selector = selector .. " #" .. rule.pseudoName
+		end
+		-- A named pseudo-instance (e.g. `::UIShadow #layer1`) targets a distinct
+		-- phantom instance, so stacked layers must not fall back to the `>` child
+		-- combinator, which would merge every layer onto the same real child.
+		if rule.pseudo ~= nil and rule.pseudoName == nil then
+			selector = selector .. ", " .. tagSelector .. modifier .. " > " .. rule.pseudo
+		end
+	elseif rule.pseudo ~= nil then
 		selector = selector .. ", " .. tagSelector .. modifier .. " > " .. rule.pseudo
 	end
 
@@ -45,16 +57,19 @@ local function updateRuleAttributes(
 	sheet: StyleSheet,
 	attributes: { StyleAttribute<unknown> }?,
 	attributesCache: AttributesCache,
-	scale: number?
+	scale: number?,
+	overrideAttributes: OverrideAttributes?
 )
 	attributes = attributes or {}
 	scale = if Flags.FoundationDisableTokenScaling then 1 else scale or 1
 
 	for _, attribute in attributes :: { StyleAttribute<unknown> } do
-		if attributesCache[attribute.name] ~= scale then
-			local scaledValue = scaleValue(attribute.value, scale)
+		local overrideValue = if overrideAttributes then overrideAttributes[attribute.name] else nil
+		local rawValue = if overrideValue ~= nil then overrideValue else attribute.value
+		local scaledValue = scaleValue(rawValue, scale)
+		if attributesCache[attribute.name] ~= scaledValue then
 			sheet:SetAttribute(attribute.name, scaledValue)
-			attributesCache[attribute.name] = scale :: number
+			attributesCache[attribute.name] = scaledValue
 		end
 	end
 end
@@ -64,7 +79,8 @@ local function createStyleSheetRules(
 	tags: { [string]: boolean },
 	sheet: StyleSheet?,
 	attributesCache: AttributesCache?,
-	scale: number?
+	scale: number?,
+	overrideAttributes: OverrideAttributes?
 ): React.ReactNode
 	local ruleNodes = {}
 
@@ -74,9 +90,21 @@ local function createStyleSheetRules(
 		if rule == nil then
 			continue
 		end
+		if not Flags.FoundationStyleRulePseudoName then
+			-- Generated tables bake named-pseudo rules unconditionally; skip them until the flag is on.
+			if rule.pseudoName ~= nil then
+				continue
+			end
+		end
 
 		if sheet and attributesCache then
-			updateRuleAttributes(sheet :: StyleSheet, rule.attributes, attributesCache :: AttributesCache, scale)
+			updateRuleAttributes(
+				sheet :: StyleSheet,
+				rule.attributes,
+				attributesCache :: AttributesCache,
+				scale,
+				overrideAttributes
+			)
 		end
 		insertRule(ruleNodes, rule, tag)
 
@@ -87,7 +115,8 @@ local function createStyleSheetRules(
 						sheet :: StyleSheet,
 						child.attributes,
 						attributesCache :: AttributesCache,
-						scale
+						scale,
+						overrideAttributes
 					)
 				end
 				insertRule(ruleNodes, child, child.tag)

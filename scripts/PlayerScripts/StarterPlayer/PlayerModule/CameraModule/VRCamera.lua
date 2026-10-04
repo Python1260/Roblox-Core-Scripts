@@ -18,6 +18,14 @@ local NECK_OFFSET = -0.7
 -- requires
 local CameraInput = require(script.Parent:WaitForChild("CameraInput"))
 local Util = require(script.Parent:WaitForChild("CameraUtils"))
+local VRCameraTeleportDetector = require(script.Parent:WaitForChild("VRCameraTeleportDetector"))
+local CommonUtils = require(script.Parent.Parent:WaitForChild("CommonUtils"))
+local FlagUtil = CommonUtils.get("FlagUtil")
+
+local FFlagUserPSVRCameraInputMoveVector = FlagUtil.getUserFlag("UserPSVRCameraInputMoveVector")
+local FFlagUserVRRemoveLuaEdgeBlur = FlagUtil.getUserFlag("UserVRRemoveLuaEdgeBlur")
+local FFlagUserVRRecenterOnExternalTeleport = FlagUtil.getUserFlag("UserVRRecenterOnExternalTeleport")
+local FFlagUserVRSkipOcclusionInFirstPerson = FlagUtil.getUserFlag("UserVRSkipOcclusionInFirstPerson")
 
 --[[ The Module ]]--
 local VRBaseCamera = require(script.Parent:WaitForChild("VRBaseCamera"))
@@ -59,7 +67,9 @@ function VRCamera:Update(timeDelta)
 
 	-- update fullscreen effects
 	self:UpdateFadeFromBlack(timeDelta)
-	self:UpdateEdgeBlur(player, timeDelta)
+	if not FFlagUserVRRemoveLuaEdgeBlur then
+		self:UpdateEdgeBlur(player, timeDelta)
+	end
 
 	local lastSubjPos = self.lastSubjectPosition
 	local subjectPosition: Vector3 = self:GetSubjectPosition()
@@ -77,6 +87,15 @@ function VRCamera:Update(timeDelta)
 
 	if subjectPosition and player and camera then
 		newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
+
+		if FFlagUserVRSkipOcclusionInFirstPerson then
+			-- Allowing occlusion in first person can cause a runaway that flies the camera behind the avatar at high speed, when combined with VRService.AvatarGestures.
+			-- This is because on every frame, poppercam's reposition is applied to the camera after the VR camera has already moved to its new position, causing a feedback loop.
+			-- Exclude invisicam as skipping occlusion for invisicam doesn't affect the camera, and can cause parts affected by LocalTransparencyModifier to stay faded for the whole first-person session.
+			self.skipOcclusion = self:IsInFirstPerson()
+				and player.DevCameraOcclusionMode ~= Enum.DevCameraOcclusionMode.Invisicam
+		end
+
 		-- update camera cframe based on first/third person
 		if self:IsInFirstPerson() then
 			if VRService.AvatarGestures then
@@ -129,10 +148,12 @@ function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame, newCame
 	end
 
 	-- blur screen edge during movement
-	local player = PlayersService.LocalPlayer
-	local subjectDelta = lastSubjPos - subjectPosition
-	if subjectDelta.magnitude > 0.01 then
-		self:StartVREdgeBlur(player)
+	if not FFlagUserVRRemoveLuaEdgeBlur then
+		local player = PlayersService.LocalPlayer
+		local subjectDelta = lastSubjPos - subjectPosition
+		if subjectDelta.magnitude > 0.01 then
+			self:StartVREdgeBlur(player)
+		end
 	end
 	-- straight view, not angled down
 	local cameraFocusP = newCameraFocus.Position
@@ -161,6 +182,16 @@ function VRCamera:UpdateImmersionCamera(timeDelta, newCameraCFrame, newCameraFoc
 	if not humanoidRootPart then 
 		return curCamera.CFrame, curCamera.Focus
 	end
+	-- Track how far the camera subject moved (XZ) this frame; used below to detect an external
+	-- teleport of the root part (HumanoidRootPart.CFrame / PivotTo) while there is no locomotion
+	-- input, so the VR head origin can be re-synced to the new position.
+	local externalTeleportStep = nil
+	if FFlagUserVRRecenterOnExternalTeleport then
+		externalTeleportStep = if lastSubjPos
+			then (Vector3.new(subjectPosition.X - lastSubjPos.X, 0, subjectPosition.Z - lastSubjPos.Z)).Magnitude
+			else 0
+	end
+
 	self.characterOrientation = humanoidRootPart:FindFirstChild("CharacterAlignOrientation")
 	if not self.characterOrientation then
 		local rootAttachment = humanoidRootPart:FindFirstChild("RootAttachment")
@@ -185,9 +216,11 @@ function VRCamera:UpdateImmersionCamera(timeDelta, newCameraCFrame, newCameraFoc
 		self.savedAutoRotate = humanoid.AutoRotate
 		humanoid.AutoRotate = false
 
-		if self.NoRecenter then
-			self.NoRecenter = false
+		if FFlagUserVRRecenterOnExternalTeleport then
+			-- (Re)entering first person: recenter the head origin so the tracked origin matches the
+			-- freshly placed camera.
 			VRService:RecenterUserHeadCFrame()
+			self.lastTeleportRecenter = tick()
 		end
 		
 		self:StartFadeFromBlack()
@@ -198,8 +231,10 @@ function VRCamera:UpdateImmersionCamera(timeDelta, newCameraCFrame, newCameraFoc
 		-- if seated, just keep aligned with the seat itself
 		if humanoid.Sit then
 			newCameraCFrame = subjectCFrame
-			if (newCameraCFrame.Position - curCamera.CFrame.Position).Magnitude > 0.01 then
-				self:StartVREdgeBlur(PlayersService.LocalPlayer)
+			if not FFlagUserVRRemoveLuaEdgeBlur then
+				if (newCameraCFrame.Position - curCamera.CFrame.Position).Magnitude > 0.01 then
+					self:StartVREdgeBlur(PlayersService.LocalPlayer)
+				end
 			end
 		else
 			-- keep character rotation with torso
@@ -215,7 +250,9 @@ function VRCamera:UpdateImmersionCamera(timeDelta, newCameraCFrame, newCameraFoc
 				self.motionDetTime -= timeDelta
 
 				-- Add an edge blur if the subject moved
-				self:StartVREdgeBlur(PlayersService.LocalPlayer)
+				if not FFlagUserVRRemoveLuaEdgeBlur then
+					self:StartVREdgeBlur(PlayersService.LocalPlayer)
+				end
 
 				-- moving by input, so we should align the vrHead with the character
 				local vrHeadOffset = VRService:GetUserCFrame(Enum.UserCFrame.Head)
@@ -236,6 +273,29 @@ function VRCamera:UpdateImmersionCamera(timeDelta, newCameraCFrame, newCameraFoc
 				goalCameraPosition = Vector3.new(goalCameraPosition.X, subjectPosition.Y, goalCameraPosition.Z)
 
 				newCameraCFrame = curCamera.CFrame.Rotation + goalCameraPosition
+			elseif FFlagUserVRRecenterOnExternalTeleport
+				and VRCameraTeleportDetector.shouldRecenter(self.prevSubjStep, externalTeleportStep, self.lastTeleportRecenter, tick()) then
+				-- External teleport (HumanoidRootPart.CFrame / PivotTo) with no locomotion input:
+				-- rebase the camera so the VR head sits above the teleported root, then recenter the
+				-- head origin -- mirroring UpdateThirdPersonComfortTransform. Without this the camera
+				-- and the AvatarGestures IK target anchors stay frozen at the pre-teleport head origin,
+				-- dragging the avatar/viewpoint back until the player moves.
+				local vrHeadOffset = VRService:GetUserCFrame(Enum.UserCFrame.Head)
+				vrHeadOffset = vrHeadOffset.Rotation + vrHeadOffset.Position * curCamera.HeadScale
+
+				local hrp = character.HumanoidRootPart
+				local neck_offset = NECK_OFFSET * hrp.Size.Y / 2
+				local neckWorld = curCamera.CFrame * vrHeadOffset * CFrame.new(0, neck_offset, 0)
+				local hrpLook = hrp.CFrame.LookVector
+				neckWorld -= Vector3.new(hrpLook.X, 0, hrpLook.Z).Unit * hrp.Size.Y * TORSO_FORWARD_OFFSET_RATIO
+
+				local goalCameraPosition = subjectPosition - neckWorld.Position + curCamera.CFrame.Position
+				goalCameraPosition = Vector3.new(goalCameraPosition.X, subjectPosition.Y, goalCameraPosition.Z)
+				newCameraCFrame = curCamera.CFrame.Rotation + goalCameraPosition
+
+				VRService:RecenterUserHeadCFrame()
+				self:StartFadeFromBlack()
+				self.lastTeleportRecenter = tick()
 			else
 				-- don't change x, z position, follow the y value
 				newCameraCFrame = curCamera.CFrame.Rotation + Vector3.new(curCamera.CFrame.Position.X, subjectPosition.Y, curCamera.CFrame.Position.Z)
@@ -256,6 +316,12 @@ function VRCamera:UpdateImmersionCamera(timeDelta, newCameraCFrame, newCameraFoc
 		end
 end
 
+	if FFlagUserVRRecenterOnExternalTeleport then
+		-- Remember this frame's subject step so next frame's edge-detect can tell a discrete
+		-- teleport from continuous motion.
+		self.prevSubjStep = externalTeleportStep
+	end
+
 	return newCameraCFrame, newCameraCFrame * CFrame.new(0, 0, -FP_ZOOM)
 end
 
@@ -268,7 +334,7 @@ function VRCamera:UpdateThirdPersonComfortTransform(timeDelta, newCameraCFrame, 
 	if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
 		-- compute delta of subject since last update
 		local subjectDelta = lastSubjPos - subjectPosition
-		local moveVector = self.controlModule:GetMoveVector()
+		local moveVector = if FFlagUserPSVRCameraInputMoveVector then self.controlModule.inputMoveVector else self.controlModule:GetMoveVector()
 
 		-- is the subject still moving?
 		local isMoving = subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0.01
@@ -359,7 +425,7 @@ function VRCamera:UpdateThirdPersonFollowTransform(timeDelta, newCameraCFrame, n
 	-- figure out if the player is moving
 	local subjectDelta = lastSubjPos - subjectPosition
 	local controlModule = self.controlModule
-	local moveVector = controlModule:GetMoveVector()
+	local moveVector = if FFlagUserPSVRCameraInputMoveVector then controlModule.inputMoveVector else controlModule:GetMoveVector()
 
 	-- while moving, slowly adjust camera so the avatar is in front of your head
 	if subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0 then -- is the subject moving?
@@ -395,8 +461,10 @@ function VRCamera:UpdateThirdPersonFollowTransform(timeDelta, newCameraCFrame, n
 	newCameraFocus = newCameraCFrame * CFrame.new(0, 0, -zoom)
 
 	-- vignette
-	if (newCameraFocus.Position - camera.Focus.Position).Magnitude > 0.01 then
-		self:StartVREdgeBlur(PlayersService.LocalPlayer)
+	if not FFlagUserVRRemoveLuaEdgeBlur then
+		if (newCameraFocus.Position - camera.Focus.Position).Magnitude > 0.01 then
+			self:StartVREdgeBlur(PlayersService.LocalPlayer)
+		end
 	end
 
 	return newCameraCFrame, newCameraFocus

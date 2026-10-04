@@ -6,7 +6,19 @@ local Packages = UIBlox.Parent
 
 local Cryo = require(Packages.Cryo)
 
-local function mapColorTokensToFoundation(uibloxTokens, foundationTokens)
+local Types = require(script.Parent.Types)
+local StyleTypes = require(Style.StyleTypes)
+
+type BaseTokens = Types.BaseTokens
+type Tokens = Types.Tokens
+type RbxDesignFoundationsV4Tokens = Types.RbxDesignFoundationsV4Tokens
+type ColorToken = Types.ColorToken
+type Theme = StyleTypes.Theme
+
+local function mapColorTokensToFoundation(
+	uibloxTokens: BaseTokens,
+	foundationTokens: RbxDesignFoundationsV4Tokens
+): BaseTokens
 	uibloxTokens.Semantic.Color = Cryo.Dictionary.join(uibloxTokens.Semantic.Color, foundationTokens.Semantic.Color)
 	uibloxTokens.Global.Color = Cryo.Dictionary.join(uibloxTokens.Global.Color, foundationTokens.Global.Color)
 	uibloxTokens.Component = Cryo.Dictionary.join(uibloxTokens.Component, foundationTokens.Component)
@@ -14,8 +26,8 @@ local function mapColorTokensToFoundation(uibloxTokens, foundationTokens)
 	return uibloxTokens
 end
 
-local function getOnHoverColor(bgColor, foundationTokens)
-	local stateLayer = foundationTokens.Component.StateLayer.Standard.Hover.Color
+local function getOnHoverColor(bgColor: ColorToken, foundationTokens: RbxDesignFoundationsV4Tokens): ColorToken
+	local stateLayer = foundationTokens.Color.State.Hover
 
 	if stateLayer.Transparency == 1 then
 		return {
@@ -35,42 +47,43 @@ local function getOnHoverColor(bgColor, foundationTokens)
 	end
 end
 
-local function mapThemeToFoundation(theme, foundationTokens)
-	local mapping = {}
-	mapping.BackgroundDefault = foundationTokens.Semantic.Color.Background.Default
-	mapping.BackgroundContrast = foundationTokens.Semantic.Color.Background.Contrast
-	mapping.BackgroundMuted = foundationTokens.Semantic.Color.Background.Muted
-	mapping.BackgroundUIDefault = foundationTokens.Semantic.Color.BackgroundUi.Default
-	mapping.BackgroundUIContrast = foundationTokens.Semantic.Color.BackgroundUi.Contrast
-	mapping.BackgroundOnHover = foundationTokens.Semantic.Color.Background.OnHover
-	mapping.BackgroundOnPress = foundationTokens.Semantic.Color.Background.OnPress
-	mapping.UIDefault = foundationTokens.Semantic.Color.Ui.Default
-	mapping.UIMuted = foundationTokens.Semantic.Color.Ui.Muted
-	mapping.UIEmphasis = foundationTokens.Semantic.Color.Ui.Emphasis
-	mapping.ContextualPrimaryDefault = foundationTokens.Semantic.Color.Action.PrimaryBrand.Background
-	mapping.ContextualPrimaryOnHover = getOnHoverColor(mapping.ContextualPrimaryDefault, foundationTokens)
-	mapping.ContextualPrimaryContent = foundationTokens.Semantic.Color.Action.PrimaryBrand.Content
-	mapping.SystemPrimaryDefault = foundationTokens.Semantic.Color.Action.Primary.Background
-	mapping.SystemPrimaryOnHover = getOnHoverColor(mapping.SystemPrimaryDefault, foundationTokens)
-	mapping.SystemPrimaryContent = foundationTokens.Semantic.Color.Action.Primary.Content
-	mapping.IconDefault = foundationTokens.Semantic.Color.Icon.Default
-	mapping.IconEmphasis = foundationTokens.Semantic.Color.Icon.Emphasis
-	mapping.IconOnHover = foundationTokens.Semantic.Color.Icon.OnHover
-	mapping.TextEmphasis = foundationTokens.Semantic.Color.Text.Emphasis
-	mapping.TextDefault = foundationTokens.Semantic.Color.Text.Default
-	mapping.TextMuted = foundationTokens.Semantic.Color.Text.Muted
-	mapping.TextLink = foundationTokens.Semantic.Color.Text.Link
-	mapping.Divider = foundationTokens.Semantic.Color.Common.Divider
-	mapping.Overlay = foundationTokens.Semantic.Color.Common.Overlay
-	mapping.DropShadow = foundationTokens.Semantic.Color.Common.DropShadow
-	mapping.NavigationBar = foundationTokens.Semantic.Color.Common.NavigationBar
-	mapping.PlaceHolder = foundationTokens.Semantic.Color.Common.Placeholder
-	mapping.OnlineStatus = foundationTokens.Semantic.Color.Common.Online
-	mapping.OfflineStatus = foundationTokens.Semantic.Color.Common.Offline
-	mapping.Success = foundationTokens.Semantic.Color.Common.Success
-	mapping.Alert = foundationTokens.Semantic.Color.Common.Alert
-	mapping.Badge = foundationTokens.Semantic.Color.Common.Badge
-	mapping.BadgeContent = foundationTokens.Semantic.Color.Common.BadgeContent
+local function mapThemeToFoundation(theme: Theme, foundationTokens: RbxDesignFoundationsV4Tokens): Theme
+	local mapping = {
+		BackgroundDefault = foundationTokens.Color.Surface.Surface_0,
+		BackgroundContrast = foundationTokens.Color.Surface.Surface_100,
+		BackgroundMuted = foundationTokens.Color.Surface.Surface_200,
+		BackgroundUIDefault = foundationTokens.Color.Surface.Surface_300,
+		BackgroundUIContrast = foundationTokens.Color.OverMedia.OverMedia_0,
+		BackgroundOnHover = foundationTokens.Color.State.Hover,
+		BackgroundOnPress = foundationTokens.Color.State.Press,
+		UIDefault = foundationTokens.Color.Shift.Shift_200,
+		UIMuted = foundationTokens.Color.Shift.Shift_100,
+		UIEmphasis = foundationTokens.Color.Shift.Shift_400,
+		ContextualPrimaryDefault = foundationTokens.Color.ActionEmphasis.Background,
+		ContextualPrimaryOnHover = getOnHoverColor(foundationTokens.Color.ActionEmphasis.Background, foundationTokens),
+		ContextualPrimaryContent = foundationTokens.Color.ActionEmphasis.Foreground,
+		SystemPrimaryDefault = foundationTokens.Color.ActionSubEmphasis.Background,
+		SystemPrimaryOnHover = getOnHoverColor(foundationTokens.Color.ActionSubEmphasis.Background, foundationTokens),
+		SystemPrimaryContent = foundationTokens.Color.ActionSubEmphasis.Foreground,
+		IconDefault = foundationTokens.Color.Content.Default,
+		IconEmphasis = foundationTokens.Color.Content.Emphasis,
+		IconOnHover = foundationTokens.Color.Content.Emphasis,
+		TextEmphasis = foundationTokens.Color.Content.Emphasis,
+		TextDefault = foundationTokens.Color.Content.Default,
+		TextMuted = foundationTokens.Color.Content.Muted,
+		TextLink = foundationTokens.Color.Content.Link,
+		Divider = foundationTokens.Color.Stroke.Emphasis,
+		Overlay = foundationTokens.Color.Common.Scrim,
+		DropShadow = foundationTokens.Color.Common.Shadow,
+		NavigationBar = foundationTokens.Color.Common.NavigationBar,
+		PlaceHolder = foundationTokens.Color.Common.Shimmer,
+		OnlineStatus = foundationTokens.Color.System.Success,
+		OfflineStatus = foundationTokens.Color.System.Neutral,
+		Success = foundationTokens.Color.System.Success,
+		Alert = foundationTokens.Color.System.Alert,
+		Badge = foundationTokens.Color.System.Contrast,
+		BadgeContent = foundationTokens.Inverse.Content.Emphasis,
+	}
 
 	local mappedTheme = Cryo.Dictionary.join(
 		theme,
@@ -85,7 +98,38 @@ local function mapThemeToFoundation(theme, foundationTokens)
 	return mappedTheme
 end
 
+local FOUNDATION_FLAT_KEYS = {
+	"Color",
+	"Config",
+	"DarkMode",
+	"Ease",
+	"LightMode",
+	"Inverse",
+	-- "Semantic", Deprecated
+	"Size",
+	"Padding",
+	"Margin",
+	"Gap",
+	"Gutter",
+	"Radius",
+	"Stroke",
+	"LineHeight",
+	"FontSize",
+	"FontWeight",
+	"Time",
+	"Typography",
+}
+
+local function addFoundationFlatKeys(uibloxTokens: BaseTokens, foundationTokens: RbxDesignFoundationsV4Tokens): Tokens
+	for _, key in FOUNDATION_FLAT_KEYS do
+		uibloxTokens[key] = foundationTokens[key]
+	end
+
+	return uibloxTokens :: Tokens
+end
+
 return {
 	mapColorTokensToFoundation = mapColorTokensToFoundation,
 	mapThemeToFoundation = mapThemeToFoundation,
+	addFoundationFlatKeys = addFoundationFlatKeys,
 }

@@ -32,9 +32,6 @@ return {
 	-- Pass gridInfo to renderItem when using GridView
 	passRowAndColumnDataToItemInGridView = false,
 
-	-- Always use provided ref for button
-	useProvidedRefForButton = false,
-
 	-- Add button override to ActionBar
 	enableActionBarButtonOverride = false,
 
@@ -44,18 +41,21 @@ return {
 	-- Enable icon scaling for some icons used by experience details
 	enableScalingForSomeEdpIcons = false,
 
-	-- Enable SurfaceGui ref exposure through Panel3D
-	enablePanel3DSurfaceGuiRef = false,
-
-	-- Enable rich text support for TooltipV2 header and body text
-	enableTooltipRichText = false,
-
-	-- Use Foundation Checkbox
-	useFoundationCheckbox = false,
-
-	-- Use Foundation Loading spinner
-	useFoundationLoading = false,
-
 	-- Disable token scaling so scale is always 1
 	disableTokenScaling = false,
+
+	-- Remove the spacing between the icon and label in a Stacked NavigationTab
+	removeStackedNavigationTabIconLabelSpacing = false,
+
+	-- Add Foundation Icon support for NavigationTab
+	addFoundationNavigationTabIcon = false,
+
+	-- Deprecate the use of Component | Global | Semantic tokens
+	deprecateComponentGlobalSemanticTokenUse = false,
+
+	-- Reserve toast button space from Foundation's button metrics instead of the toast's own text styles
+	useFoundationToastButtonSizing = false,
+
+	-- Add hover tooltips and truncated labels for stacked NavigationTab
+	addNavigationTabTooltipAndTruncation = false,
 }

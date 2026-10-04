@@ -15,11 +15,23 @@ local AudioFocusManagementEnabled = game:GetEngineFeature("AudioFocusManagement"
 local FFlagEnableChromeAudioFocusManagement = game:DefineFastFlag("EnableChromeAudioFocusManagement", false)
 local EnableChromeAudioFocusManagement = AudioFocusManagementEnabled and FFlagEnableChromeAudioFocusManagement
 
+local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
+local SideSheetPlacement = ChromePackage.Enums.SideSheetPlacement
+
 local ChromeSharedFlags = require(Chrome.ChromeShared.Flags)
 local FFlagTokenizeUnibarConstantsWithStyleProvider = ChromeSharedFlags.FFlagTokenizeUnibarConstantsWithStyleProvider
 local ChromeService = require(Chrome.Service)
+local ChromeUtils = require(Chrome.ChromeShared.Service.ChromeUtils)
 local RedVoiceDot = require(Chrome.Integrations.RedVoiceDot)
 local UnibarStyle = require(CorePackages.Workspace.Packages.Chrome).UnibarStyle
+local useIsPlaytestMode = require(Chrome.ChromeShared.Hooks.useIsPlaytestMode)
+
+local FFlagEnablePlaytestModeUnibar = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnablePlaytestModeUnibar
+local MappedSignal = ChromeUtils.MappedSignal
+
+local micActivatedSignal: any = MappedSignal.new(VoiceChatServiceManager.muteChanged.Event, function()
+	return VoiceChatServiceManager.localMuted == false
+end)
 
 local Constants = require(Chrome.ChromeShared.Unibar.Constants)
 
@@ -48,11 +60,15 @@ local showLoading = function(self)
 	VoiceChatServiceManager:ShowVoiceChatLoadingMessage()
 end
 
+local FFlagChangeToggleMicText = require(Chrome.Flags.FFlagChangeToggleMicText)
+
 muteSelf = ChromeService:register({
 	--initialAvailability = ChromeService.AvailabilitySignal.Available,
 	id = "toggle_mic_mute",
-	label = "CoreScripts.TopBar.ToggleMic",
+	label = if FFlagChangeToggleMicText then "CoreScripts.TopBar.Mic" else "CoreScripts.TopBar.ToggleMic",
+	sideSheetPlacement = SideSheetPlacement.Unibar,
 	activated = toggleMic,
+	isActivated = micActivatedSignal,
 	components = {
 		Icon = function(props)
 			local unibarStyle
@@ -63,6 +79,9 @@ muteSelf = ChromeService:register({
 			else
 				iconSize = Constants.ICON_SIZE
 			end
+			local isPlaytestMode = if FFlagEnablePlaytestModeUnibar then useIsPlaytestMode() else nil
+			local iconStyle = if FFlagEnablePlaytestModeUnibar and isPlaytestMode then "MicDark" else "MicLight"
+
 			return React.createElement("Frame", {
 				Size = UDim2.new(0, iconSize, 0, iconSize),
 				BackgroundTransparency = 1,
@@ -70,7 +89,7 @@ muteSelf = ChromeService:register({
 				React.createElement(VoiceIndicator, {
 					userId = tostring((Players.LocalPlayer :: Player).UserId),
 					hideOnError = false,
-					iconStyle = "MicLight",
+					iconStyle = iconStyle,
 					selectable = false,
 					size = UDim2.new(0, iconSize, 0, iconSize),
 					showConnectingShimmer = true,

@@ -19,6 +19,7 @@ type Props = {
 	getVisibility: () -> boolean,
 	getCanRespawn: Signals.getter<boolean>,
 	currentPageChangeSignal: any,
+	setResumeMenuButton: ((GuiObject?) -> ())?,
 }
 
 local MenuButtons = require(script.Parent.MenuButtons)
@@ -30,7 +31,7 @@ local function Container(props: Props)
 		localization = localization,
 	}, {
 		FoundationProvider = React.createElement(FoundationProvider, {
-			theme = Foundation.Enums.Theme.Dark,
+			colorMode = Foundation.Enums.ColorMode.Dark,
 		}, {
 			MenuButtons = React.createElement(MenuButtons, props),
 		}),

@@ -42,6 +42,7 @@ JointRotationAttachmentsLimited.run = function(reporter: Types.ValidationReporte
 
 	for _, jointRotation in getAllInstancesWithName(rootInstance, R15plusUtils.JointRotationName) do
 		local parent = jointRotation.Parent :: Instance
+		reporter:setReportingInstance(jointRotation)
 
 		if not (jointRotation.ClassName == "Attachment") or not parent:IsA("Attachment") then
 			reporter:fail(ErrorSourceStrings.Keys.JointRotAtt_WrongInstanceClass, {
@@ -84,7 +85,7 @@ JointRotationAttachmentsLimited.run = function(reporter: Types.ValidationReporte
 					> jointRotationMaximumHundredthPositionOffset / 100
 				then
 					reporter:fail(ErrorSourceStrings.Keys.JointRotAtt_Moved, {
-						jointPath = jointRotation:GetFullName(),
+						instPath = jointRotation:GetFullName(),
 						expectedPosition = valueToString(recommendedJointPosition),
 					})
 				end

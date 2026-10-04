@@ -9,6 +9,8 @@ local LocalizationService = game:GetService("LocalizationService")
 local VRService = game:GetService("VRService")
 local CorePackages = game:GetService("CorePackages")
 local TelemetryService = game:GetService("TelemetryService")
+local HttpRbxApiService = game:GetService("HttpRbxApiService")
+local HttpService = game:GetService("HttpService")
 
 local FFlagConnectionRemoveLoadingTimeout = game:DefineFastFlag("ConnectionRemoveLoadingTimeout", false)
 
@@ -19,15 +21,12 @@ local Localization = require(CorePackages.Workspace.Packages.InExperienceLocales
 local Logging = require(CorePackages.Workspace.Packages.AppCommonLib).Logging
 local Url = require(CorePackages.Workspace.Packages.CoreScriptsCommon).Url
 local mutedError = require(CorePackages.Workspace.Packages.Loggers).mutedError
+local LinkingProtocol = require(CorePackages.Workspace.Packages.LinkingProtocol).LinkingProtocol
 
 local fflagDebugEnableErrorStringTesting = game:DefineFastFlag("DebugEnableErrorStringTesting", false)
 local fflagShouldMuteUnlocalizedError = game:DefineFastFlag("ShouldMuteUnlocalizedError", false)
-local fflagUpdateConnectionErrorLoc = game:DefineFastFlag("UpdateConnectionErrorLoc", false)
 
 local fflagShowScreentimeLockoutKickMessage = game:DefineFastFlag("ShowScreentimeLockoutKickMessage", false)
-local fflagAddConnectionErrorLocalizationKeys = game:DefineFastFlag("AddConnectionErrorLocalizationKeys", false)
-
-local FFlagAddClientDisconnectVerboselyModeratedGame = game:DefineFastFlag("AddClientDisconnectVerboselyModeratedGame", false)
 
 local connectionEventConfig = {
 	eventName = "ConnectionEvent",
@@ -44,9 +43,24 @@ local fintMaxKickMessageLength = game:DefineFastInt("MaxKickMessageLength", 200)
 
 local FFlagRefactorReconnectUnblockTeleport = game:DefineFastFlag("RefactorReconnectUnblockTeleport", false)
 
-local coreGuiOverflowDetection = game:GetEngineFeature("CoreGuiOverflowDetection")
+local FFlagConnectionEnableAutoReconnect = game:DefineFastFlag("ConnectionEnableAutoReconnect", false)
 
-local LEAVE_GAME_FRAME_WAITS = 2
+-- Auto-reconnect retry delay settings
+local FIntConnectionAutoReconnectFirstDelayMs = game:DefineFastInt("ConnectionAutoReconnectFirstDelayMs", 2000)
+local FIntConnectionAutoReconnectBaseDelayMs = game:DefineFastInt("ConnectionAutoReconnectBaseDelayMs", 5000)
+local FIntConnectionAutoReconnectMaxDelayMs = game:DefineFastInt("ConnectionAutoReconnectMaxDelayMs", 20000)
+local FIntConnectionAutoReconnectJitterMs = game:DefineFastInt("ConnectionAutoReconnectJitterMs", 2000)
+local FIntConnectionAutoReconnectMaxDurationSeconds = game:DefineFastInt("ConnectionAutoReconnectMaxDurationSeconds", 300)
+
+local fflagRbxTransportHandleUniqueErrors = game:DefineFastFlag("RbxTransportHandleUniqueErrors", false)
+local EngineFeatureRbxTransportUniqueConnectionErrors = game:GetEngineFeature("RbxTransportUniqueConnectionErrors")
+
+local autoReconnectRng
+if FFlagConnectionEnableAutoReconnect then
+	autoReconnectRng = Random.new()
+end
+
+local coreGuiOverflowDetection = game:GetEngineFeature("CoreGuiOverflowDetection")
 
 local DEFAULT_ERROR_PROMPT_KEY = "ErrorPrompt"
 
@@ -72,6 +86,26 @@ local function safeGetFString(name, defaultValue)
 	return success and result or defaultValue
 end
 
+-- Delay (seconds) before the next auto-reconnect: attempt 1 is a
+-- short delay, attempt 2 the base delay, attempt 3+ exponential up to the cap. Jitter
+-- is added to every attempt to prevent a thundering herd for platform wide disconnects.
+local function computeAutoReconnectDelaySeconds(attempt)
+	local delayMs
+	if attempt <= 1 then
+		delayMs = FIntConnectionAutoReconnectFirstDelayMs
+	elseif attempt == 2 then
+		delayMs = FIntConnectionAutoReconnectBaseDelayMs
+	else
+		delayMs = math.min(FIntConnectionAutoReconnectBaseDelayMs * 2 ^ (attempt - 2), FIntConnectionAutoReconnectMaxDelayMs)
+	end
+
+	if FIntConnectionAutoReconnectJitterMs > 0 then
+		delayMs = delayMs + autoReconnectRng:NextInteger(0, FIntConnectionAutoReconnectJitterMs)
+	end
+
+	return delayMs / 1000
+end
+
 -- use the default TopBarHeight before Chrome service loads
 local inGameGlobalGuiInset = 36
 
@@ -86,9 +120,78 @@ local reconnectDisabledReason = safeGetFString(
 
 local lastErrorTimeStamp = tick()
 
-local FFlagUpdateConnectionLocWarning = game:DefineFastFlag("UpdateConnectionLocWarning", false)
+local FFlagAddPlacelaunchDeviceBlock = game:DefineFastFlag("AddPlacelaunchDeviceBlock2", false)
+local FFlagAddContextualPlayabilityConnectionErrors = game:DefineFastFlag("AddContextualPlayabilityConnectionErrors", false)
+local FFlagAddVipOwnerNotPresentConnectionError = game:DefineFastFlag("AddVipOwnerNotPresentConnectionError", false)
+local FFlagVipOwnerNotPresentEnableReconnect = game:DefineFastFlag("VipOwnerNotPresentEnableReconnect", false)
 
-local FFlagAddPlacelaunchDeviceBlock = game:DefineFastFlag("AddPlacelaunchDeviceBlock", false)
+local FFlagRAKickLogic = game:DefineFastFlag("RAKickLogic2", false)
+local FIntRAMinEngineVersion = game:DefineFastInt("RAMinEngineVersion", 725)
+
+local supportsRemoteAttestationEnums = false
+if FFlagRAKickLogic then
+	local currentVersionStr = RunService:GetRobloxVersion()
+	local currentVersionMajorVersion = tonumber(string.match(currentVersionStr, "%.(%d+)%."))
+	if currentVersionMajorVersion and currentVersionMajorVersion >= FIntRAMinEngineVersion then
+		supportsRemoteAttestationEnums = true
+	end
+end
+
+local FFlagConnectionAmpUpsellOnLeave =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagConnectionAmpUpsellOnLeave
+local FFlagConnectionAmpParentalApprovalUpsell =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagConnectionAmpParentalApprovalUpsell
+local FFlagConnectionParentalApprovalLeaveOnly =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagConnectionParentalApprovalLeaveOnly
+local FFlagConnectionUpsellAnalytics =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagConnectionUpsellAnalytics
+local FFlagUniversalFeatureRestrictionReceivers =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagUniversalFeatureRestrictionReceivers
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
+local FFlagErrorPromptUseLeaveGameHelper =
+	require(CorePackages.Workspace.Packages.SharedFlags).FFlagErrorPromptUseLeaveGameHelper
+
+local LEAVE_GAME_FRAME_WAITS = 2
+
+local useLeaveGameHelper = FFlagErrorPromptUseLeaveGameHelper or isPioneerLaunch()
+
+local leaveGame
+if useLeaveGameHelper then
+	leaveGame = require(RobloxGui.Modules.Settings.leaveGame)
+end
+
+local FFlagAddCollaborationCoreGatedConnectionError = game:DefineFastFlag("AddCollaborationCoreGatedConnectionError2", false)
+local EngineFeaturePlacelaunchCollaborationCoreGatedConnectionError =
+	game:GetEngineFeature("PlacelaunchCollaborationCoreGatedConnectionError")
+local FFlagRobloxExperienceKickOverride = game:DefineFastFlag("RobloxExperienceKickOverride", false)
+
+-- ConnectionAmpUpsellOnLeave owns AMP-specific bits (ApolloClient lookup,
+-- feature names, telemetry, wizard display order). Required only when the
+-- flag is on so the disabled path pays nothing.
+local ConnectionAmpUpsellOnLeave
+if FFlagConnectionAmpUpsellOnLeave then
+	ConnectionAmpUpsellOnLeave = require(RobloxGui.Modules.ConnectionAmpUpsellOnLeave)
+end
+
+local buildRobloxExperienceKickContent = require(CorePackages.Workspace.Packages.InterventionShared.buildRobloxExperienceKickContent)
+local showFeatureRestrictionDirect = require(CorePackages.Workspace.Packages.UniversalFeatureRestrictions.showFeatureRestrictionDirect)
+
+local function fetchUniverseIdFromPlaceId(placeId)
+	local url = string.format("%suniverses/v1/places/%d/universe", Url.APIS_URL, placeId)
+	local fetchOk, body = pcall(HttpRbxApiService.GetAsyncFullUrl, HttpRbxApiService, url)
+	if not fetchOk or type(body) ~= "string" then
+		return nil
+	end
+	local decodeOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
+	if not decodeOk or type(decoded) ~= "table" then
+		return nil
+	end
+	local uid = decoded.universeId
+	if type(uid) ~= "number" or uid <= 0 then
+		return nil
+	end
+	return uid
+end
 
 -- The new, supported way to translate strings in the client.
 -- This function should be used instead of coreScriptTableTranslator:FormatByKey.
@@ -104,11 +207,7 @@ local function translateString(key: string, arguments: { [string]: any }?): stri
 	if success then
 		return result
 	end
-	if FFlagUpdateConnectionLocWarning then
-		Logging.warn("Failed to translate string with key: " .. key .. ", LocaleId: ".. localeId)
-	else
-		Logging.warn("Failed to translate string with key: " .. key)
-	end
+	Logging.warn("Failed to translate string with key: " .. key .. ", LocaleId: ".. localeId)
 	return ""
 end
 
@@ -129,7 +228,14 @@ local ConnectionPromptState = {
 	OUT_OF_MEMORY_KEEPPLAYING_LEAVE = 9, -- Show Out Of Memory with Keep Playing/Leave Message
 	RECONNECT_CONNECT_FAILURE = 10, -- Show Connect Failure Reconnect Options
 	RECONNECT_DISABLED_CONNECT_FAILURE = 11, -- i.e. Version out of date
+	RECONNECT_AGE_CHECK_REQUIRED = 12, -- Placelaunch blocked by age verification; Leave opens the AMP age-check wizard
+	RECONNECT_PARENT_APPROVAL_REQUIRED = 13, -- Placelaunch blocked by parental approval; Leave opens the AMP CanApproveExperience wizard
+	RECONNECT_COLLABORATION_CORE_GATED = 14, -- Placelaunch blocked by missing trusted relationships with collaborators; View collaborators opens the collaborators dashboard webpage
 }
+
+if FFlagConnectionEnableAutoReconnect then
+	ConnectionPromptState.AUTO_RECONNECTING = 15 -- Show auto-reconnect "Reconnecting…" prompt (Leave only), retries TeleportReconnect on a backoff loop
+end
 
 local connectionPromptState = ConnectionPromptState.NONE
 
@@ -149,6 +255,19 @@ local ErrorTitles = {
 	[ConnectionPromptState.RECONNECT_DISABLED_CONNECT_FAILURE] = "Connection Failed",
 }
 
+if FFlagConnectionAmpUpsellOnLeave then
+	ErrorTitles[ConnectionPromptState.RECONNECT_AGE_CHECK_REQUIRED] = "Join Error"
+	ErrorTitles[ConnectionPromptState.RECONNECT_PARENT_APPROVAL_REQUIRED] = "Join Error"
+end
+
+if FFlagAddCollaborationCoreGatedConnectionError then
+	ErrorTitles[ConnectionPromptState.RECONNECT_COLLABORATION_CORE_GATED] = "Join Error"
+end
+
+if FFlagConnectionEnableAutoReconnect then
+	ErrorTitles[ConnectionPromptState.AUTO_RECONNECTING] = "Disconnected"
+end
+
 local ErrorTitleLocalizationKey = {
 	[ConnectionPromptState.RECONNECT_PLACELAUNCH] = "InGame.ConnectionError.Title.JoinError",
 	[ConnectionPromptState.RECONNECT_DISABLED_PLACELAUNCH] = "InGame.ConnectionError.Title.JoinError",
@@ -161,12 +280,31 @@ local ErrorTitleLocalizationKey = {
 	[ConnectionPromptState.RECONNECT_DISABLED_CONNECT_FAILURE] = "InGame.ConnectionError.Title.ConnectionFailed",
 }
 
+if FFlagConnectionAmpUpsellOnLeave then
+	ErrorTitleLocalizationKey[ConnectionPromptState.RECONNECT_AGE_CHECK_REQUIRED] = "InGame.ConnectionError.Title.JoinError"
+	ErrorTitleLocalizationKey[ConnectionPromptState.RECONNECT_PARENT_APPROVAL_REQUIRED] = "InGame.ConnectionError.Title.JoinError"
+end
+
+if FFlagAddCollaborationCoreGatedConnectionError then
+	ErrorTitleLocalizationKey[ConnectionPromptState.RECONNECT_COLLABORATION_CORE_GATED] =
+		"InGame.ConnectionError.Title.JoinError"
+end
+
+if FFlagConnectionEnableAutoReconnect then
+	ErrorTitleLocalizationKey[ConnectionPromptState.AUTO_RECONNECTING] = "InGame.ConnectionError.Title.Disconnected"
+end
+
+-- DisplayOrder for the connection-error prompt. Exposed as a local so the
+-- ConnectionAmpUpsellOnLeave module can position the wizard one order above
+-- it without hardcoding a number on the other side.
+local ROBLOX_PROMPT_DISPLAY_ORDER = 9
+
 -- Screengui holding the prompt and make it on top of blur
 local screenGui = Create("ScreenGui")({
 	Parent = CoreGui,
 	Name = "RobloxPromptGui",
 	OnTopOfCoreBlur = true,
-	DisplayOrder = 9,
+	DisplayOrder = ROBLOX_PROMPT_DISPLAY_ORDER,
 	AutoLocalize = false,
 })
 
@@ -191,6 +329,42 @@ coroutine.wrap(function()
 end)()
 
 -- Button Callbacks --
+local function openCollaboratorsPageForUniverseId(universeId)
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "ViewCollaboratorsOpenUrl"}}, 1.0)
+
+	local url = string.format(
+		"%sdashboard/creations/experiences/%s/safety/collaborators",
+		Url.CREATE_URL,
+		tostring(universeId)
+	)
+	LinkingProtocol.default:openURL(url)
+end
+
+local viewCollaboratorsFunction = function()
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "ViewCollaboratorsInitiated"}}, 1.0)
+
+	local universeId = game.GameId
+	if universeId and universeId ~= 0 then
+		openCollaboratorsPageForUniverseId(universeId)
+		return
+	end
+
+	local placeId = game.PlaceId
+	if not placeId or placeId == 0 then
+		TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "ViewCollaboratorsMissingPlaceId"}}, 1.0)
+		return
+	end
+
+	coroutine.wrap(function()
+		local resolvedUniverseId = fetchUniverseIdFromPlaceId(placeId)
+		if not resolvedUniverseId then
+			TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "ViewCollaboratorsUniverseIdLookupFailed"}}, 1.0)
+			return
+		end
+		openCollaboratorsPageForUniverseId(resolvedUniverseId)
+	end)()
+end
+
 local reconnectFunction = function()
 	local startTime = tick()
 	if connectionPromptState == ConnectionPromptState.IS_RECONNECTING then
@@ -216,19 +390,225 @@ local reconnectFunction = function()
 	end
 end
 
+-- For placelaunch errors that require the user to clear a backend gate before
+-- retrying (PlacelaunchAgeVerificationRequired / PlacelaunchParentalApprovalRequired),
+-- TeleportReconnect is a no-op engine-side because the original placelaunch was
+-- marked non-auto-retryable. Re-issue the placelaunch explicitly using the
+-- PlaceId already on the DataModel (game.PlaceId is populated with the target
+-- place during placelaunch, including while the error prompt is up); the
+-- engine's join flow owns the loading UI from there.
+local reconnectViaPlacelaunch = function()
+	if connectionPromptState == ConnectionPromptState.IS_RECONNECTING then
+		TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "UserClickWhileReconnecting"}}, 1.0)
+		return
+	end
+
+	local placeId = game.PlaceId
+	if not placeId or placeId == 0 then
+		TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "PlacelaunchRetryMissingPlaceId"}}, 1.0)
+		return
+	end
+
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "PlacelaunchRetryInitiated"}}, 1.0)
+	connectionPromptState = ConnectionPromptState.IS_RECONNECTING
+	errorPrompt:primaryShimmerPlay()
+
+	GuiService:ClearError()
+	TeleportService:Teleport(placeId)
+end
+
 local leaveFunction = function()
 	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "LeaveInitiated"}}, 1.0)
-	GuiService.SelectedCoreObject = nil
-	for i = 1, LEAVE_GAME_FRAME_WAITS do
-		RunService.RenderStepped:wait()
+	if useLeaveGameHelper then
+		leaveGame(false, {
+			shouldNativeExit = isPioneerLaunch(),
+			inhibitAppRating = true,
+			telemetryContext = "ErrorPrompt",
+		})
+	else
+		GuiService.SelectedCoreObject = nil
+		for i = 1, LEAVE_GAME_FRAME_WAITS do
+			RunService.RenderStepped:wait()
+		end
+		game:Shutdown()
 	end
-	game:Shutdown()
 end
 
 local closePrompt = function()
 	GuiService:ClearError()
 end
 -- Button Callbacks --
+
+local autoReconnectState = {
+	active = false,
+	attempt = 0,
+	pendingThread = nil,
+	nextAttemptAt = 0,
+	tickerThread = nil,
+	errorCode = nil,
+	baseMessage = nil,
+	lastRenderedText = nil,
+	lastRemaining = nil,
+}
+
+local function pushErrorToPrompt(msg, code)
+	if not errorPrompt then return end
+	if GetFFlagDisplayChannelNameOnErrorPrompt() then
+		errorPrompt:onErrorChanged(msg, code, true)
+	else
+		errorPrompt:onErrorChanged(msg, code)
+	end
+end
+
+local function renderAutoReconnectPrompt()
+	if not errorPrompt then
+		return
+	end
+	if connectionPromptState ~= ConnectionPromptState.AUTO_RECONNECTING
+		and connectionPromptState ~= ConnectionPromptState.IS_RECONNECTING then
+		return
+	end
+
+	local remaining
+	if connectionPromptState == ConnectionPromptState.IS_RECONNECTING then
+		remaining = -1
+	else
+		remaining = math.max(0, math.ceil(autoReconnectState.nextAttemptAt - tick()))
+	end
+	if remaining == autoReconnectState.lastRemaining then
+		return
+	end
+	autoReconnectState.lastRemaining = remaining
+
+	local attempt = autoReconnectState.attempt
+	local status
+	if remaining <= 0 then
+		status = translateString("InGame.ConnectionError.ReconnectingAttempt", { RBX_ATTEMPT = attempt })
+	elseif remaining == 1 then
+		status = translateString("InGame.ConnectionError.ReconnectingAttemptInSecond", { RBX_ATTEMPT = attempt })
+	else
+		status = translateString(
+			"InGame.ConnectionError.ReconnectingAttemptInSeconds",
+			{ RBX_ATTEMPT = attempt, RBX_SECONDS = remaining }
+		)
+	end
+
+	local msg = if autoReconnectState.baseMessage and autoReconnectState.baseMessage ~= ""
+		then autoReconnectState.baseMessage .. "\n" .. status
+		else status
+
+	if msg == autoReconnectState.lastRenderedText then
+		return
+	end
+	autoReconnectState.lastRenderedText = msg
+	pushErrorToPrompt(msg, autoReconnectState.errorCode)
+end
+
+-- Refreshes the countdown ~4x/sec for the cycle's lifetime. Waits before the first
+-- render so the initial prompt open happens on the main thread, not in this task.
+local function ensureAutoReconnectTicker()
+	if autoReconnectState.tickerThread then
+		return
+	end
+	autoReconnectState.tickerThread = task.spawn(function()
+		while autoReconnectState.active do
+			task.wait(0.25)
+			renderAutoReconnectPrompt()
+		end
+		autoReconnectState.tickerThread = nil
+	end)
+end
+
+local function cancelAutoReconnect()
+	autoReconnectState.active = false
+	autoReconnectState.attempt = 0
+	autoReconnectState.nextAttemptAt = 0
+	autoReconnectState.errorCode = nil
+	autoReconnectState.baseMessage = nil
+	autoReconnectState.lastRenderedText = nil
+	autoReconnectState.lastRemaining = nil
+	if autoReconnectState.pendingThread then
+		task.cancel(autoReconnectState.pendingThread)
+		autoReconnectState.pendingThread = nil
+	end
+	if autoReconnectState.tickerThread then
+		task.cancel(autoReconnectState.tickerThread)
+		autoReconnectState.tickerThread = nil
+	end
+end
+
+-- Bucket the attempt index so the AutoReconnectAttempt counter stays low-cardinality.
+local function autoReconnectAttemptBucket(attempt)
+	if attempt <= 5 then
+		return tostring(attempt)
+	elseif attempt <= 8 then
+		return "6-8"
+	else
+		return "9+"
+	end
+end
+
+local function fireAutoReconnect()
+	autoReconnectState.pendingThread = nil
+	-- Never issue a reconnect while one is already in flight (see note above).
+	if connectionPromptState == ConnectionPromptState.IS_RECONNECTING then
+		return
+	end
+
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "AutoReconnectAttempt", attemptBucket = autoReconnectAttemptBucket(autoReconnectState.attempt)}}, 1.0)
+	-- IS_RECONNECTING is the in-flight marker stateTransit uses to detect the next
+	-- reconnect failure; set it directly, as the manual reconnectFunction does.
+	connectionPromptState = ConnectionPromptState.IS_RECONNECTING
+	renderAutoReconnectPrompt()
+	if errorPrompt then
+		errorPrompt:primaryShimmerPlay()
+	end
+	TeleportService:TeleportReconnect()
+
+	if FFlagCoreScriptShowTeleportPrompt then
+		if FFlagRefactorReconnectUnblockTeleport then
+			TeleportService:UnblockAsync()
+		else
+			GuiService:SetMenuIsOpen(false, DEFAULT_ERROR_PROMPT_KEY)
+		end
+	end
+end
+
+local function scheduleAutoReconnect()
+	autoReconnectState.active = true
+	if autoReconnectState.pendingThread then
+		task.cancel(autoReconnectState.pendingThread)
+		autoReconnectState.pendingThread = nil
+	end
+	autoReconnectState.attempt = autoReconnectState.attempt + 1
+	local delaySeconds = computeAutoReconnectDelaySeconds(autoReconnectState.attempt)
+	autoReconnectState.nextAttemptAt = tick() + delaySeconds
+	autoReconnectState.lastRenderedText = nil
+	autoReconnectState.lastRemaining = nil
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "AutoReconnectScheduled"}}, 1.0)
+	ensureAutoReconnectTicker()
+	autoReconnectState.pendingThread = task.delay(delaySeconds, fireAutoReconnect)
+end
+
+-- "Reconnect" button on the auto prompt: skip the countdown and retry now.
+local function autoReconnectNowFunction()
+	if connectionPromptState == ConnectionPromptState.IS_RECONNECTING then
+		TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "UserClickWhileReconnecting"}}, 1.0)
+		return
+	end
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "AutoReconnectManualNow"}}, 1.0)
+	if autoReconnectState.pendingThread then
+		task.cancel(autoReconnectState.pendingThread)
+		autoReconnectState.pendingThread = nil
+	end
+	fireAutoReconnect()
+end
+
+local autoReconnectLeaveFunction = function()
+	TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "AutoReconnectLeave"}}, 1.0)
+	cancelAutoReconnect()
+	leaveFunction()
+end
 
 -- Reconnect Disabled List
 local reconnectDisabledList = {
@@ -248,7 +628,11 @@ local reconnectDisabledList = {
 	[Enum.ConnectionError.DisconnectDuplicatePlayer] = true,
 	[Enum.ConnectionError.DisconnectCloudEditKick] = true,
 	[Enum.ConnectionError.DisconnectOnRemoteSysStats] = true,
+	[Enum.ConnectionError.DisconnectBySecurityPolicy] = true,
+	[Enum.ConnectionError.DisconnectBlockedIP] = true,
 	[Enum.ConnectionError.DisconnectPrivateServerKickout] = true,
+	[Enum.ConnectionError.DisconnectCollaboratorPermissionRevoked] = true,
+	[Enum.ConnectionError.DisconnectCollaboratorUnderage] = true,
 	[Enum.ConnectionError.PlacelaunchFlooded] = true,
 	[Enum.ConnectionError.PlacelaunchHashException] = true,
 	[Enum.ConnectionError.PlacelaunchHashExpired] = true,
@@ -272,15 +656,55 @@ if fflagShowScreentimeLockoutKickMessage then
 	reconnectDisabledList[Enum.ConnectionError.ScreentimeLockoutKick] = true
 end
 
-if fflagAddConnectionErrorLocalizationKeys then
-	reconnectDisabledList[Enum.ConnectionError.DisconnectBySecurityPolicy] = true
-	reconnectDisabledList[Enum.ConnectionError.DisconnectBlockedIP] = true
-	reconnectDisabledList[Enum.ConnectionError.DisconnectCollaboratorPermissionRevoked] = true
-	reconnectDisabledList[Enum.ConnectionError.DisconnectCollaboratorUnderage] = true
+if FFlagAddPlacelaunchDeviceBlock then
+	reconnectDisabledList[Enum.ConnectionError.PlacelaunchDeviceBlock] = true
 end
 
-if FFlagAddPlacelaunchDeviceBlock then
-	reconnectDisabledList[Enum.ConnectionError.PlacelaunchDeviceBlocked] = true
+if FFlagAddContextualPlayabilityConnectionErrors then
+	reconnectDisabledList[Enum.ConnectionError.PlacelaunchAgeVerificationRequired] = true
+	reconnectDisabledList[Enum.ConnectionError.PlacelaunchParentalApprovalRequired] = true
+	reconnectDisabledList[Enum.ConnectionError.PlacelaunchCoreGated] = true
+end
+
+if FFlagAddVipOwnerNotPresentConnectionError and not FFlagVipOwnerNotPresentEnableReconnect then
+	reconnectDisabledList[Enum.ConnectionError.PlacelaunchVipOwnerNotPresent] = true
+end
+
+local PlacelaunchCollaborationCoreGatedEnum = if FFlagAddCollaborationCoreGatedConnectionError
+		and EngineFeaturePlacelaunchCollaborationCoreGatedConnectionError
+	then Enum.ConnectionError["PlacelaunchCollaborationCoreGated"]
+	else nil
+
+if FFlagAddCollaborationCoreGatedConnectionError and PlacelaunchCollaborationCoreGatedEnum then
+	reconnectDisabledList[PlacelaunchCollaborationCoreGatedEnum] = true
+end
+
+if FFlagRAKickLogic and supportsRemoteAttestationEnums then
+	reconnectDisabledList[Enum.ConnectionError.DisconnectRemoteAttestationUnsupported] = true
+	reconnectDisabledList[Enum.ConnectionError.DisconnectRemoteAttestationGeneralFailure] = true
+	reconnectDisabledList[Enum.ConnectionError.DisconnectRemoteAttestationOSOutOfDate] = true
+	reconnectDisabledList[Enum.ConnectionError.DisconnectRemoteAttestationBootValidationFailure] = true
+end
+
+local autoReconnectAllowedList = {}
+if FFlagConnectionEnableAutoReconnect then
+	autoReconnectAllowedList = {
+		[Enum.ConnectionError.DisconnectConnectionLost] = true,
+		[Enum.ConnectionError.DisconnectTimeout] = true,
+		[Enum.ConnectionError.DisconnectRaknetErrors] = true,
+		[Enum.ConnectionError.DisconnectReceivePacketError] = true,
+		[Enum.ConnectionError.DisconnectReceivePacketStreamError] = true,
+		[Enum.ConnectionError.DisconnectSendPacketError] = true,
+		[Enum.ConnectionError.DisconnectHashTimeout] = true,
+		[Enum.ConnectionError.ReplicatorTimeout] = true,
+		[Enum.ConnectionError.NetworkTimeout] = true,
+		[Enum.ConnectionError.NetworkInternal] = true,
+		[Enum.ConnectionError.NetworkSend] = true,
+	}
+
+	if fflagRbxTransportHandleUniqueErrors and EngineFeatureRbxTransportUniqueConnectionErrors then
+		autoReconnectAllowedList[Enum.ConnectionError.DisconnectTransportIoInternetError] = true
+	end
 end
 
 local ButtonList = {
@@ -391,6 +815,115 @@ local ButtonList = {
 	},
 }
 
+if FFlagConnectionAmpUpsellOnLeave then
+	local openAgeCheckWizardThenReconnect = ConnectionAmpUpsellOnLeave.createAgeCheckCallback(
+		connectionEventConfig,
+		reconnectViaPlacelaunch,
+		ROBLOX_PROMPT_DISPLAY_ORDER
+	)
+	ButtonList[ConnectionPromptState.RECONNECT_AGE_CHECK_REQUIRED] = {
+		{
+			Text = "Leave",
+			LocalizationKey = "Feature.SettingsHub.Label.LeaveButton",
+			LayoutOrder = 1,
+			Callback = leaveFunction,
+		},
+		{
+			Text = ConnectionAmpUpsellOnLeave.PrimaryButtonText,
+			LocalizationKey = ConnectionAmpUpsellOnLeave.PrimaryButtonLocalizationKey,
+			LayoutOrder = 2,
+			Callback = openAgeCheckWizardThenReconnect,
+			Primary = true,
+		},
+	}
+end
+
+if FFlagConnectionAmpParentalApprovalUpsell then
+	local openParentApprovalWizardThenReconnect = ConnectionAmpUpsellOnLeave.createParentalApprovalCallback(
+		connectionEventConfig,
+		reconnectViaPlacelaunch,
+		ROBLOX_PROMPT_DISPLAY_ORDER
+	)
+	ButtonList[ConnectionPromptState.RECONNECT_PARENT_APPROVAL_REQUIRED] = {
+		{
+			Text = "Leave",
+			LocalizationKey = "Feature.SettingsHub.Label.LeaveButton",
+			LayoutOrder = 1,
+			Callback = leaveFunction,
+		},
+		{
+			Text = ConnectionAmpUpsellOnLeave.PrimaryButtonText,
+			LocalizationKey = ConnectionAmpUpsellOnLeave.PrimaryButtonLocalizationKey,
+			LayoutOrder = 2,
+			Callback = openParentApprovalWizardThenReconnect,
+			Primary = true,
+		},
+	}
+end
+
+-- Asking a parent isn't supported in-experience: Continue opens a VPC dialog that
+-- renders behind this prompt and soft-locks the user, so Leave is the only way out.
+if FFlagConnectionParentalApprovalLeaveOnly then
+	ButtonList[ConnectionPromptState.RECONNECT_PARENT_APPROVAL_REQUIRED] = {
+		{
+			Text = "Leave",
+			LocalizationKey = "Feature.SettingsHub.Label.LeaveButton",
+			LayoutOrder = 1,
+			Callback = leaveFunction,
+			Primary = true,
+		},
+	}
+end
+
+if FFlagAddCollaborationCoreGatedConnectionError then
+	ButtonList[ConnectionPromptState.RECONNECT_COLLABORATION_CORE_GATED] = {
+		{
+			Text = "Ok",
+			LocalizationKey = "InGame.ConnectionError.Action.Ok",
+			LayoutOrder = 1,
+			Callback = leaveFunction,
+		},
+		{
+			Text = "View collaborators",
+			LocalizationKey = "InGame.ConnectionError.Action.ViewCollaborators",
+			LayoutOrder = 2,
+			Callback = viewCollaboratorsFunction,
+			Primary = true,
+		},
+	}
+end
+
+if FFlagConnectionEnableAutoReconnect then
+	-- Auto-reconnect retries on its own, but we keep a Reconnect button so the user
+	-- can skip the countdown and retry immediately, plus Leave (cancels + shuts down).
+	ButtonList[ConnectionPromptState.AUTO_RECONNECTING] = {
+		{
+			Text = "Reconnect Now",
+			LocalizationKey = "InGame.ConnectionError.Button.ReconnectNow",
+			LayoutOrder = 2,
+			Callback = autoReconnectNowFunction,
+			Primary = true,
+		},
+		{
+			Text = "Leave",
+			LocalizationKey = "Feature.SettingsHub.Label.LeaveButton",
+			LayoutOrder = 1,
+			Callback = autoReconnectLeaveFunction,
+		},
+	}
+end
+
+if isPioneerLaunch() then
+	for _, buttons in pairs(ButtonList) do
+		for _, buttonData in ipairs(buttons) do
+			if buttonData.Callback == leaveFunction or buttonData.Callback == autoReconnectLeaveFunction then
+				buttonData.Text = "Quit"
+				buttonData.LocalizationKey = "Feature.SettingsHub.Label.QuitButton"
+			end
+		end
+	end
+end
+
 local updateFullScreenEffect = {
 	[ConnectionPromptState.NONE] = function()
 		RunService:SetRobloxGuiFocused(false)
@@ -450,6 +983,33 @@ local updateFullScreenEffect = {
 		promptOverlay.Transparency = 0.3
 	end,
 }
+
+if FFlagConnectionAmpUpsellOnLeave then
+	-- The new AMP-on-Leave states reuse RECONNECT_PLACELAUNCH's full-screen
+	-- effect verbatim (the AMP wizard renders above the prompt at a higher
+	-- DisplayOrder); aliasing keeps them in sync if the placelaunch effect
+	-- ever changes.
+	local placelaunchEffect = updateFullScreenEffect[ConnectionPromptState.RECONNECT_PLACELAUNCH]
+	updateFullScreenEffect[ConnectionPromptState.RECONNECT_AGE_CHECK_REQUIRED] = placelaunchEffect
+	if FFlagConnectionAmpParentalApprovalUpsell then
+		updateFullScreenEffect[ConnectionPromptState.RECONNECT_PARENT_APPROVAL_REQUIRED] = placelaunchEffect
+	end
+end
+
+if FFlagAddCollaborationCoreGatedConnectionError then
+	updateFullScreenEffect[ConnectionPromptState.RECONNECT_COLLABORATION_CORE_GATED] = function()
+		RunService:SetRobloxGuiFocused(false)
+		promptOverlay.Active = true
+		promptOverlay.Transparency = 0.3
+	end
+end
+
+if FFlagConnectionEnableAutoReconnect then
+	-- AUTO_RECONNECTING is the disconnect prompt with retry UI; reuse its effect so the
+	-- two can't drift.
+	updateFullScreenEffect[ConnectionPromptState.AUTO_RECONNECTING] =
+		updateFullScreenEffect[ConnectionPromptState.RECONNECT_DISCONNECT]
+end
 
 local function onEnter(newState)
 	if not errorPrompt then
@@ -526,9 +1086,36 @@ local function stateTransit(errorType, errorCode, oldState)
 			end
 			TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "Disconnected"}}, 1.0)
 			AnalyticsService:ReportCounter("ReconnectPrompt-Disconnect")
+			if FFlagConnectionEnableAutoReconnect and autoReconnectAllowedList[errorCode] then
+				return ConnectionPromptState.AUTO_RECONNECTING
+			end
 			return ConnectionPromptState.RECONNECT_DISCONNECT
 		elseif errorType == Enum.ConnectionError.PlacelaunchErrors then
 			errorForReconnect = Enum.ConnectionError.PlacelaunchErrors
+			if FFlagConnectionAmpUpsellOnLeave then
+				local ageEnum = ConnectionAmpUpsellOnLeave.AgeVerificationRequiredEnum
+				if ageEnum and errorCode == ageEnum then
+					TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "PlaceLaunchAgeVerificationRequired"}}, 1.0)
+					if FFlagConnectionUpsellAnalytics then
+						ConnectionAmpUpsellOnLeave.fireImpressionAgeCheck(connectionEventConfig, game.PlaceId)
+					end
+					return ConnectionPromptState.RECONNECT_AGE_CHECK_REQUIRED
+				end
+			end
+			if FFlagConnectionAmpParentalApprovalUpsell then
+				local parentEnum = ConnectionAmpUpsellOnLeave.ParentalApprovalRequiredEnum
+				if parentEnum and errorCode == parentEnum then
+					TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "PlaceLaunchParentalApprovalRequired"}}, 1.0)
+					if FFlagConnectionUpsellAnalytics then
+						ConnectionAmpUpsellOnLeave.fireImpressionParentalApproval(connectionEventConfig, game.PlaceId)
+					end
+					return ConnectionPromptState.RECONNECT_PARENT_APPROVAL_REQUIRED
+				end
+			end
+			if FFlagAddCollaborationCoreGatedConnectionError and PlacelaunchCollaborationCoreGatedEnum and errorCode == PlacelaunchCollaborationCoreGatedEnum then
+				TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "PlaceLaunchCollaborationCoreGated"}}, 1.0)
+				return ConnectionPromptState.RECONNECT_COLLABORATION_CORE_GATED
+			end
 			if reconnectDisabledList[errorCode] then
 				return ConnectionPromptState.RECONNECT_DISABLED_PLACELAUNCH
 			end
@@ -563,12 +1150,33 @@ local function stateTransit(errorType, errorCode, oldState)
 				return ConnectionPromptState.RECONNECT_PLACELAUNCH
 			elseif errorForReconnect == Enum.ConnectionError.DisconnectErrors then
 				TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "DisconnectReconnectFailed"}}, 1.0)
+				if FFlagConnectionEnableAutoReconnect and autoReconnectState.active then
+					-- Keep auto-retrying until the max duration (default 5 min) elapses since
+					-- the disconnect, then fall back to the manual Reconnect/Leave prompt. 0 = no cap.
+					local maxDurationSeconds = FIntConnectionAutoReconnectMaxDurationSeconds
+					if maxDurationSeconds <= 0 or tick() <= lastErrorTimeStamp + maxDurationSeconds then
+						return ConnectionPromptState.AUTO_RECONNECTING
+					end
+					TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "AutoReconnectExhausted"}}, 1.0)
+				end
 				return ConnectionPromptState.RECONNECT_DISCONNECT
 			elseif errorForReconnect == Enum.ConnectionError.ConnectErrors then
 				TelemetryService:LogCounter(connectionEventConfig, {customFields = {selectedItem = "ConnectReconnectFailed"}}, 1.0)
 				return ConnectionPromptState.RECONNECT_CONNECT_FAILURE
 			end
 		end
+	end
+
+	if FFlagConnectionEnableAutoReconnect and oldState == ConnectionPromptState.AUTO_RECONNECTING then
+		if reconnectDisabled then
+			return ConnectionPromptState.RECONNECT_DISABLED
+		end
+		if errorType == Enum.ConnectionError.DisconnectErrors then
+			if reconnectDisabledList[errorCode] then
+				return ConnectionPromptState.RECONNECT_DISABLED_DISCONNECT
+			end
+		end
+		return oldState
 	end
 
 	return oldState
@@ -678,27 +1286,27 @@ local enumToLocalizationKey = {
 	[Enum.ConnectionError.DisconnectIdle] = "InGame.ConnectionError.DisconnectIdle",
 	[Enum.ConnectionError.DisconnectRaknetErrors] = "InGame.ConnectionError.DisconnectRaknetErrors",
 	[Enum.ConnectionError.DisconnectWrongVersion] = "InGame.ConnectionError.DisconnectWrongVersion",
-	[Enum.ConnectionError.DisconnectBySecurityPolicy] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectBySecurityPolicy",
-	[Enum.ConnectionError.DisconnectBlockedIP] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectBlockedIP",
-	[Enum.ConnectionError.DisconnectClientFailure] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectClientFailure",
-	[Enum.ConnectionError.DisconnectClientRequest] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectClientRequest",
+	[Enum.ConnectionError.DisconnectBySecurityPolicy] = "InGame.ConnectionError.DisconnectBlockedConnection",
+	[Enum.ConnectionError.DisconnectBlockedIP] = "InGame.ConnectionError.DisconnectBlockedConnection",
+	[Enum.ConnectionError.DisconnectClientFailure] = "InGame.ConnectionError.DisconnectClientFailure",
+	[Enum.ConnectionError.DisconnectClientRequest] = "InGame.ConnectionError.DisconnectClientRequest",
 	[Enum.ConnectionError.DisconnectPrivateServerKickout] = "InGame.ConnectionError.DisconnectPrivateServerKickout",
-	[Enum.ConnectionError.DisconnectModeratedGame] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectModeratedGame",
-	[Enum.ConnectionError.ServerShutdown] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.ServerShutdown",
-	[Enum.ConnectionError.ReplicatorTimeout] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.ReplicatorTimeout",
-	[Enum.ConnectionError.PlayerRemoved] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.PlayerRemoved",
+	[Enum.ConnectionError.DisconnectModeratedGame] = "InGame.ConnectionError.ServerShutdown",
+	[Enum.ConnectionError.ServerShutdown] = "InGame.ConnectionError.ServerShutdown",
+	[Enum.ConnectionError.ReplicatorTimeout] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.PlayerRemoved] = "InGame.ConnectionError.DisconnectTryAgain",
 	[Enum.ConnectionError.DisconnectOutOfMemoryKeepPlayingLeave] = "InGame.ConnectionError.DisconnectOutOfMemoryKeepPlayingLeave",
-	[Enum.ConnectionError.DisconnectRomarkEndOfTest] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectRomarkEndOfTest",
-	[Enum.ConnectionError.DisconnectCollaboratorPermissionRevoked] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectCollaboratorPermissionRevoked",
-	[Enum.ConnectionError.DisconnectCollaboratorUnderage] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.DisconnectCollaboratorUnderage",
-	[Enum.ConnectionError.NetworkInternal] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.NetworkInternal",
-	[Enum.ConnectionError.NetworkSend] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.NetworkSend",
-	[Enum.ConnectionError.NetworkTimeout] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.NetworkTimeout",
-	[Enum.ConnectionError.NetworkMisbehavior] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.NetworkMisbehavior",
-	[Enum.ConnectionError.NetworkSecurity] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.NetworkSecurity",
-	[Enum.ConnectionError.ReplacementReady] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.ReplacementReady",
-	[Enum.ConnectionError.ServerEmpty] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.ServerEmpty",
-	[Enum.ConnectionError.PhantomFreeze] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.PhantomFreeze",
+	[Enum.ConnectionError.DisconnectRomarkEndOfTest] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.DisconnectCollaboratorPermissionRevoked] = "InGame.ConnectionError.DisconnectCollaboratorPermissionRevoked",
+	[Enum.ConnectionError.DisconnectCollaboratorUnderage] = "InGame.ConnectionError.DisconnectCollaboratorUnderage",
+	[Enum.ConnectionError.NetworkInternal] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.NetworkSend] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.NetworkTimeout] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.NetworkMisbehavior] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.NetworkSecurity] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.ReplacementReady] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.ServerEmpty] = "InGame.ConnectionError.DisconnectTryAgain",
+	[Enum.ConnectionError.PhantomFreeze] = "InGame.ConnectionError.DisconnectTryAgain",
 	[Enum.ConnectionError.AndroidAnticheatKick] = "InGame.ConnectionError.AndroidAnticheatKick",
 	[Enum.ConnectionError.AndroidEmulatorKick] = "InGame.ConnectionError.AndroidEmulatorKick",
 	[Enum.ConnectionError.PlacelaunchErrors] = "InGame.ConnectionError.PlacelaunchErrors",
@@ -715,7 +1323,7 @@ local enumToLocalizationKey = {
 	[Enum.ConnectionError.PlacelaunchPartyCannotFit] = "InGame.ConnectionError.PlacelaunchPartyCannotFit",
 	[Enum.ConnectionError.PlacelaunchHttpError] = "InGame.ConnectionError.PlacelaunchHttpError",
 	[Enum.ConnectionError.PlacelaunchUserPrivacyUnauthorized] = "InGame.ConnectionError.PlacelaunchUserPrivacyUnauthorized",
-	[Enum.ConnectionError.PlacelaunchCreatorBan] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.PlacelaunchCreatorBan",
+	[Enum.ConnectionError.PlacelaunchCreatorBan] = "InGame.ConnectionError.CreatorBanNoTime",
 	[Enum.ConnectionError.PlacelaunchCustomMessage] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.PlacelaunchCustomMessage",
 	[Enum.ConnectionError.PlacelaunchOtherError] = "InGame.ConnectionError.PlacelaunchOtherError",
 	[Enum.ConnectionError.TeleportErrors] = "InGame.ConnectionError.TeleportErrors",
@@ -727,41 +1335,46 @@ local enumToLocalizationKey = {
 	[Enum.ConnectionError.TeleportFlooded] = "InGame.ConnectionError.TeleportFlooded",
 	[Enum.ConnectionError.TeleportIsTeleporting] = if FFlagRemoveRefToMissingLocInConnection then nil else "InGame.ConnectionError.TeleportIsTeleporting",
 }
-
-if FFlagAddClientDisconnectVerboselyModeratedGame then
 	enumToLocalizationKey[Enum.ConnectionError.DisconnectVerboselyModeratedGame] = "InGame.ConnectionError.DisconnectVerboselyModeratedGame"
-end
 
 
 if fflagShowScreentimeLockoutKickMessage then
 	enumToLocalizationKey[Enum.ConnectionError.ScreentimeLockoutKick] = "Feature.Screentime.Content.ScreentimeLimitDialog"
 end
 
-if fflagAddConnectionErrorLocalizationKeys then
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectBySecurityPolicy] = "InGame.ConnectionError.DisconnectBlockedConnection"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectBlockedIP] = "InGame.ConnectionError.DisconnectBlockedConnection"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectClientFailure] = "InGame.ConnectionError.DisconnectClientFailure"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectClientRequest] = "InGame.ConnectionError.DisconnectClientRequest"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectModeratedGame] = "InGame.ConnectionError.ServerShutdown"
-	enumToLocalizationKey[Enum.ConnectionError.ServerShutdown] = "InGame.ConnectionError.ServerShutdown"
-	enumToLocalizationKey[Enum.ConnectionError.ReplicatorTimeout] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.PlayerRemoved] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectRomarkEndOfTest] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectCollaboratorPermissionRevoked] = "InGame.ConnectionError.DisconnectCollaboratorPermissionRevoked"
-	enumToLocalizationKey[Enum.ConnectionError.DisconnectCollaboratorUnderage] = "InGame.ConnectionError.DisconnectCollaboratorUnderage"
-	enumToLocalizationKey[Enum.ConnectionError.NetworkInternal] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.NetworkSend] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.NetworkTimeout] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.NetworkMisbehavior] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.NetworkSecurity] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.ReplacementReady] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.ServerEmpty] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.PhantomFreeze] = "InGame.ConnectionError.DisconnectTryAgain"
-	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchCreatorBan] = "InGame.ConnectionError.CreatorBanNoTime"
+if FFlagAddPlacelaunchDeviceBlock then
+	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchDeviceBlock] = "InGame.ConnectionError.PlacelaunchDeviceBlock"
 end
 
-if FFlagAddPlacelaunchDeviceBlock then
-	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchDeviceBlocked] = "InGame.ConnectionError.PlacelaunchDeviceBlocked"
+if FFlagAddContextualPlayabilityConnectionErrors then
+	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchAgeVerificationRequired] = "InGame.ConnectionError.Description.AgeCheckRequired"
+	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchParentalApprovalRequired] = "InGame.ConnectionError.Description.ParentalApprovalRequired"
+	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchCoreGated] = "InGame.ConnectionError.Description.LockedByAge"
+end
+
+if FFlagAddVipOwnerNotPresentConnectionError then
+	enumToLocalizationKey[Enum.ConnectionError.PlacelaunchVipOwnerNotPresent] = "InGame.ConnectionError.Description.VipOwnerNotPresent"
+end
+
+if FFlagAddCollaborationCoreGatedConnectionError and PlacelaunchCollaborationCoreGatedEnum then
+	enumToLocalizationKey[PlacelaunchCollaborationCoreGatedEnum] = "InGame.ConnectionError.Description.CollaborationRequiresTrustedFriends"
+end
+
+if FFlagRAKickLogic and supportsRemoteAttestationEnums then
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectRemoteAttestationTimeout] = "InGame.ConnectionError.RemoteAttestationTimeout"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectRemoteAttestationUnsupported] = "InGame.ConnectionError.RemoteAttestationUnsupported"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectRemoteAttestationGeneralFailure] = "InGame.ConnectionError.RemoteAttestationGeneralFailure"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectRemoteAttestationOSOutOfDate] = "InGame.ConnectionError.RemoteAttestationOSOutOfDate"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectRemoteAttestationBootValidationFailure] = "InGame.ConnectionError.RemoteAttestationBootValidationFailure"
+end
+
+if fflagRbxTransportHandleUniqueErrors and EngineFeatureRbxTransportUniqueConnectionErrors then
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectTransportIoError] = "InGame.ConnectionError.DisconnectTryAgain"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectTransportIoInternetError] = "InGame.ConnectionError.DisconnectConnectionLost"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectTransportProtocolError] = "InGame.ConnectionError.DisconnectTryAgain"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectTransportNgtcp2Error] = "InGame.ConnectionError.DisconnectTryAgain"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectTransportQuicError] = "InGame.ConnectionError.DisconnectTryAgain"
+	enumToLocalizationKey[Enum.ConnectionError.DisconnectTransportRnaError] = "InGame.ConnectionError.DisconnectTryAgain"
 end
 
 -- Localize the error string, with a fallback to the original string upon failure.
@@ -791,15 +1404,10 @@ local function getErrorString(errorMsg: string, errorCode, reconnectError)
 		return errorMsg
 	end
 
-	local key
-	if fflagUpdateConnectionErrorLoc then
-		key = enumToLocalizationKey[errorCode]
-		if not key then
-			mutedError("Cannot find localization key for " .. tostring(errorCode))
-			key = "InGame.ConnectionError.UnknownError"
-		end
-	else
-		key = string.gsub(tostring(errorCode), "Enum", "InGame")
+	local key = enumToLocalizationKey[errorCode]
+	if not key then
+		mutedError("Cannot find localization key for " .. tostring(errorCode))
+		key = "InGame.ConnectionError.UnknownError"
 	end
 
 	local attemptTranslation
@@ -821,11 +1429,44 @@ local function getErrorString(errorMsg: string, errorCode, reconnectError)
 end
 
 local function updateErrorPrompt(errorMsg, errorCode, errorType)
+	if
+		FFlagRobloxExperienceKickOverride and
+		FFlagUniversalFeatureRestrictionReceivers and
+		errorCode == Enum.ConnectionError.DisconnectLuaKick
+	then
+		local errorDetails = GuiService:GetErrorDetails()
+
+		-- Since DisconnectLuaKick is used for both Roblox and developer initiated kicks, we branch out here for the Roblox case.
+		if errorDetails and errorDetails.moderatorType == 'roblox' then
+			local view = buildRobloxExperienceKickContent(errorMsg, errorDetails, translateString)
+			showFeatureRestrictionDirect(view.abuseVector, view.moderationDetail, {
+				onDismiss = leaveFunction,
+				titleOverride = view.options.titleOverride,
+				bodyOverride = view.options.bodyOverride,
+			})
+
+			TelemetryService:LogCounter(
+				connectionEventConfig,
+				{ customFields = { selectedItem = "RobloxExperienceKick" } },
+				1.0
+			)
+			return
+		end
+	end
+
 	local newPromptState = stateTransit(errorType, errorCode, connectionPromptState)
 	if newPromptState ~= connectionPromptState then
 		onExit(connectionPromptState)
 		connectionPromptState = newPromptState
 		onEnter(newPromptState)
+		if FFlagConnectionEnableAutoReconnect then
+			if newPromptState == ConnectionPromptState.AUTO_RECONNECTING then
+				scheduleAutoReconnect()
+			else
+				-- Left the auto-reconnect cycle: stop the countdown + pending retry.
+				cancelAutoReconnect()
+			end
+		end
 	end
 
 	if errorCode == Enum.ConnectionError.PlacelaunchCreatorBan then
@@ -840,6 +1481,17 @@ local function updateErrorPrompt(errorMsg, errorCode, errorType)
 
 	if connectionPromptState == ConnectionPromptState.RECONNECT_DISABLED then
 		errorMsg = reconnectDisabledReason
+	end
+
+	if FFlagConnectionEnableAutoReconnect and connectionPromptState == ConnectionPromptState.AUTO_RECONNECTING then
+		-- Capture the localized disconnect message + code on the first entry only;
+		-- on failure re-entries errorMsg is the teleport "reconnect failed" text.
+		if autoReconnectState.baseMessage == nil then
+			autoReconnectState.baseMessage = errorMsg
+			autoReconnectState.errorCode = errorCode
+		end
+		renderAutoReconnectPrompt()
+		return
 	end
 
 	if errorPrompt then
@@ -888,6 +1540,9 @@ if fflagDebugEnableErrorStringTesting then
 				errorType
 			)
 			wait(2)
+			if FFlagConnectionEnableAutoReconnect then
+				cancelAutoReconnect()
+			end
 			connectionPromptState = ConnectionPromptState.NONE
 		end
 	end

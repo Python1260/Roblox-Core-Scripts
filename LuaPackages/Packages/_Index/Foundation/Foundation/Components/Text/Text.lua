@@ -1,16 +1,16 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
-local Dash = require(Packages.Dash)
 local React = require(Packages.React)
 local ReactIs = require(Packages.ReactIs)
 
-local Flags = require(Foundation.Utility.Flags)
 local Interactable = require(Foundation.Components.Interactable)
 
+local Flags = require(Foundation.Utility.Flags)
 local GuiObjectChildren = require(Foundation.Utility.GuiObjectChildren)
 local Types = require(Foundation.Components.Types)
 local indexBindable = require(Foundation.Utility.indexBindable)
+local normalizeFontFace = require(Foundation.Utility.normalizeFontFace)
 local useDefaultTags = require(Foundation.Utility.useDefaultTags)
 local withDefaults = require(Foundation.Utility.withDefaults)
 local withGuiObjectProps = require(Foundation.Utility.withGuiObjectProps)
@@ -55,7 +55,7 @@ local function Text(textProps: TextProps, ref: React.Ref<GuiObject>?)
 	local isInteractable = props.onStateChanged ~= nil or props.onActivated ~= nil or props.onSecondaryActivated ~= nil
 
 	local defaultTags = if props.backgroundStyle ~= nil then DEFAULT_TAGS_WITH_BG else DEFAULT_TAGS
-	if Flags.FoundationTextSizeDefaults and props.fontStyle and props.fontStyle.FontSize then
+	if props.fontStyle and props.fontStyle.FontSize then
 		defaultTags ..= " x-default-text-size"
 	end
 
@@ -63,15 +63,20 @@ local function Text(textProps: TextProps, ref: React.Ref<GuiObject>?)
 	local tag = useStyleTags(tagsWithDefaults)
 
 	local fontFace = React.useMemo(function(): Bindable<Font>?
-		local fontFaceProp = if props.fontStyle ~= nil then props.fontStyle.Font else nil
-		if typeof(fontFaceProp) == "table" and not ReactIs.isBinding(fontFaceProp) then
-			local fontFaceTyped = fontFaceProp :: FontFaceTable -- We're sure because it's not a binding
-			return Font.new(fontFaceTyped.Family, fontFaceTyped.Weight, fontFaceTyped.Style)
+		if Flags.FoundationFontFaceMigration then
+			local font = if props.fontStyle ~= nil then props.fontStyle.Font else nil
+			return normalizeFontFace(font)
 		else
-			if typeof(fontFaceProp) == "EnumItem" then
-				return Font.fromEnum(fontFaceProp :: Enum.Font)
+			local fontFaceProp = if props.fontStyle ~= nil then props.fontStyle.Font else nil
+			if typeof(fontFaceProp) == "table" and not ReactIs.isBinding(fontFaceProp) then
+				local fontFaceTyped = fontFaceProp :: FontFaceTable -- We're sure because it's not a binding
+				return Font.new(fontFaceTyped.Family, fontFaceTyped.Weight, fontFaceTyped.Style)
 			else
-				return fontFaceProp :: Bindable<Font>? -- We're sure because it's not a table or an EnumItem
+				if typeof(fontFaceProp) == "EnumItem" then
+					return Font.fromEnum(fontFaceProp :: Enum.Font)
+				else
+					return fontFaceProp :: Bindable<Font>? -- We're sure because it's not a table or an EnumItem
+				end
 			end
 		end
 	end, { props.fontStyle })
@@ -134,41 +139,21 @@ local function Text(textProps: TextProps, ref: React.Ref<GuiObject>?)
 		ref = ref,
 		[React.Tag] = tag,
 	})
+	local component: any = engineComponent
+	local componentProps: any = engineComponentProps
 
-	if Flags.FoundationBuildingBlocksRemoveDashUnion then
-		local component: any = engineComponent
-		local componentProps: any = engineComponentProps
-
-		if isInteractable then
-			component = Interactable
-			componentProps.component = engineComponent
-			componentProps.onActivated = props.onActivated
-			componentProps.onSecondaryActivated = props.onSecondaryActivated
-			componentProps.onStateChanged = props.onStateChanged
-			componentProps.stateLayer = props.stateLayer
-			componentProps.isDisabled = props.isDisabled
-			componentProps.cursor = props.cursor
-		end
-
-		return React.createElement(component, componentProps, GuiObjectChildren(props))
-	else
-		local component = if isInteractable then Interactable else engineComponent
-
-		local textComponentProps = {
-			component = engineComponent,
-			onActivated = props.onActivated,
-			onSecondaryActivated = props.onSecondaryActivated,
-			onStateChanged = props.onStateChanged,
-			stateLayer = props.stateLayer,
-			isDisabled = props.isDisabled,
-			cursor = props.cursor,
-		}
-		local componentProps = if isInteractable
-			then Dash.union(engineComponentProps, textComponentProps)
-			else engineComponentProps
-
-		return React.createElement(component, componentProps, GuiObjectChildren(props))
+	if isInteractable then
+		component = Interactable
+		componentProps.component = engineComponent
+		componentProps.onActivated = props.onActivated
+		componentProps.onSecondaryActivated = props.onSecondaryActivated
+		componentProps.onStateChanged = props.onStateChanged
+		componentProps.stateLayer = props.stateLayer
+		componentProps.isDisabled = props.isDisabled
+		componentProps.cursor = props.cursor
 	end
+
+	return React.createElement(component, componentProps, GuiObjectChildren(props))
 end
 
 return React.memo(React.forwardRef(Text))

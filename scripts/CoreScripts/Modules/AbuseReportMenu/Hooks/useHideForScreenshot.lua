@@ -1,20 +1,15 @@
 local RunService = game:GetService("RunService")
 local CorePackages = game:GetService("CorePackages")
+local GuiService = game:GetService("GuiService")
 local React = require(CorePackages.Packages.React)
 
-local FFlagAbuseReportMenuScreenshotReduceMotionFix =
-	game:DefineFastFlag("AbuseReportMenuScreenshotReduceMotionFix", false)
 local FIntAbuseReportMenuScreenshotReduceMotionWaitFrames =
 	game:DefineFastInt("AbuseReportMenuScreenshotReduceMotionWaitFrames", 20)
 local FIntAbuseReportMenuScreenshotWaitFrames = game:DefineFastInt("AbuseReportMenuScreenshotWaitFrames", 10)
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagIEMTabFocusNav = SharedFlags.FFlagIEMTabFocusNav
 
-local UserGameSettings
-if FFlagAbuseReportMenuScreenshotReduceMotionFix then
-	UserGameSettings = UserSettings():GetService("UserGameSettings")
-end
-
-local WAIT_FRAMES = 10
-local MIN_WAIT_TIME = (WAIT_FRAMES / 60) -- Covers the case of the user having their maximum framerate set higher than 60
+local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
 local getWaitFrames = function()
 	if UserGameSettings.ReducedMotion then
@@ -39,11 +34,19 @@ local useHideForScreenshot = function(
 	onUserInitiatedHide
 )
 	local isHidingForScreenshot, setIsHidingForScreenshot = React.useState(false)
+	local lastSelected = if FFlagIEMTabFocusNav then React.useRef(nil :: GuiObject?) else nil :: never
 	React.useEffect(function()
 		if isReportTabVisible then
 			if isHidingForScreenshot then
+				if FFlagIEMTabFocusNav and lastSelected.current and lastSelected.current:IsDescendantOf(game) then
+					GuiService.SelectedCoreObject = lastSelected.current
+					lastSelected.current = nil
+				end
 				setIsHidingForScreenshot(false)
 			elseif shouldcapturescreenshot then
+				if FFlagIEMTabFocusNav then
+					lastSelected.current = GuiService.SelectedCoreObject
+				end
 				setIsHidingForScreenshot(true)
 				hideReportTab()
 
@@ -68,18 +71,10 @@ local useHideForScreenshot = function(
 				waitConnection = RunService.Heartbeat:Connect(function()
 					-- waiting for too short of a time (frames or seconds)
 					-- to re-show can cause the menu to get stuck
-					if FFlagAbuseReportMenuScreenshotReduceMotionFix then
-						if ((os.clock() - waitStart) >= getWaitTime()) and waitCount >= getWaitFrames() then
-							waitConnection:Disconnect()
-							showReportTab()
-							return
-						end
-					else
-						if ((os.clock() - waitStart) >= MIN_WAIT_TIME) and waitCount >= WAIT_FRAMES then
-							waitConnection:Disconnect()
-							showReportTab()
-							return
-						end
+					if ((os.clock() - waitStart) >= getWaitTime()) and waitCount >= getWaitFrames() then
+						waitConnection:Disconnect()
+						showReportTab()
+						return
 					end
 
 					waitCount += 1

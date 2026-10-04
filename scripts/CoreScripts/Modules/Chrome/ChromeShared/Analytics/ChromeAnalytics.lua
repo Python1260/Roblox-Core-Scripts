@@ -15,6 +15,7 @@ local ChromeService = require(Root.Service)
 local Constants = require(Root.Unibar.Constants)
 local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
 
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
 local FFlagIntegrationsChromeShortcutTelemetry = require(Root.Parent.Flags.FFlagIntegrationsChromeShortcutTelemetry)
 
 local Tracker = require(Root.Analytics.Tracker)
@@ -29,6 +30,7 @@ local TRACKER_NAME_WINDOW_TIME = "window_time_"
 
 local SOURCE_NAME_UNKNOWN = "unknown"
 local SOURCE_NAME_UNIBAR = "unibar"
+local SOURCE_NAME_SIDE_SHEET = "sidesheet"
 
 local STATUS = {
 	INACTIVE = 0,
@@ -115,8 +117,11 @@ local function getIntegration(integrationId: IntegrationId)
 end
 
 local function getInteractionSource(integrationId: IntegrationId)
+	if isSideSheetEnabled and ChromeService:withinOpenSideSheet(integrationId) then
+		return SOURCE_NAME_SIDE_SHEET
+	end
 	if ChromeService:withinCurrentSubmenu(integrationId) then
-		return ChromeService:currentSubMenu():get()
+		return ChromeService:currentSubMenu():get() :: string
 	end
 	if ChromeService:withinCurrentTopLevelMenu(integrationId) then
 		return SOURCE_NAME_UNIBAR
@@ -260,7 +265,10 @@ function ChromeAnalytics:onIconActivated(integrationId: IntegrationId, props: Ac
 			notificationCount = tonumber(notification.value) or 0
 		end
 
-		local isToggleOn = if integration.isActivated then not integration.isActivated() else nil
+		local isToggleOn
+		if integration.isActivated then
+			isToggleOn = not (integration.isActivated :: any):get()
+		end
 
 		self._sendEvent(Constants.ANALYTICS.ICON_ACTIVATED, {
 			integration_id = integrationId,

@@ -20,6 +20,12 @@ local ELEVATION_LAYERS: { [ElevationLayer]: ElevationLayerSpec } = {
 	[ElevationLayer.Notification] = { start = 400, finish = 499, step = 1 },
 }
 
+local function getRelativeIndex(token: Token): number
+	local spec = ELEVATION_LAYERS[token.layer]
+	return token.zIndex - spec.start
+end
+
 return {
 	ELEVATION_LAYERS = ELEVATION_LAYERS,
+	getRelativeIndex = getRelativeIndex,
 }

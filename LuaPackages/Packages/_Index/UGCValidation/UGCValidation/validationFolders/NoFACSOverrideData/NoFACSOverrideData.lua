@@ -14,7 +14,7 @@ NoFACSOverrideData.run = function(reporter: Types.ValidationReporter, data: Type
 	local faceControls = head:FindFirstChildOfClass("FaceControls")
 
 	if faceControls and (faceControls :: any):HasOverrideFACSData() :: any then
-		reporter:fail(ErrorSourceStrings.Keys.FaceControlsOverrideFACSNotEmpty)
+		reporter:fail(ErrorSourceStrings.Keys.FaceControlsOverrideFACSNotEmpty, nil, faceControls)
 	end
 end
 

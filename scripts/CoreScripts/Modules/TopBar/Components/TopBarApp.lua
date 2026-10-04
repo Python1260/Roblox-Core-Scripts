@@ -14,7 +14,10 @@ local Signals = require(CorePackages.Packages.Signals)
 local Display = require(CorePackages.Workspace.Packages.Display)
 
 local Foundation = require(CorePackages.Packages.Foundation)
+local Image = Foundation.Image
 local View = Foundation.View
+
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 
 local Roact = require(CorePackages.Packages.Roact)
 local React = require(CorePackages.Packages.React)
@@ -23,11 +26,19 @@ local t = require(CorePackages.Packages.t)
 local UIBlox = require(CorePackages.Packages.UIBlox)
 local Interactable = UIBlox.Core.Control.Interactable
 local ControlState = UIBlox.Core.Control.Enum.ControlState
-local Analytics = require(CorePackages.Workspace.Packages.Analytics).Analytics
-local withStyle = UIBlox.Core.Style.withStyle
 local ImageSetButton = UIBlox.Core.ImageSet.ImageSetButton
+local UniversalAppPolicy = require(CorePackages.Workspace.Packages.UniversalAppPolicy)
+
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
+local FFlagEnableTeamTestLua = SharedFlags.FFlagEnableTeamTestLua
+
 local Images = UIBlox.App.ImageSet.Images
+local CLOSE_MENU_ICON = if FFlagCoreUiMigrateUIBloxToFoundation
+	then "icons/controls/close-ingame"
+	else Images["icons/controls/close-ingame"]
 local SelectionCursorProvider = UIBlox.App.SelectionImage.SelectionCursorProvider
+local BuildExperience = require(CorePackages.Workspace.Packages.BuildExperience)
+local BuildModeLaunch = require(CorePackages.Workspace.Packages.BuildExperiencePlaytestLaunch.BuildModeLaunch)
 local Songbird = require(CorePackages.Workspace.Packages.Songbird)
 
 local CoreScriptsRoactCommon = require(CorePackages.Workspace.Packages.CoreScriptsRoactCommon)
@@ -37,11 +48,13 @@ local CoreGuiCommon = require(CorePackages.Workspace.Packages.CoreGuiCommon)
 local CoreGuiCommonStores = CoreGuiCommon.Stores
 local withLocalization = require(CorePackages.Workspace.Packages.Localization).withLocalization
 
-local InGameMenuConstants = require(RobloxGui.Modules:WaitForChild("InGameMenu"):WaitForChild("Resources"):WaitForChild("Constants"))
+local InGameMenuConstants =
+	require(RobloxGui.Modules:WaitForChild("InGameMenu"):WaitForChild("Resources"):WaitForChild("Constants"))
 local SettingsHub = require(RobloxGui.Modules.Settings.SettingsHub)
 local SettingsShowSignal = require(CorePackages.Workspace.Packages.CoreScriptsCommon).SettingsShowSignal
 
 local Presentation = script.Parent.Presentation
+local BuildPillMenuPortalHost = BuildExperience.BuildPillMenuPortalHost
 local MenuIcon = require(Presentation.MenuIcon)
 local ChatIcon = require(Presentation.ChatIcon)
 local MoreMenu = require(Presentation.MoreMenu)
@@ -50,15 +63,20 @@ local HurtOverlay = require(Presentation.HurtOverlay)
 local GamepadNavigationDialog = require(Presentation.GamepadNavigationDialog)
 local HeadsetMenu = require(Presentation.HeadsetMenu)
 local HeadsetDisconnectDialog = CoreGuiCommon.Components.HeadsetDisconnectDialog
-local VoiceBetaBadge = require(Presentation.VoiceBetaBadge)
+local PlaytestModeTooltip = require(Presentation.PlaytestModeTooltip)
+local UnpublishedPlaytestModeTooltip = BuildExperience.UnpublishedPlaytestModeTooltip
 
 local TraversalBackButton = require(script.Parent.TraversalBackButton)
 
 local Chrome = script.Parent.Parent.Parent.Chrome
 
 local ChromeEnabled = require(CorePackages.Workspace.Packages.Chrome).Enabled
-local MusicConstants = require(Chrome.Integrations.MusicUtility.Constants)
+local PlaytestModeThemeProvider = require(Chrome.ChromeShared.Unibar.PlaytestModeThemeProvider)
+local FFlagEnablePlaytestModeUnibar = SharedFlags.FFlagEnablePlaytestModeUnibar
 
+local FFlagEnableUISelector = CoreGuiCommon.Flags.FFlagEnableUISelector
+
+local FFlagAppNavMyStatsTab = SharedFlags.FFlagAppNavMyStatsTab
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 local FFlagTopBarSignalizeKeepOutAreas = CoreGuiCommon.Flags.FFlagTopBarSignalizeKeepOutAreas
 
@@ -71,11 +89,36 @@ local FFlagTopBarSignalizeScreenSize = CoreGuiCommon.Flags.FFlagTopBarSignalizeS
 
 local FFlagAddTraversalBackButton = Traversal.Flags.FFlagAddTraversalBackButton
 local FFlagUseNewHeadsetDisconnectDialog = game:DefineFastFlag("UseNewHeadsetDisconnectDialog", false)
+local InExperienceShop = require(CorePackages.Workspace.Packages.InExperienceShop)
+local FFlagEnableInExperienceShop = SharedFlags.FFlagEnableInExperienceShop
+local FFlagEnableExperienceShopGlobalIcon = InExperienceShop.FFlagEnableExperienceShopGlobalIcon
+	and FFlagEnableInExperienceShop
+local FFlagCenterInExperienceShopWindow = InExperienceShop.FFlagCenterInExperienceShopWindow
+local FFlagExperienceShopNewIconography = InExperienceShop.FFlagExperienceShopNewIconography
+local ShopGlobalIcon = InExperienceShop.ShopGlobalIcon
+local FFlagTopBarShopIconV2 = require(script.Parent.Parent.Flags.FFlagTopBarShopIconV2)
+local ShopIcon
+if FFlagTopBarShopIconV2 then
+	ShopIcon = require(Presentation.ShopIcon)
+end
 
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local FFlagShowGameAgeRating = SharedFlags.FFlagShowGameAgeRating
+local FFlagExperienceAgeRatingBadge =
+	require(CorePackages.Workspace.Packages.InExperienceTopBar).Flags.FFlagExperienceAgeRatingBadge
+local useAgeRatingLayout = FFlagExperienceAgeRatingBadge and FFlagShowGameAgeRating
+local ExperienceAgeRatingBadge = require(CorePackages.Workspace.Packages.InExperienceTopBar.ExperienceAgeRatingBadge)
+local ExperienceAgeRatingPolicy = require(script.Parent.Parent.ExperienceAgeRatingPolicy)
 local isInExperienceUIVREnabled =
 	require(CorePackages.Workspace.Packages.SharedExperimentDefinition).isInExperienceUIVREnabled
 local isSpatial = require(CorePackages.Workspace.Packages.AppCommonLib).isSpatial
-local FFlagDisableGamepadConnectorInVR = require(CorePackages.Workspace.Packages.Chrome).Flags.FFlagDisableGamepadConnectorInVR
+
+local FFlagShowSwitchServerButton = SharedFlags.FFlagShowSwitchServerButton
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
+local shouldAddSwitchServerToSideSheet = isSideSheetEnabled and (FFlagShowSwitchServerButton or isPioneerLaunch())
+local SwitchServer = require(CorePackages.Workspace.Packages.SwitchServer)
+local SwitchServerConfirmation = SwitchServer.SwitchServerConfirmation
+local GetSwitchServerStore = SwitchServer.GetSwitchServerStore
 
 local Unibar
 local KeepOutAreasHandler
@@ -85,17 +128,28 @@ if ChromeEnabled() then
 end
 if game:GetEngineFeature("InGameChromeSignalAPI") then
 	KeepOutAreasHandler = require(Chrome.ChromeShared.Service.KeepOutAreasHandler)
-	if (ChromeEnabled()) then
+	if ChromeEnabled() then
 		ChromeAnalytics = require(Chrome.ChromeShared.Analytics)
 	end
 end
 
 local LocalStore
 local ChromeConstants
+local CommonIcon
 if ChromeEnabled() then
 	LocalStore = require(Chrome.ChromeShared.Service.LocalStore)
 	ChromeConstants = require(Chrome.ChromeShared.Unibar.Constants)
+	if FFlagEnableExperienceShopGlobalIcon then
+		CommonIcon = require(Chrome.Integrations.CommonIcon)
+	end
 end
+
+-- Preconditions for the V2 shop-icon path, evaluated once and reused at every
+-- guard below. Requires FFlagAddTraversalBackButton because V2 lives inside
+-- TopBarLeftContainer, which only exists when that flag is on
+-- (FFlagAddTraversalBackButton is part of the Traversal IXP and not intended to
+-- be flipped on its own).
+local useV2ShopIcon = FFlagTopBarShopIconV2 and FFlagAddTraversalBackButton and ChromeEnabled()
 
 local Connection = require(script.Parent.Connection)
 
@@ -104,7 +158,7 @@ local Constants = require(TopBar.Constants)
 local SetScreenSize = require(TopBar.Actions.SetScreenSize)
 local SetKeepOutArea = require(TopBar.Actions.SetKeepOutArea)
 local RemoveKeepOutArea = require(TopBar.Actions.RemoveKeepOutArea)
-local MenuIconContext = if ChromeEnabled() and FFlagEnableConsoleExpControls
+local MenuIconContext = if ChromeEnabled() and (FFlagEnableConsoleExpControls or FFlagExperienceAgeRatingBadge)
 	then require(script.Parent.MenuIconContext)
 	else nil :: never
 local GamepadMenu = nil
@@ -122,7 +176,6 @@ end
 local TenFootInterface = require(RobloxGui.Modules.TenFootInterface)
 local isNewInGameMenuEnabled = require(RobloxGui.Modules.isNewInGameMenuEnabled)
 local isNewTiltIconEnabled = require(RobloxGui.Modules.isNewTiltIconEnabled)
-local GetFFlagBetaBadge = require(RobloxGui.Modules.Flags.GetFFlagBetaBadge)
 local FFlagGamepadNavigationDialogABTest = require(TopBar.Flags.FFlagGamepadNavigationDialogABTest)
 local GetFFlagEnableCrossExpVoice = SharedFlags.GetFFlagEnableCrossExpVoice
 
@@ -155,6 +208,10 @@ local function selectMenuOpen(state)
 	return state.displayOptions.menuOpen or state.displayOptions.inspectMenuOpen
 end
 
+local function canShowAssistantBuild(): boolean
+	return BuildModeLaunch:hasBuildMode() and not VRService.VREnabled
+end
+
 local NUM_EXPERIENCES_USER_SEEN_UI_LESS_TOOLTIP_KEY = "NumExperiencesUserSeenUILessTooltipKey2"
 
 local TopBarApp = Roact.PureComponent:extend("TopBarApp")
@@ -162,12 +219,11 @@ local TopBarApp = Roact.PureComponent:extend("TopBarApp")
 TopBarApp.validateProps = t.strictInterface({
 	menuOpen = if FFlagTopBarSignalizeMenuOpen then nil else t.optional(t.boolean),
 	inspectMenuOpen = if FFlagTopBarSignalizeMenuOpen then nil else t.optional(t.boolean),
-	displayBetaBadge = t.boolean,
 
 	setScreenSize = if FFlagTopBarSignalizeScreenSize then nil else t.callback,
 	setKeepOutArea = if FFlagTopBarSignalizeKeepOutAreas then nil else t.callback,
 	removeKeepOutArea = if FFlagTopBarSignalizeKeepOutAreas then nil else t.callback,
-	showBadgeOver12 = t.optional(t.boolean),
+	showGameAgeRating = t.optional(t.boolean),
 })
 
 function TopBarApp:init()
@@ -219,10 +275,16 @@ function TopBarApp:init()
 			if self.uiLessStore.getUILessModeEnabled(false) then
 				local shouldShowUILessTooltip = true
 				if LocalStore then
-					local numExperiencesUserSeenUILessTooltip = LocalStore.loadForLocalPlayer(NUM_EXPERIENCES_USER_SEEN_UI_LESS_TOOLTIP_KEY) or 0
-					shouldShowUILessTooltip = numExperiencesUserSeenUILessTooltip < ChromeConstants.MAX_NUM_UNIVERSES_SHOWN
+					local numExperiencesUserSeenUILessTooltip = LocalStore.loadForLocalPlayer(
+						NUM_EXPERIENCES_USER_SEEN_UI_LESS_TOOLTIP_KEY
+					) or 0
+					shouldShowUILessTooltip = numExperiencesUserSeenUILessTooltip
+						< ChromeConstants.MAX_NUM_UNIVERSES_SHOWN
 					if shouldShowUILessTooltip then
-						LocalStore.storeForLocalPlayer(NUM_EXPERIENCES_USER_SEEN_UI_LESS_TOOLTIP_KEY, numExperiencesUserSeenUILessTooltip + 1)
+						LocalStore.storeForLocalPlayer(
+							NUM_EXPERIENCES_USER_SEEN_UI_LESS_TOOLTIP_KEY,
+							numExperiencesUserSeenUILessTooltip + 1
+						)
 					end
 				end
 
@@ -236,7 +298,9 @@ function TopBarApp:init()
 			end
 
 			local toggleUILess = function(_name, inputState)
-				if inputState ~= Enum.UserInputState.Begin then return end
+				if inputState ~= Enum.UserInputState.Begin then
+					return
+				end
 
 				if self.uiLessStore.getUILessModeEnabled(false) then
 					if FIntAddUILessModeVariant == 1 then
@@ -269,7 +333,7 @@ function TopBarApp:init()
 		end
 	end
 
-	if FFlagTopBarSignalizeMenuOpen then 
+	if FFlagTopBarSignalizeMenuOpen then
 		self.tiltMenuOpen, self.setTiltMenuOpen = Roact.createBinding(false)
 		self.inspectMenuOpen, self.setInspectMenuOpen = Roact.createBinding(false)
 
@@ -281,10 +345,35 @@ function TopBarApp:init()
 		SettingsShowSignal:connect(function(isOpen)
 			self.setTiltMenuOpen(isOpen)
 		end)
-  end
-          
-	if FFlagTopBarSignalizeKeepOutAreas then 
+	end
+
+	if FFlagTopBarSignalizeKeepOutAreas then
 		self.keepOutAreasStore = CoreGuiCommon.Stores.GetKeepOutAreasStore(false)
+	end
+	if FFlagExperienceAgeRatingBadge then
+		self:setState({ ageRatingSpatial = isSpatial() })
+		self.ageRatingControlsVisible, self.setAgeRatingControlsVisible = React.createBinding(true)
+		self.ageRatingControlsWidth, self.setAgeRatingControlsWidth = React.createBinding(0)
+		self.onAgeRatingControlsSizeChanged = function(rbx: GuiObject)
+			self.setAgeRatingControlsWidth(rbx.AbsoluteSize.X)
+		end
+		self.onAgeRatingUnibarAreaChanged = function(id: string, position: Vector2, size: Vector2)
+			self.setAgeRatingControlsWidth(size.X)
+			local report = if FFlagTopBarSignalizeKeepOutAreas
+				then self.keepOutAreasStore.setKeepOutArea
+				else self.props.setKeepOutArea
+			report(id, position, size)
+		end
+		self.onAgeRatingAreaChanged = function(rbx: GuiObject?)
+			local report = if FFlagTopBarSignalizeKeepOutAreas
+				then self.keepOutAreasStore.setKeepOutArea
+				else self.props.setKeepOutArea
+			report(
+				ExperienceAgeRatingPolicy.keepOutAreaId,
+				if rbx then rbx.AbsolutePosition else Vector2.zero,
+				if rbx then rbx.AbsoluteSize else Vector2.zero
+			)
+		end
 	end
 
 	self.onCloseBtnStateChange = function(_, newControlState)
@@ -304,6 +393,35 @@ function TopBarApp:init()
 			self.unibarMenuRef = React.createRef()
 			self.menuIconRef = Roact.createRef()
 		end
+
+		if FFlagEnableExperienceShopGlobalIcon and not useV2ShopIcon then
+			self.shopGlobalIconDisposeEffect = Signals.createEffect(function(scope)
+				local getIconStore = InExperienceShop.GetShopGlobalIconStore
+				if not getIconStore then
+					return
+				end
+				local store = getIconStore(scope)
+				self:setState({
+					shopGlobalIconEnabled = store.getEnabled(scope),
+					shopGlobalStatusIndicatorEnabled = store.getStatusIndicatorEnabled(scope),
+				})
+			end)
+			self.onShopGlobalIconActivated = function()
+				if FFlagCenterInExperienceShopWindow then
+					require(Chrome.Integrations.InExperienceShop.ShopWindowLayout).toggleInExperienceShopWindow()
+				else
+					ChromeService:toggleWindow(ChromeConstants.IN_EXPERIENCE_SHOP_ID)
+				end
+			end
+			self.shopGlobalIconCleanup = InExperienceShop.initShopGlobalIcon and InExperienceShop.initShopGlobalIcon()
+			local ChromeUtils = require(Chrome.ChromeShared.Service.ChromeUtils)
+			self.shopIsActiveMappedSignal = ChromeUtils.MappedSignal.new(
+				ChromeService:onIntegrationStatusChanged(),
+				function()
+					return ChromeService:isWindowOpen(ChromeConstants.IN_EXPERIENCE_SHOP_ID)
+				end
+			)
+		end
 	end
 
 	-- This chatVersion may be inaccurate if the game isn't loaded
@@ -319,9 +437,38 @@ function TopBarApp:init()
 			})
 		end)
 	end
+
+	if shouldAddSwitchServerToSideSheet then
+		self.disposeSwitchServerEffect = Signals.createEffect(function(scope)
+			local switchServerStore = GetSwitchServerStore(false)
+			self:setState({
+				shouldEnableSwitchServer = switchServerStore.shouldEnableSwitchServer(scope),
+				isConfirmationOpen = switchServerStore.isConfirmationOpen(scope),
+			})
+		end)
+		self.setConfirmationOpen = GetSwitchServerStore(false).setConfirmationOpen
+	end
 end
 
 function TopBarApp:didMount()
+	if FFlagExperienceAgeRatingBadge then
+		if GamepadConnector then
+			local showTopBar = GamepadConnector:getShowTopBar()
+			self.ageRatingVisibilityConnection = showTopBar:connect(function()
+				self.setAgeRatingControlsVisible(showTopBar:get())
+			end, true)
+		end
+		if FFlagAddUILessMode and FIntAddUILessModeVariant ~= 0 and self.uiLessStore then
+			self.ageRatingVisibilityEffect = Signals.createEffect(function(scope)
+				if self.uiLessStore.getUILessModeEnabled(scope) then
+					self.setAgeRatingControlsVisible(self.uiLessStore.getUIVisible(scope))
+				end
+			end)
+		end
+		self.ageRatingSpatialConnection = VRService:GetPropertyChangedSignal("VREnabled"):Connect(function()
+			self:setState({ ageRatingSpatial = isSpatial() })
+		end)
+	end
 	if ChromeEnabled() then
 		local ChromeService = require(Chrome.Service)
 		self.orderAlignmentConnection = ChromeService:orderAlignment():connect(function()
@@ -330,26 +477,39 @@ function TopBarApp:didMount()
 			})
 		end)
 
+		if FFlagEnableExperienceShopGlobalIcon and not useV2ShopIcon then
+			self.shopIsActiveConnection = ChromeService:onIntegrationStatusChanged():connect(function()
+				self:setState({
+					shopGlobalIconIsActive = ChromeService:isWindowOpen(ChromeConstants.IN_EXPERIENCE_SHOP_ID),
+				})
+			end)
+		end
+
 		if FFlagEnableConsoleExpControls then
-			if FFlagDisableGamepadConnectorInVR then
-				if not isSpatial() then
-					self.GamepadConnector:connectToTopbar()
-				end
-				self.vrEnabledConnection = VRService:GetPropertyChangedSignal("VREnabled"):Connect(function()
-					if isSpatial() then
-						self.GamepadConnector:disconnectFromTopbar()
-					else
-						self.GamepadConnector:connectToTopbar()
-					end
-				end)
-			else
+			if not isSpatial() then
 				self.GamepadConnector:connectToTopbar()
 			end
+			self.vrEnabledConnection = VRService:GetPropertyChangedSignal("VREnabled"):Connect(function()
+				if isSpatial() then
+					self.GamepadConnector:disconnectFromTopbar()
+				else
+					self.GamepadConnector:connectToTopbar()
+				end
+			end)
 		end
 	end
 end
 
 function TopBarApp:willUnmount()
+	if self.ageRatingVisibilityConnection then
+		self.ageRatingVisibilityConnection:disconnect()
+	end
+	if self.ageRatingVisibilityEffect then
+		self.ageRatingVisibilityEffect()
+	end
+	if self.ageRatingSpatialConnection then
+		self.ageRatingSpatialConnection:Disconnect()
+	end
 	if ChromeEnabled() then
 		if self.orderAlignmentConnection then
 			self.orderAlignmentConnection:disconnect()
@@ -357,11 +517,9 @@ function TopBarApp:willUnmount()
 		end
 
 		if FFlagEnableConsoleExpControls then
-			if FFlagDisableGamepadConnectorInVR then
-				if self.vrEnabledConnection then
-					self.vrEnabledConnection:Disconnect()
-					self.vrEnabledConnection = nil
-				end
+			if self.vrEnabledConnection then
+				self.vrEnabledConnection:Disconnect()
+				self.vrEnabledConnection = nil
 			end
 			self.GamepadConnector:disconnectFromTopbar()
 		end
@@ -369,6 +527,22 @@ function TopBarApp:willUnmount()
 
 	if self.disposeUiScaleEffect then
 		self.disposeUiScaleEffect()
+	end
+
+	if FFlagEnableExperienceShopGlobalIcon and not useV2ShopIcon then
+		if ChromeEnabled() and self.shopGlobalIconDisposeEffect then
+			self.shopGlobalIconDisposeEffect()
+		end
+
+		if self.shopIsActiveConnection then
+			self.shopIsActiveConnection:disconnect()
+			self.shopIsActiveConnection = nil
+		end
+
+		if self.shopGlobalIconCleanup then
+			self.shopGlobalIconCleanup()
+			self.shopGlobalIconCleanup = nil
+		end
 	end
 
 	if FFlagAddUILessMode then
@@ -381,81 +555,158 @@ function TopBarApp:willUnmount()
 		end
 	end
 
-	if FFlagTopBarSignalizeMenuOpen then 
+	if FFlagTopBarSignalizeMenuOpen then
 		if self.tiltMenuDisposeEffect then
 			self.tiltMenuDisposeEffect()
 		end
-		if self.inspectMenuDisposeEffect then 
+		if self.inspectMenuDisposeEffect then
 			self.inspectMenuDisposeEffect()
-    end
-  end
-           
-	if FFlagTopBarSignalizeKeepOutAreas then 
-		if self.keepOutAreasStore then 
-			self.keepOutAreasStore.cleanup() 
 		end
+	end
+
+	if FFlagTopBarSignalizeKeepOutAreas then
+		if self.keepOutAreasStore then
+			self.keepOutAreasStore.cleanup()
+		end
+	end
+
+	if shouldAddSwitchServerToSideSheet and self.disposeSwitchServerEffect then
+		self.disposeSwitchServerEffect()
 	end
 end
 
 function TopBarApp:render()
-	return withStyle(function(style)
+	return withFoundationOrUIBloxStyle(function(tokens)
+		return {
+			Theme = {
+				Overlay = {
+					Color = tokens.Color.Common.Scrim.Color3,
+					Transparency = tokens.Color.Common.Scrim.Transparency,
+				},
+				BackgroundOnHover = {
+					Color = tokens.Color.State.Hover.Color3,
+					Transparency = tokens.Color.State.Hover.Transparency,
+				},
+				BackgroundOnPress = {
+					Color = tokens.Color.State.Press.Color3,
+					Transparency = tokens.Color.State.Press.Transparency,
+				},
+			},
+			Tokens = {
+				Color = {
+					Extended = {
+						White = {
+							White_100 = tokens.Color.Extended.White.White_100,
+						},
+					},
+				},
+				Size = {
+					Size_100 = tokens.Size.Size_100,
+					Size_200 = tokens.Size.Size_200,
+					Size_300 = tokens.Size.Size_300,
+				},
+				Radius = {
+					Small = tokens.Radius.Small,
+				},
+				FontSize = {
+					FontSize_300 = tokens.FontSize.FontSize_300,
+				},
+				Global = {
+					Color = {
+						White = tokens.Color.Extended.White.White_100,
+					},
+					Space_50 = tokens.Size.Size_100,
+					Space_100 = tokens.Size.Size_200,
+					Space_150 = tokens.Size.Size_300,
+					FontSize_50 = tokens.FontSize.FontSize_300,
+				},
+				Semantic = {
+					Radius = {
+						Small = tokens.Radius.Small,
+					},
+				},
+			},
+		}
+	end, function(style)
 		return self:renderWithStyle(style)
 	end)
 end
 
-function TopBarApp:renderUnibarFrame(chromeEnabled: boolean)
-	if isInExperienceUIVREnabled and isSpatial() then 
-		return nil 
-	elseif FFlagEnableConsoleExpControls then
+function TopBarApp:renderUnibarFrame(chromeEnabled: boolean, persistentAgeRating: boolean)
+	if isInExperienceUIVREnabled and isSpatial() then
+		return nil
+	elseif FFlagEnableConsoleExpControls or useAgeRatingLayout then
 		return React.createElement(MenuIconContext.Provider, {
 			value = {
 				menuIconRef = self.menuIconRef,
+				replacesAgeRating = persistentAgeRating,
 			},
 		}, {
 			React.createElement(Unibar, {
 				layoutOrder = 1,
-				onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas 
-					then self.keepOutAreasStore.setKeepOutArea 
+				onAreaChanged = if useAgeRatingLayout and not FFlagAddTraversalBackButton
+					then self.onAgeRatingUnibarAreaChanged
+					elseif FFlagTopBarSignalizeKeepOutAreas
+					then self.keepOutAreasStore.setKeepOutArea
 					else self.props.setKeepOutArea,
-				onMinWidthChanged = function(width: number)
-					self.setUnibarRightSidePosition(UDim2.new(0, width, 0, 0))
-				end,
+				-- ShopIcon V2 lays the left side out with Foundation flex (row auto-xy),
+				-- so the old manual right-side offset is unnecessary; nil disables it.
+				onMinWidthChanged = if useV2ShopIcon
+					then nil
+					else function(width: number)
+						self.setUnibarRightSidePosition(UDim2.new(0, width, 0, 0))
+					end,
 				menuRef = if chromeEnabled then self.unibarMenuRef else nil :: never,
 			}),
 		})
 	else
-		 return Roact.createElement(Unibar, {
+		return Roact.createElement(Unibar, {
 			layoutOrder = 1,
-			onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas 
-				then self.keepOutAreasStore.setKeepOutArea 
+			onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas
+				then self.keepOutAreasStore.setKeepOutArea
 				else self.props.setKeepOutArea,
-			onMinWidthChanged = function(width: number)
-				self.setUnibarRightSidePosition(UDim2.new(0, width, 0, 0))
-			end,
+			-- See note above: ShopIcon V2 flex layout replaces manual right-side positioning.
+			onMinWidthChanged = if useV2ShopIcon
+				then nil
+				else function(width: number)
+					self.setUnibarRightSidePosition(UDim2.new(0, width, 0, 0))
+				end,
 		})
 	end
 end
 
 function TopBarApp:renderWithStyle(style)
 	local chromeEnabled = ChromeEnabled()
-	local showBetaBadge = GetFFlagBetaBadge() and not chromeEnabled
-	local policyAllowsBetaBadge = self.props.displayBetaBadge
 
 	local unibarAlignment = Enum.HorizontalAlignment.Right
 	if self.state.unibarAlignment ~= nil then
 		unibarAlignment = self.state.unibarAlignment
 	end
+	local persistentAgeRating = ExperienceAgeRatingPolicy.isEligible(
+		self.props.showGameAgeRating,
+		chromeEnabled,
+		unibarAlignment == Enum.HorizontalAlignment.Left,
+		if FFlagExperienceAgeRatingBadge then self.state.ageRatingSpatial else isSpatial()
+	)
 
 	local screenSideOffset = Constants.ScreenSideOffset * self.state.UiScale
 	local topBarHeight = Constants.TopBarHeight * self.state.UiScale
 	local topBarTopMargin = Constants.TopBarTopMargin * self.state.UiScale
 	local topBarPadding = Constants.TopBarPadding * self.state.UiScale
+	local stackedElementsPaddingLeft = if persistentAgeRating and not useV2ShopIcon
+		then if FFlagEnableExperienceShopGlobalIcon and self.state.shopGlobalIconEnabled then 0 else topBarPadding
+		elseif FFlagAppNavMyStatsTab and canShowAssistantBuild()
+		then screenSideOffset
+		elseif useV2ShopIcon then topBarPadding
+		elseif FFlagEnableExperienceShopGlobalIcon and self.state.shopGlobalIconEnabled then 2
+			* ChromeConstants.UNIBAR_END_PADDING
+			* self.state.UiScale
+		else topBarPadding
 	local legacyCloseMenuIconSize = Constants.LegacyCloseMenuIconSize * self.state.UiScale
 	local unibarFramePaddingTop = Constants.UnibarFrame.PaddingTop * self.state.UiScale
 	local unibarFramePaddingBottom = Constants.UnibarFrame.PaddingBottom * self.state.UiScale
 	local unibarFramePaddingLeft = Constants.UnibarFrame.PaddingLeft * self.state.UiScale
 	local unibarFrameExtendedSize = Constants.UnibarFrame.ExtendedSize * self.state.UiScale
-
 	local isTiltMenuOpen = if FFlagTopBarSignalizeMenuOpen then self.tiltMenuOpen else self.props.menuOpen
 
 	if TenFootInterface:IsEnabled() then
@@ -464,14 +715,13 @@ function TopBarApp:renderWithStyle(style)
 			topBarHeight = Constants.TopBarHeightTenFoot
 		end
 	end
-	local isTopBarVisible = if FFlagTopBarSignalizeMenuOpen then 
-		Roact.joinBindings({self.tiltMenuOpen, self.inspectMenuOpen}):map(function(values) 
+	local isTopBarVisible = if FFlagTopBarSignalizeMenuOpen
+		then Roact.joinBindings({ self.tiltMenuOpen, self.inspectMenuOpen }):map(function(values)
 			return not (values[0] or values[1])
-		end) 
+		end)
 		else not (self.props.menuOpen or self.props.inspectMenuOpen)
 
-	local topBarFramePosition =
-		UDim2.new(0, 0, 0, topBarTopMargin )
+	local topBarFramePosition = UDim2.new(0, 0, 0, topBarTopMargin)
 	local topBarFrameHeight = topBarHeight - topBarTopMargin
 	local topBarLeftFramePosition = UDim2.new(0, screenSideOffset, 0, 0)
 	local topBarRightFramePosition = UDim2.new(1, -screenSideOffset, 0, 0)
@@ -484,15 +734,18 @@ function TopBarApp:renderWithStyle(style)
 				voiceChatServiceManager = VoiceChatServiceManager,
 				voiceEnabled = voiceContext.voiceEnabled,
 				voiceState = voiceContext.voiceState,
-				showBadgeOver12 = if isInExperienceUIVREnabled then self.props.showBadgeOver12 else nil,
+				showBadgeOver12 = if isInExperienceUIVREnabled then self.props.showGameAgeRating else nil,
 			})
 		end),
 	})
 
 	local newMenuIcon = Roact.createElement(MenuIcon, {
-		iconScale = if FFlagTopBarSignalizeMenuOpen then nil elseif self.props.menuOpen then Constants.MenuIconOpenScale else 1,
+		iconScale = if FFlagTopBarSignalizeMenuOpen
+			then nil
+			elseif self.props.menuOpen then Constants.MenuIconOpenScale
+			else 1,
 		layoutOrder = 1,
-		showBadgeOver12 = self.props.showBadgeOver12,
+		showBadgeOver12 = self.props.showGameAgeRating and not persistentAgeRating,
 		menuIconRef = if chromeEnabled and FFlagEnableConsoleExpControls then self.menuIconRef else nil :: never,
 		unibarMenuRef = if chromeEnabled and FFlagEnableConsoleExpControls then self.unibarMenuRef else nil :: never,
 		onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas then self.keepOutAreasStore.setKeepOutArea else nil,
@@ -500,6 +753,11 @@ function TopBarApp:renderWithStyle(style)
 	newMenuIcon = Roact.createElement(SelectionCursorProvider, {}, {
 		Icon = newMenuIcon,
 	})
+	if FFlagEnablePlaytestModeUnibar then
+		newMenuIcon = Roact.createElement(PlaytestModeThemeProvider, nil, {
+			MenuIcon = newMenuIcon,
+		})
+	end
 
 	local showMenuIconAtTopLeft = true
 	if isInExperienceUIVREnabled then
@@ -507,21 +765,59 @@ function TopBarApp:renderWithStyle(style)
 		showMenuIconAtTopLeft = not isSpatial()
 	end
 
+	local ageRating = if persistentAgeRating
+		then React.createElement(View, {
+			tag = "row align-y-center auto-x",
+			Size = UDim2.fromOffset(0, Constants.TopBarButtonHeight * self.state.UiScale),
+			LayoutOrder = 3,
+			padding = if useV2ShopIcon
+				then {
+					left = self.ageRatingControlsVisible:map(function(visible)
+						return UDim.new(0, if visible then topBarPadding else 0)
+					end),
+				}
+				else nil,
+			ref = self.onAgeRatingAreaChanged,
+			onAbsoluteSizeChanged = self.onAgeRatingAreaChanged,
+			onAbsolutePositionChanged = self.onAgeRatingAreaChanged,
+		}, {
+			Badge = React.createElement(ExperienceAgeRatingBadge, {
+				universeId = tostring(game.GameId),
+			}),
+		})
+		else nil
+
 	return Roact.createElement("ScreenGui", {
 		IgnoreGuiInset = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		AutoLocalize = false,
 		DisplayOrder = 6,
 
-		[Roact.Change.AbsoluteSize] = if FFlagTopBarSignalizeScreenSize then nil else function(rbx)
-			self.props.setScreenSize(rbx.AbsoluteSize)
-		end,
+		[Roact.Change.AbsoluteSize] = if FFlagTopBarSignalizeScreenSize
+			then nil
+			else function(rbx)
+				self.props.setScreenSize(rbx.AbsoluteSize)
+			end,
 	}, {
 		Connection = Roact.createElement(Connection),
+		PlaytestTooltip = if FFlagEnablePlaytestModeUnibar
+			then Roact.createElement(PlaytestModeTooltip, {
+				anchorRef = self.unibarMenuRef,
+			})
+			else nil,
+		UnpublishedPlaytestTooltip = if FFlagEnableTeamTestLua
+			then Roact.createElement(UnpublishedPlaytestModeTooltip, {
+				anchorRef = self.unibarMenuRef,
+				isVisible = isTopBarVisible,
+			})
+			else nil,
+		InExperienceUiSelector = if FFlagEnableUISelector
+			then React.createElement(CoreGuiCommon.Components.InExperienceUiSelector)
+			else nil,
 		GamepadMenu = if not FFlagEnableConsoleExpControls
 			then Roact.createElement(GamepadMenu, {
-					chatVersion = self.state.chatVersion,
-				})
+				chatVersion = self.state.chatVersion,
+			})
 			else nil,
 		MenuNavigationToggleDialog = if chromeEnabled
 				and FFlagAddMenuNavigationToggleDialog
@@ -534,8 +830,15 @@ function TopBarApp:renderWithStyle(style)
 		GamepadNavigationDialog = if FFlagGamepadNavigationDialogABTest
 			then Roact.createElement(GamepadNavigationDialog)
 			else nil,
-		HeadsetMenu = if FFlagUseNewHeadsetDisconnectDialog 
-			then Roact.createElement(HeadsetDisconnectDialog) 
+		SwitchServerConfirmation = if shouldAddSwitchServerToSideSheet
+				and self.state.shouldEnableSwitchServer
+				and self.state.isConfirmationOpen
+			then React.createElement(SwitchServerConfirmation, {
+				setSwitchServerConfirmationOpen = self.setConfirmationOpen,
+			})
+			else nil,
+		HeadsetMenu = if FFlagUseNewHeadsetDisconnectDialog
+			then Roact.createElement(HeadsetDisconnectDialog)
 			else Roact.createElement(HeadsetMenu),
 		VRBottomBar = VRService.VREnabled and bottomBar or nil,
 		KeepOutAreasHandler = if not FFlagTopBarSignalizeKeepOutAreas and KeepOutAreasHandler
@@ -549,62 +852,49 @@ function TopBarApp:renderWithStyle(style)
 		}, {
 			HurtOverlay = Roact.createElement(HurtOverlay),
 		}),
-		MenuIconHolder = if showMenuIconAtTopLeft and isNewTiltIconEnabled() 
+		MenuIconHolder = if not isSideSheetEnabled
+				and showMenuIconAtTopLeft
+				and isNewTiltIconEnabled()
 			then Roact.createElement("Frame", {
 				BackgroundTransparency = 1,
-				Position = UDim2.new(
-					0,
-					screenSideOffset,
-					0,
-					topBarTopMargin
-				),
-				Size = UDim2.new(
-					1,
-					0,
-					0,
-					topBarFrameHeight
-				),
+				Position = UDim2.new(0, screenSideOffset, 0, topBarTopMargin),
+				Size = UDim2.new(1, 0, 0, topBarFrameHeight),
 			}, {
 				MenuIcon = newMenuIcon,
-			}) 
+			})
 			else nil,
 		UILessTooltip = if FFlagAddUILessMode and FIntAddUILessModeVariant ~= 0
 			then withLocalization({
 				uiLessTooltipTitle = Constants.LocalizedKeys.UILessTooltipTitle,
 				uiLessTooltipDescription = Constants.LocalizedKeys.UILessTooltipDescription,
-			})(function(localized) 
+			})(function(localized)
 				return Roact.createElement("Frame", {
-					BackgroundColor3 = style.Tokens.Global.Color.White.Color3,
+					BackgroundColor3 = style.Tokens.Color.Extended.White.White_100.Color3,
 					BorderSizePixel = 0,
-					Position = UDim2.new(
-						0,
-						screenSideOffset,
-						0,
-						topBarTopMargin
-					),
+					Position = UDim2.new(0, screenSideOffset, 0, topBarTopMargin),
 					AutomaticSize = Enum.AutomaticSize.XY,
 					BackgroundTransparency = self.uiLessTooltipTransparency,
 					Visible = self.uiLessTooltipVisible,
 					ZIndex = 10000,
-					[Roact.Ref] = self.uiLessTooltip
+					[Roact.Ref] = self.uiLessTooltip,
 				}, {
 					Padding = Roact.createElement("UIPadding", {
-						PaddingTop = UDim.new(0, style.Tokens.Global.Space_100),
-						PaddingBottom = UDim.new(0, style.Tokens.Global.Space_100),
-						PaddingLeft = UDim.new(0, style.Tokens.Global.Space_150),
-						PaddingRight = UDim.new(0, style.Tokens.Global.Space_150),
+						PaddingTop = UDim.new(0, style.Tokens.Size.Size_200),
+						PaddingBottom = UDim.new(0, style.Tokens.Size.Size_200),
+						PaddingLeft = UDim.new(0, style.Tokens.Size.Size_300),
+						PaddingRight = UDim.new(0, style.Tokens.Size.Size_300),
 					}),
 					Corner = Roact.createElement("UICorner", {
-						CornerRadius = UDim.new(0, style.Tokens.Semantic.Radius.Small),
+						CornerRadius = UDim.new(0, style.Tokens.Radius.Small),
 					}),
 					VerticalLayout = Roact.createElement("UIListLayout", {
 						SortOrder = Enum.SortOrder.LayoutOrder,
 						FillDirection = Enum.FillDirection.Vertical,
-						Padding = UDim.new(0, style.Tokens.Global.Space_50),
+						Padding = UDim.new(0, style.Tokens.Size.Size_100),
 					}),
 					Title = Roact.createElement("TextLabel", {
 						Text = localized.uiLessTooltipTitle,
-						TextSize = style.Tokens.Global.FontSize_50,
+						TextSize = style.Tokens.FontSize.FontSize_300,
 						TextTransparency = self.uiLessTooltipTransparency,
 						Font = Enum.Font.BuilderSansBold,
 						AutomaticSize = Enum.AutomaticSize.XY,
@@ -614,7 +904,7 @@ function TopBarApp:renderWithStyle(style)
 					}),
 					Description = Roact.createElement("TextLabel", {
 						Text = localized.uiLessTooltipDescription,
-						TextSize = style.Tokens.Global.FontSize_50,
+						TextSize = style.Tokens.FontSize.FontSize_300,
 						TextTransparency = self.uiLessTooltipTransparency,
 						Font = Enum.Font.BuilderSans,
 						AutomaticSize = Enum.AutomaticSize.XY,
@@ -698,112 +988,182 @@ function TopBarApp:renderWithStyle(style)
 				}) or nil,
 			}) or nil,
 
-			CloseMenuButton = not Unibar and Roact.createElement(ImageSetButton, {
-				Visible = not TenFootInterface:IsEnabled(),
-				BackgroundTransparency = 1,
-				Position = closeMenuButtonPosition,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Size = UDim2.new(0, legacyCloseMenuIconSize, 0, legacyCloseMenuIconSize),
-				Image = Images["icons/controls/close-ingame"],
-
-				[Roact.Event.Activated] = function()
-					local SettingsHub = require(RobloxGui.Modules.Settings.SettingsHub)
-					SettingsHub:ToggleVisibility()
-				end,
-			}) or nil,
+			CloseMenuButton = not Unibar and (if FFlagCoreUiMigrateUIBloxToFoundation
+				then Roact.createElement(Image, {
+					Visible = not TenFootInterface:IsEnabled(),
+					Position = closeMenuButtonPosition,
+					AnchorPoint = Vector2.new(0, 0.5),
+					Size = UDim2.new(0, legacyCloseMenuIconSize, 0, legacyCloseMenuIconSize),
+					Image = CLOSE_MENU_ICON,
+					onActivated = function()
+						local SettingsHub = require(RobloxGui.Modules.Settings.SettingsHub)
+						SettingsHub:ToggleVisibility()
+					end,
+				})
+				else Roact.createElement(ImageSetButton, {
+					Visible = not TenFootInterface:IsEnabled(),
+					BackgroundTransparency = 1,
+					Position = closeMenuButtonPosition,
+					AnchorPoint = Vector2.new(0, 0.5),
+					Size = UDim2.new(0, legacyCloseMenuIconSize, 0, legacyCloseMenuIconSize),
+					Image = CLOSE_MENU_ICON,
+					[Roact.Event.Activated] = function()
+						local SettingsHub = require(RobloxGui.Modules.Settings.SettingsHub)
+						SettingsHub:ToggleVisibility()
+					end,
+				})) or nil,
 		}),
 
 		SongbirdDebugAudio = Roact.createElement(Songbird.DebugAudioEmitters),
 
-		SongbirdReportAudioFrame = ChromeEnabled() and Roact.createElement("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, 0, 0, MusicConstants.AUDIO_REPORTING_WINDOW_MIN_HEIGHT),
-		}, {
-			ReportAudioPopup = Roact.createElement(Songbird.ReportAudioPopup),
-		}),
-
-		UnibarLeftFrame = Unibar
-				and unibarAlignment == Enum.HorizontalAlignment.Left
-				and Roact.createElement("Frame", {
-					BackgroundTransparency = 1,
-					Size = UDim2.new(
-						1,
-						0,
-						0,
-						topBarFrameHeight
-					),
-					Position = topBarRightUnibarFramePosition,
-					AnchorPoint = Vector2.new(1, 0),
-				}, {
-					JoinVoiceBinder = if chromeEnabled and JoinVoiceBinder
-						then Roact.createElement(JoinVoiceBinder)
-						else nil,
-					PartyMicBinder = if chromeEnabled and GetFFlagEnableCrossExpVoice()
-						then Roact.createElement(PartyMicBinder)
-						else nil,
-					ChromeAnalytics = if ChromeAnalytics then Roact.createElement(ChromeAnalytics) else nil,
-					Padding = Roact.createElement("UIPadding", {
-						PaddingTop = UDim.new(0, unibarFramePaddingTop),
-						PaddingBottom = UDim.new(0, unibarFramePaddingBottom),
-						PaddingLeft = UDim.new(0, unibarFramePaddingLeft),
-					}),
-					TopBarLeftContainer = FFlagAddTraversalBackButton and React.createElement(View, {
-						tag = "auto-xy row gap-xsmall",
-					}, {
-						TraversalBackButton = if not (isInExperienceUIVREnabled and isSpatial()) then React.createElement(TraversalBackButton)
-							else nil
-,
-						UnibarFrame = self:renderUnibarFrame(chromeEnabled),
-					}),
-					Unibar = if not FFlagAddTraversalBackButton then self:renderUnibarFrame(chromeEnabled) else nil,
-					
-
-					HealthBar = if UseUpdatedHealthBar then Roact.createElement(HealthBar, {}) else nil,
-
-					StackedElements = Roact.createElement("Frame", {
-						BackgroundTransparency = 1,
-						Position = self.unibarRightSidePosition,
-						Size = UDim2.new(1, 0, 1, 0),
-					}, {
-						Padding = Roact.createElement("UIPadding", {
-							PaddingLeft = UDim.new(0, topBarPadding),
-						}),
-						Layout = Roact.createElement("UIListLayout", {
-							Padding = UDim.new(0, topBarPadding),
-							FillDirection = Enum.FillDirection.Horizontal,
-							HorizontalAlignment = Enum.HorizontalAlignment.Left,
-							VerticalAlignment = Enum.VerticalAlignment.Top,
-							SortOrder = Enum.SortOrder.LayoutOrder,
-						}),
-
-						HealthBar = if UseUpdatedHealthBar
-							then nil
-							else Roact.createElement(HealthBar, {
-								layoutOrder = 10,
-							}),
-
-						VoiceBetaBadge = if GetFFlagBetaBadge() and policyAllowsBetaBadge
-							then Roact.createElement(VoiceBetaBadge, {
-								layoutOrder = 6,
-								Analytics = Analytics.new(),
+		UnibarLeftFrame = Unibar and unibarAlignment == Enum.HorizontalAlignment.Left and Roact.createElement(
+			"Frame",
+			{
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, topBarFrameHeight),
+				Position = topBarRightUnibarFramePosition,
+				AnchorPoint = Vector2.new(1, 0),
+			},
+			{
+				JoinVoiceBinder = if chromeEnabled and JoinVoiceBinder
+					then Roact.createElement(JoinVoiceBinder)
+					else nil,
+				PartyMicBinder = if chromeEnabled and GetFFlagEnableCrossExpVoice()
+					then Roact.createElement(PartyMicBinder)
+					else nil,
+				ChromeAnalytics = if ChromeAnalytics then Roact.createElement(ChromeAnalytics) else nil,
+				Padding = Roact.createElement("UIPadding", {
+					PaddingTop = UDim.new(0, unibarFramePaddingTop),
+					PaddingBottom = UDim.new(0, unibarFramePaddingBottom),
+					PaddingLeft = if persistentAgeRating
+						then self.ageRatingControlsVisible:map(function(visible)
+							-- The parent starts one screenSideOffset left of the screen.
+							return UDim.new(0, if visible then unibarFramePaddingLeft else 2 * screenSideOffset)
+						end)
+						else UDim.new(0, unibarFramePaddingLeft),
+				}),
+				TopBarLeftContainer = FFlagAddTraversalBackButton
+					and (
+						if useV2ShopIcon
+							then React.createElement(View, {
+								tag = "row auto-xy",
+							}, {
+								-- PaddedControlRow is not a logical grouping, but a visual one.
+								-- Its inter-item gap applies only to the back button and unibar.
+								-- ShopIcon is deliberately excluded - it animates in, and therefore
+								-- is responsible for animating its own gap.
+								PaddedControlRow = React.createElement(View, {
+									tag = "row gap-xsmall auto-xy",
+									LayoutOrder = 1,
+								}, {
+									TraversalBackButton = if FFlagAddTraversalBackButton
+											and not (isInExperienceUIVREnabled and isSpatial())
+										then React.createElement(TraversalBackButton)
+										else nil,
+									UnibarFrame = self:renderUnibarFrame(chromeEnabled, persistentAgeRating),
+								}),
+								ShopIcon = React.createElement(ShopIcon, {
+									layoutOrder = 2,
+									buttonSize = Constants.TopBarButtonHeight * self.state.UiScale,
+									leftGap = topBarPadding,
+									onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas
+										then self.keepOutAreasStore.setKeepOutArea
+										else self.props.setKeepOutArea,
+								}),
+								AgeRating = ageRating,
 							})
-							else nil,
+							else React.createElement(View, {
+								tag = "row gap-xsmall auto-xy",
+								onAbsoluteSizeChanged = if useAgeRatingLayout then self.onAgeRatingControlsSizeChanged else nil,
+							}, {
+								TraversalBackButton = if FFlagAddTraversalBackButton
+										and not (isInExperienceUIVREnabled and isSpatial())
+									then React.createElement(TraversalBackButton)
+									else nil,
+								UnibarFrame = self:renderUnibarFrame(chromeEnabled, persistentAgeRating),
+							})
+					),
+				Unibar = if not FFlagAddTraversalBackButton
+					then self:renderUnibarFrame(chromeEnabled, persistentAgeRating)
+					else nil,
+
+				HealthBar = if UseUpdatedHealthBar then Roact.createElement(HealthBar, {}) else nil,
+
+				AssistantBuildPillMenu = if FFlagAppNavMyStatsTab and canShowAssistantBuild()
+					then React.createElement(BuildPillMenuPortalHost, {
+						position = UDim2.new(1, 0, 0, 0),
+						anchorPoint = Vector2.new(1, 0),
+					})
+					else nil,
+
+				StackedElements = Roact.createElement("Frame", {
+					BackgroundTransparency = 1,
+					Position = if persistentAgeRating and not useV2ShopIcon
+						then Roact.joinBindings({
+							width = self.ageRatingControlsWidth,
+							visible = self.ageRatingControlsVisible,
+						}):map(function(values)
+							return UDim2.fromOffset(if FFlagAddTraversalBackButton or values.visible then values.width else 0, 0)
+						end)
+						else self.unibarRightSidePosition,
+					Size = UDim2.new(1, 0, 1, 0),
+				}, {
+					Padding = Roact.createElement("UIPadding", {
+						PaddingLeft = if persistentAgeRating and not useV2ShopIcon
+							then Roact.joinBindings({
+								visible = self.ageRatingControlsVisible,
+								width = self.ageRatingControlsWidth,
+							}):map(function(values)
+								local hasControls = values.visible or (FFlagAddTraversalBackButton and values.width > 0)
+								return UDim.new(0, if hasControls then stackedElementsPaddingLeft else 0)
+							end)
+							else UDim.new(0, stackedElementsPaddingLeft),
 					}),
-				})
-			or nil,
+					Layout = Roact.createElement("UIListLayout", {
+						Padding = UDim.new(0, topBarPadding),
+						FillDirection = Enum.FillDirection.Horizontal,
+						HorizontalAlignment = Enum.HorizontalAlignment.Left,
+						VerticalAlignment = Enum.VerticalAlignment.Top,
+						SortOrder = Enum.SortOrder.LayoutOrder,
+					}),
+
+					ShopGlobalIcon = if not useV2ShopIcon
+								and FFlagEnableExperienceShopGlobalIcon
+								and self.state.shopGlobalIconEnabled
+						then Roact.createElement(ShopGlobalIcon, {
+							buttonSize = Constants.TopBarButtonHeight * self.state.UiScale,
+							layoutOrder = 1,
+							leftGap = topBarPadding,
+							showStatusIndicator = self.state.shopGlobalStatusIndicatorEnabled,
+							onActivated = self.onShopGlobalIconActivated,
+							onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas
+								then self.keepOutAreasStore.setKeepOutArea
+								else self.props.setKeepOutArea,
+							isActive = self.state.shopGlobalIconIsActive,
+							icon = if not FFlagExperienceShopNewIconography
+									and CommonIcon
+									and self.shopIsActiveMappedSignal
+								then CommonIcon("BuildingStore", nil, self.shopIsActiveMappedSignal)
+								else nil,
+						})
+						else nil,
+
+					AgeRating = if not useV2ShopIcon then ageRating else nil,
+
+					HealthBar = if UseUpdatedHealthBar
+						then nil
+						else Roact.createElement(HealthBar, {
+							layoutOrder = 10,
+						}),
+				}),
+			}
+		) or nil,
 
 		UnibarRightFrame = Unibar
 				and unibarAlignment == Enum.HorizontalAlignment.Right
 				and Roact.createElement("Frame", {
 					BackgroundTransparency = 1,
-					Size = UDim2.new(
-						1,
-						0,
-						0,
-						topBarFrameHeight
-					),
+					Size = UDim2.new(1, 0, 0, topBarFrameHeight),
 					Position = topBarRightUnibarFramePosition,
 					AnchorPoint = Vector2.new(1, 0),
 				}, {
@@ -825,8 +1185,8 @@ function TopBarApp:renderWithStyle(style)
 					}),
 
 					Unibar = Roact.createElement(Unibar, {
-						onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas 
-							then self.keepOutAreasStore.setKeepOutArea 
+						onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas
+							then self.keepOutAreasStore.setKeepOutArea
 							else self.props.setKeepOutArea,
 						layoutOrder = 2,
 					}),
@@ -835,52 +1195,41 @@ function TopBarApp:renderWithStyle(style)
 
 		TopBarFrame = Roact.createElement("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(
-				1,
-				0,
-				0,
-				topBarFrameHeight
-			),
+			Size = UDim2.new(1, 0, 0, topBarFrameHeight),
 			Visible = isTopBarVisible,
 			Position = topBarFramePosition,
 		}, {
-			LeftFrame = (chromeEnabled or not TenFootInterface:IsEnabled())
-				and Roact.createElement("Frame", {
+			LeftFrame = (chromeEnabled or not TenFootInterface:IsEnabled()) and Roact.createElement("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(0.5, -screenSideOffset, 1, 0),
+				Position = topBarLeftFramePosition,
+			}, {
+				Layout = Roact.createElement("UIListLayout", {
+					Padding = UDim.new(0, topBarPadding),
+					FillDirection = Enum.FillDirection.Horizontal,
+					HorizontalAlignment = Enum.HorizontalAlignment.Left,
+					VerticalAlignment = Enum.VerticalAlignment.Top,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+
+				Blank = chromeEnabled and Roact.createElement("Frame", {
+					LayoutOrder = 1,
+					Size = UDim2.new(0, unibarFrameExtendedSize, 0, 1),
 					BackgroundTransparency = 1,
-					Size = UDim2.new(0.5, -screenSideOffset, 1, 0),
-					Position = topBarLeftFramePosition,
-				}, {
-					Layout = Roact.createElement("UIListLayout", {
-						Padding = UDim.new(0, topBarPadding),
-						FillDirection = Enum.FillDirection.Horizontal,
-						HorizontalAlignment = Enum.HorizontalAlignment.Left,
-						VerticalAlignment = Enum.VerticalAlignment.Top,
-						SortOrder = Enum.SortOrder.LayoutOrder,
-					}),
+				}),
 
-					Blank = chromeEnabled and Roact.createElement("Frame", {
-						LayoutOrder = 1,
-						Size = UDim2.new(0, unibarFrameExtendedSize, 0, 1),
-						BackgroundTransparency = 1,
-					}),
-
-					MenuIcon = not isNewTiltIconEnabled() and Roact.createElement(MenuIcon, {
-						layoutOrder = 1,
-						showBadgeOver12 = self.props.showBadgeOver12,
-						onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas then self.keepOutAreasStore.setKeepOutArea else nil,
-					}),
-
-					ChatIcon = not chromeEnabled and Roact.createElement(ChatIcon, {
-						layoutOrder = 3,
-					}) or nil,
-
-					VoiceBetaBadge = if showBetaBadge and policyAllowsBetaBadge
-						then Roact.createElement(VoiceBetaBadge, {
-							layoutOrder = 4,
-							Analytics = Analytics.new(),
-						})
+				MenuIcon = not isNewTiltIconEnabled() and Roact.createElement(MenuIcon, {
+					layoutOrder = 1,
+					showBadgeOver12 = self.props.showGameAgeRating and not persistentAgeRating,
+					onAreaChanged = if FFlagTopBarSignalizeKeepOutAreas
+						then self.keepOutAreasStore.setKeepOutArea
 						else nil,
 				}),
+
+				ChatIcon = not chromeEnabled and Roact.createElement(ChatIcon, {
+					layoutOrder = 3,
+				}) or nil,
+			}),
 
 			RightFrame = not Unibar and Roact.createElement("Frame", {
 				BackgroundTransparency = 1,
@@ -909,8 +1258,8 @@ function TopBarApp:renderWithStyle(style)
 end
 
 local function mapStateToProps(state)
-	if FFlagTopBarSignalizeMenuOpen then 
-		return nil 
+	if FFlagTopBarSignalizeMenuOpen then
+		return nil
 	end
 
 	local inspectMenuOpen = state.displayOptions.inspectMenuOpen
@@ -921,31 +1270,38 @@ local function mapStateToProps(state)
 	}
 end
 
-local TopBarAppWithPolicy = TopBarAppPolicy.connect(function(appPolicy, props)
-	return {
-		displayBetaBadge = appPolicy.getDisplayVoiceBetaBadge(),
-		showBadgeOver12 = appPolicy.showBadgeOver12(),
-	}
-end)(TopBarApp)
+local TopBarAppWithPolicy = if FFlagShowGameAgeRating
+	then UniversalAppPolicy.UniversalAppPolicy.connect(function(appPolicy, props)
+		return {
+			showGameAgeRating = appPolicy.getShowGameAgeRating(),
+		}
+	end)(TopBarApp)
+	else TopBarAppPolicy.connect(function(appPolicy, props)
+		return {
+			showGameAgeRating = appPolicy.showBadgeOver12(),
+		}
+	end)(TopBarApp)
 
 local function mapDispatchToProps(dispatch)
 	return {
-		setScreenSize = if FFlagTopBarSignalizeScreenSize 
-			then nil 
+		setScreenSize = if FFlagTopBarSignalizeScreenSize
+			then nil
 			else function(screenSize)
 				return dispatch(SetScreenSize(screenSize))
 			end,
-		setKeepOutArea = if FFlagTopBarSignalizeKeepOutAreas 
-			then nil 
+		setKeepOutArea = if FFlagTopBarSignalizeKeepOutAreas
+			then nil
 			else function(id, position, size)
 				return dispatch(SetKeepOutArea(id, position, size))
 			end,
-		removeKeepOutArea = if FFlagTopBarSignalizeKeepOutAreas 
-			then nil 
+		removeKeepOutArea = if FFlagTopBarSignalizeKeepOutAreas
+			then nil
 			else function(id)
 				return dispatch(RemoveKeepOutArea(id))
 			end,
 	}
 end
 
-return RoactRodux.UNSTABLE_connect2(if FFlagTopBarSignalizeMenuOpen then nil else mapStateToProps, mapDispatchToProps)(TopBarAppWithPolicy)
+return RoactRodux.UNSTABLE_connect2(if FFlagTopBarSignalizeMenuOpen then nil else mapStateToProps, mapDispatchToProps)(
+	TopBarAppWithPolicy
+)

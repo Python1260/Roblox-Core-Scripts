@@ -3,7 +3,6 @@ local ValidationEnums = require(root.validationSystem.ValidationEnums)
 local Constants = require(root.Constants)
 local ConstantsInterface = require(root.ConstantsInterface)
 local getFStringUGCLCAllowedAssetTypeIds = require(root.flags.getFStringUGCLCAllowedAssetTypeIds)
-local getFFlagUGCValidateMakeupAssetTypeNewPipeline = require(root.flags.getFFlagUGCValidateMakeupAssetTypeNewPipeline)
 local LC_ENUMS = string.split(getFStringUGCLCAllowedAssetTypeIds(), ",")
 
 local function getUploadCategory(
@@ -16,6 +15,8 @@ local function getUploadCategory(
 	if bundleTypeEnum ~= nil then
 		if bundleTypeEnum == Enum.BundleType.BodyParts then
 			return ValidationEnums.UploadCategory.FULL_BODY
+		elseif bundleTypeEnum == Enum.BundleType.Animations then
+			return ValidationEnums.UploadCategory.ANIMATION_PACK
 		else
 			return ValidationEnums.UploadCategory.BOTH_SHOES
 		end
@@ -32,8 +33,10 @@ local function getUploadCategory(
 		category = ValidationEnums.UploadCategory.LAYERED_CLOTHING
 	elseif Constants.ASSET_TYPE_INFO[assetTypeEnum] and Constants.ASSET_TYPE_INFO[assetTypeEnum].rigidAllowed then
 		category = ValidationEnums.UploadCategory.RIGID_ACCESSORY
-	elseif getFFlagUGCValidateMakeupAssetTypeNewPipeline() and ConstantsInterface.isMakeupAsset(assetTypeEnum) then
+	elseif ConstantsInterface.isMakeupAsset(assetTypeEnum) then
 		category = ValidationEnums.UploadCategory.MAKEUP
+	elseif Constants.ANIMATION_ASSET_INFO and Constants.ANIMATION_ASSET_INFO[assetTypeEnum] then
+		category = ValidationEnums.UploadCategory.ANIMATION
 	end
 
 	if category == nil then

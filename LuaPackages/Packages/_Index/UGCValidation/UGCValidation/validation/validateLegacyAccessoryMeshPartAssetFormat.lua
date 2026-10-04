@@ -8,15 +8,10 @@ local validateSingleInstance = require(root.validation.validateSingleInstance)
 local validateInstanceTree = require(root.validation.validateInstanceTree)
 local validateLegacyAccessoryMeshPartAssetFormatMatch =
 	require(root.validation.validateLegacyAccessoryMeshPartAssetFormatMatch)
-local validateSurfaceAppearances = require(root.validation.validateSurfaceAppearances)
-local validateSurfaceAppearanceTextureSize = require(root.validation.validateSurfaceAppearanceTextureSize)
-local ValidateTexturePack = require(root.validation.ValidateTexturePack)
-local validateSurfaceAppearanceTransparency = require(root.validation.validateSurfaceAppearanceTransparency)
 local ValidatePropertiesSensible = require(root.validation.ValidatePropertiesSensible)
 
 local getEngineFeatureEngineUGCValidatePropertiesSensible =
 	require(root.flags.getEngineFeatureEngineUGCValidatePropertiesSensible)
-local getFFlagUGCValidateTexturePack = require(root.flags.getFFlagUGCValidateTexturePack)
 
 local function validateLegacyAccessoryMeshPartAssetFormat(
 	specialMeshAssetFormatAccessory: Instance,
@@ -49,26 +44,6 @@ local function validateLegacyAccessoryMeshPartAssetFormat(
 
 	if getEngineFeatureEngineUGCValidatePropertiesSensible() then
 		success, reasons = ValidatePropertiesSensible.validate(meshPartAssetFormatAccessory, validationContext)
-		if not success then
-			return false, reasons
-		end
-	end
-
-	success, reasons = validateSurfaceAppearances(meshPartAssetFormatAccessory, validationContext)
-	if not success then
-		return false, reasons
-	end
-	success, reasons = validateSurfaceAppearanceTextureSize(meshPartAssetFormatAccessory, validationContext)
-	if not success then
-		return false, reasons
-	end
-	success, reasons = validateSurfaceAppearanceTransparency(meshPartAssetFormatAccessory, validationContext)
-	if not success then
-		return false, reasons
-	end
-
-	if getFFlagUGCValidateTexturePack() then
-		success, reasons = ValidateTexturePack.validate(meshPartAssetFormatAccessory, false, validationContext)
 		if not success then
 			return false, reasons
 		end

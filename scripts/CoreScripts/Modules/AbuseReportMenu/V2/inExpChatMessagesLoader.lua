@@ -1,46 +1,110 @@
 local CorePackages = game:GetService("CorePackages")
+local LocalizationService = game:GetService("LocalizationService")
+local Players = game:GetService("Players")
 
 local ExpChat = require(CorePackages.Workspace.Packages.ExpChat)
 local ExpChatShared = require(CorePackages.Workspace.Packages.ExpChatShared)
+local Localization = require(CorePackages.Workspace.Packages.InExperienceLocales).Localization
 local Promise = require(CorePackages.Packages.Promise)
-
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local helpers = require(script.Parent.ExpChatMessageHelpers)
+local enrichMissingUsernames = require(script.Parent.inExpChatMessagesLoaderUsernameEnrichment).enrichMissingUsernames
+
+local ChannelTabDisplayLabel = ExpChatShared.ChannelTabDisplayLabel
 local getChannelTabsStore = ExpChat.Stores.GetChannelTabsStore
 
+local FFlagExpChatUseChannelTabsStore = SharedFlags.FFlagExpChatUseChannelTabsStore
+local FFlagExpChatUseSharedChannelTabDisplayLabel = SharedFlags.FFlagExpChatUseSharedChannelTabDisplayLabel
+
+local locales = Localization.new(LocalizationService.RobloxLocaleId)
+
+local function getLocalizedChannelTabLabels()
+	local localizationKeys = ChannelTabDisplayLabel.LocalizationKeys
+	return {
+		yourServer = locales:Format(localizationKeys.yourServer),
+		moreServers = locales:Format(localizationKeys.moreServers),
+		friends = locales:Format(localizationKeys.friends),
+		system = locales:Format(localizationKeys.system),
+		team = locales:Format(localizationKeys.team),
+	}
+end
+
 -- Loader descriptor for the abuse-report chat-selection dialog. Reads live
--- message state from exp-chat's Redux store and groups messages by channel tab
--- (when enabled) so the reporter sees the same layout as the in-experience chat.
+-- message state from exp-chat and groups messages by channel tab (when enabled)
+-- so the reporter sees the same layout as the in-experience chat.
 return {
 	type = "groupedListItem",
 	fetch = function(_params)
-		-- TODO: [future] work through and validate this properly (abech)
 		local store = ExpChatShared.context.store
 		if not store then
 			return Promise.resolve({})
 		end
 
 		local state = store:getState()
-		local messagesState = state and state.Messages
-		if not messagesState then
+		local byMessageId
+		local windowMessagesInOrder
+		local windowMessagesInOrderByTabId
+
+		local messagesStore = ExpChatShared.context.messagesStore
+		if not messagesStore then
 			return Promise.resolve({})
 		end
+		byMessageId = messagesStore.getByMessageId(false) or {}
+		windowMessagesInOrder = messagesStore.getWindowMessagesInOrder(false) or {}
+		windowMessagesInOrderByTabId = messagesStore.getWindowMessagesInOrderByTabId(false) or {}
 
-		local byMessageId = messagesState.byMessageId or {}
 		local translator = ExpChatShared.context.translator
 
+		-- Creator custom channel tabs are disabled, but we still need to handle global and general tabs
 		if not helpers.areChannelTabsEnabled() then
-			local items = helpers.collectItems(byMessageId, messagesState.windowMessagesInOrder or {})
-			helpers.annotateWhisperItems(items, byMessageId)
-			if #items == 0 then
-				return Promise.resolve({})
+			local allMessageIds = windowMessagesInOrder
+			local generalMessageIds = {}
+			local globalMessageIds = {}
+
+			for _, messageId in ipairs(allMessageIds) do
+				local message = byMessageId[messageId]
+				if message then
+					if message.textChannel then
+						table.insert(generalMessageIds, messageId)
+					else
+						table.insert(globalMessageIds, messageId)
+					end
+				end
 			end
-			return Promise.resolve({
-				-- label not shown, so don't need to be localized
-				{ id = "all", label = "General", items = items },
-			})
+
+			local result = {}
+
+			local generalItems = helpers.collectItems(byMessageId, generalMessageIds)
+			helpers.annotateWhisperItems(
+				generalItems,
+				byMessageId,
+				locales:Format("Feature.ReportAbuse.Label.SentPrivately")
+			)
+			if #generalItems > 0 then
+				table.insert(result, {
+					id = helpers.CHANNEL_GENERAL,
+					label = locales:Format(
+						if FFlagExpChatUseSharedChannelTabDisplayLabel
+							then ChannelTabDisplayLabel.LocalizationKeys.yourServer
+							else "CoreScripts.TextChat.ChannelTabs.Here"
+					),
+					items = generalItems,
+				})
+			end
+
+			local globalItems = helpers.collectItems(byMessageId, globalMessageIds)
+			if #globalItems > 0 then
+				table.insert(result, {
+					id = helpers.CHANNEL_GLOBAL,
+					label = locales:Format("CoreScripts.TextChat.ChannelTabs.Global2"),
+					items = globalItems,
+				})
+			end
+
+			return enrichMissingUsernames(result)
 		end
 
-		local tabIds = messagesState.windowMessagesInOrderByTabId or {}
+		local tabIds = windowMessagesInOrderByTabId
 		local allTextChannels = state.TextChannels and state.TextChannels.allTextChannels or {}
 
 		-- Tab ordering from the Signals-based ChannelTabsStore (populated when
@@ -48,17 +112,45 @@ return {
 		-- when the store is empty.
 		local allChannelTabs = getChannelTabsStore(false).getChannelTabsState(false).allChannelTabs
 
+		local localizedChannelTabLabels = if FFlagExpChatUseSharedChannelTabDisplayLabel
+			then getLocalizedChannelTabLabels()
+			else nil
 		local groups = {}
 		local groupOrder = {}
 		for channelName, messageIds in pairs(tabIds) do
 			local items = helpers.collectItems(byMessageId, messageIds)
 			if #items > 0 then
-				local label = helpers.formatChannelLabel(channelName, allTextChannels[channelName])
+				local label
+				if FFlagExpChatUseSharedChannelTabDisplayLabel then
+					local tabType
+					if FFlagExpChatUseChannelTabsStore then
+						local channelTab = allChannelTabs[channelName]
+						tabType = if channelTab then channelTab.type else nil
+					else
+						local roduxChannelTabs = state.ChannelTabs and state.ChannelTabs.allChannelTabs
+						local channelTab = roduxChannelTabs and roduxChannelTabs[channelName]
+						tabType = if channelTab then channelTab.Type else nil
+					end
+
+					label = if tabType
+						then ChannelTabDisplayLabel.getDisplayLabel(
+							tabType,
+							channelName,
+							allTextChannels[channelName],
+							Players.LocalPlayer,
+							localizedChannelTabLabels :: any
+						)
+						else channelName
+				else
+					label = helpers.localizeString(
+						translator,
+						helpers.formatChannelLabel(channelName, allTextChannels[channelName])
+					)
+				end
 				table.insert(groupOrder, channelName)
 				groups[channelName] = {
 					id = channelName,
-					-- TODO: [future] verify that this works as expected (abech)
-					label = helpers.localizeString(translator, label),
+					label = label,
 					items = items,
 				}
 			end
@@ -90,6 +182,6 @@ return {
 			table.insert(result, groups[channelName])
 		end
 
-		return Promise.resolve(result)
+		return enrichMissingUsernames(result)
 	end,
 }

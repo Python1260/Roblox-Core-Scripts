@@ -47,6 +47,7 @@ local function createHelpPage()
 
     ------ TAB CUSTOMIZATION -------
     HelpPage.TabHeader.Name = Constants.HELP_PAGE.TAB_HEADER.NAME
+    HelpPage.Page.Name = "Help"
     local icon = migrationLookup[Constants.HELP_PAGE.TAB_HEADER.ICON]
     HelpPage.TabHeader.TabLabel.Icon.Text = icon.name
     HelpPage.TabHeader.TabLabel.Icon.FontFace = BuilderIcons.Font[icon.variant]
@@ -64,7 +65,7 @@ local function createHelpPage()
             local displayed = SignalsReact.useSignalState(getDisplayed)
 
             local Child = if displayed then React.createElement(FoundationProvider, {
-                theme = Foundation.Enums.Theme.Dark,
+                colorMode = Foundation.Enums.ColorMode.Dark,
                 device = Utils.getDeviceType(),
             }, {
                 Child = React.createElement(LocalizationProvider, {

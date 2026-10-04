@@ -3,6 +3,9 @@ local CorePackages = game:GetService("CorePackages")
 local RobloxGui = game:GetService("CoreGui").RobloxGui
 local Roact = require(CorePackages.Packages.Roact)
 
+local FFlagDevConsoleDropdownFlipFix = game:DefineFastFlag("DevConsoleDropdownFlipFix", false)
+local FFlagDevConsoleDropdownMultiSelect = game:DefineFastFlag("DevConsoleDropdownMultiSelect", false)
+
 local Constants = require(script.Parent.Parent.Constants)
 local FONT = Constants.Font.UtilBar
 local FONT_SIZE = Constants.DefaultFontSize.UtilBar
@@ -14,6 +17,10 @@ local INNER_FRAME_PADDING = 12
 local DropDown = Roact.Component:extend("DropDown")
 
 function DropDown:init()
+	if FFlagDevConsoleDropdownFlipFix then
+		self.guiInset = game:GetService("GuiService"):GetGuiInset()
+	end
+
 	self.onMainButtonPressed = function(rbx, input)
 		self:setState({
 			showDropDown = true,
@@ -46,6 +53,11 @@ function DropDown:render()
 	local onSelection = self.props.onSelection
 	local layoutOrder = self.props.layoutOrder
 
+	-- Opt-in multi-select: onToggle + caller-owned selectedSet; list stays open.
+	local selectedSet = self.props.selectedSet
+	local onToggle = self.props.onToggle
+	local multiSelect = FFlagDevConsoleDropdownMultiSelect and onToggle ~= nil
+
 	local dropDownTargetParent = self.props.dropDownTargetParent
 
 	local showDropDown = self.ref.current and self.state.showDropDown
@@ -69,7 +81,13 @@ function DropDown:render()
 		})
 
 		for ind, name in pairs(dropDownList) do
-			local color = (ind == selectedIndex) and Constants.Color.SelectedGray or Constants.Color.UnselectedGray
+			local isSelected
+			if multiSelect then
+				isSelected = selectedSet ~= nil and selectedSet[ind] == true
+			else
+				isSelected = ind == selectedIndex
+			end
+			local color = isSelected and Constants.Color.SelectedGray or Constants.Color.UnselectedGray
 
 			children[name] = Roact.createElement("TextButton", {
 				Size = buttonSize,
@@ -86,23 +104,44 @@ function DropDown:render()
 				LayoutOrder = ind,
 
 				[Roact.Event.Activated] = function()
-					onSelection(ind)
-					self:setState({
-						showDropDown = false,
-					})
+					if multiSelect then
+						onToggle(ind)
+					else
+						onSelection(ind)
+						self:setState({
+							showDropDown = false,
+						})
+					end
 				end,
 			})
 			frameHeight = frameHeight + absoluteSize.Y
 		end
 
 		local padding = 2 * INNER_FRAME_PADDING
-		outerFrameSize = UDim2.new(0, frameWidth + padding, 0, frameHeight + padding)
-		absolutePosition = UDim2.new(0, absolutePos.X, 0, absolutePos.Y + absoluteSize.Y)
+		local dropdownTotalHeight = frameHeight + padding
+		if FFlagDevConsoleDropdownFlipFix then
+			local camera = workspace.CurrentCamera
+			local effectiveBottom = (camera and camera.ViewportSize.Y or math.huge) - self.guiInset.Y
+			local spaceBelow = effectiveBottom - (absolutePos.Y + absoluteSize.Y)
+			local spaceAbove = absolutePos.Y
+
+			local openUpward = spaceBelow < dropdownTotalHeight and spaceAbove > spaceBelow
+			outerFrameSize = UDim2.new(0, frameWidth + padding, 0, dropdownTotalHeight)
+			if openUpward then
+				absolutePosition = UDim2.new(0, absolutePos.X, 0, absolutePos.Y - dropdownTotalHeight)
+			else
+				absolutePosition = UDim2.new(0, absolutePos.X, 0, absolutePos.Y + absoluteSize.Y)
+			end
+		else
+			outerFrameSize = UDim2.new(0, frameWidth + padding, 0, frameHeight + padding)
+			absolutePosition = UDim2.new(0, absolutePos.X, 0, absolutePos.Y + absoluteSize.Y)
+		end
 	end
 
 	return Roact.createElement("TextButton", {
 		Size = buttonSize,
-		Text = dropDownList[selectedIndex],
+		Position = FFlagDevConsoleDropdownFlipFix and (self.props.position or UDim2.new()) or nil,
+		Text = multiSelect and (self.props.summaryText or "") or dropDownList[selectedIndex],
 		TextColor3 = Constants.Color.Text,
 		TextSize = FONT_SIZE,
 		Font = FONT,

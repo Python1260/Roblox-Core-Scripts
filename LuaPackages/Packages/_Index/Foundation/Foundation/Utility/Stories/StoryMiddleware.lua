@@ -4,15 +4,36 @@ local Packages = Foundation.Parent
 local React = require(Packages.React)
 local ReactRoblox = require(Packages.ReactRoblox)
 
-local Flags = require(Foundation.Utility.Flags)
-local FoundationProvider = require(Foundation.Providers.Foundation)
-local PreferencesProvider = require(Foundation.Providers.Preferences.PreferencesProvider)
-local Theme = require(Foundation.Enums.Theme)
-type Theme = Theme.Theme
+local ColorMode = require(Foundation.Enums.ColorMode)
 local Device = require(Foundation.Enums.Device)
-type Device = Device.Device
+local FoundationProvider = require(Foundation.Providers.Foundation)
+local Types = require(Foundation.Utility.Stories.Types)
+local getTokenOverridesStore = require(script.Parent.TokenOverridesStore)
+local isPluginSecurity = require(Foundation.Utility.isPluginSecurity)
+
+type FlipbookStoryProps = Types.FlipbookStoryProps
+type DeveloperStorybookStoryProps = Types.DeveloperStorybookStoryProps
+type StoryProps = Types.StoryProps
 
 local useStyleSheet = require(Foundation.Providers.Style.StyleSheetContext).useStyleSheet
+
+local function useTokenOverrides()
+	local store = getTokenOverridesStore()
+	local overrides, setOverrides = React.useState(function()
+		return store.getTokenOverrides()
+	end)
+
+	React.useEffect(function()
+		local unsubscribe = store.subscribe(function(newOverrides)
+			setOverrides(newOverrides)
+		end)
+		return function()
+			unsubscribe()
+		end
+	end, { store })
+
+	return overrides
+end
 
 --[[
   We want to use the a space behind the story as the overlay to better test popover interaction with borders.
@@ -41,13 +62,18 @@ local function StyleLinkPortal(props: { overlay: GuiBase2d })
 	)
 end
 
-local function useCreateOverlay(props: { focus: LayerCollector }): GuiBase2d?
-	local isEmbedded = props.focus.Name == "StorybookEmbed"
+local function useCreateOverlay(props: StoryProps): GuiBase2d?
+	local flipbookStoryProps = Types.toFlipbookStoryProps(props)
+	local focus = if flipbookStoryProps
+		then flipbookStoryProps.widget
+		else (props :: DeveloperStorybookStoryProps).focus
+
+	local isEmbedded = focus.Name == "StorybookEmbed"
 	-- Since we need to pass an overlay before the FoundationProvider is created it's easier to create it manually than using React.
 	local overlay = React.useRef(Instance.new("Frame"))
 	-- Very unlikely that parent would change, but it doesn't hurt to handle
-	if overlay.current.Parent ~= props.focus then
-		overlay.current.Parent = props.focus
+	if overlay.current.Parent ~= focus then
+		overlay.current.Parent = focus
 	end
 
 	React.useEffect(function()
@@ -62,21 +88,21 @@ local function useCreateOverlay(props: { focus: LayerCollector }): GuiBase2d?
 	return if isEmbedded then nil else overlay.current
 end
 
-type Preferences = PreferencesProvider.PreferencesProps
-
-type StoryProps = {
-	focus: LayerCollector,
-	theme: Theme,
-	platform: Platform,
-	settings: Preferences,
-	plugin: Plugin,
-}
-
 local function StoryMiddleware(story)
 	-- A component wrapping each story in the StyleProvider
 	return function(storyProps: StoryProps)
 		local overlay = useCreateOverlay(storyProps)
-		local theme = Theme[storyProps.theme]
+		local colorMode = ColorMode[storyProps.theme]
+		local tokenOverrides = useTokenOverrides()
+
+		local devStorybookStoryProps = Types.toDeveloperStorybookStoryProps(storyProps)
+
+		local device, preferences
+		if devStorybookStoryProps then
+			device = Device[devStorybookStoryProps.platform]
+			preferences = devStorybookStoryProps.settings
+		end
+
 		return React.createElement("Frame", {
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Size = UDim2.fromScale(1, 0),
@@ -90,12 +116,13 @@ local function StoryMiddleware(story)
 				PaddingRight = UDim.new(0, 10),
 			}),
 			FoundationContext = React.createElement(FoundationProvider, {
-				theme = theme,
-				device = Device[storyProps.platform],
-				preferences = storyProps.settings,
-				scale = storyProps.settings and storyProps.settings.scale,
+				colorMode = colorMode,
+				device = device,
+				preferences = preferences,
+				scale = preferences and preferences.scale,
 				overlayGui = overlay,
-				plugin = if Flags.FoundationPopoverPluginSupport then storyProps.plugin else nil,
+				plugin = if isPluginSecurity() then storyProps.plugin else nil,
+				tokenOverrides = tokenOverrides,
 			}, {
 				Child = React.createElement(story, storyProps),
 				StyleLink = React.createElement(StyleLinkPortal, if overlay then { overlay = overlay } else nil),

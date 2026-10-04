@@ -10,13 +10,9 @@ local VoiceChatServiceManager = require(RobloxGui.Modules.VoiceChat.VoiceChatSer
 local CallProtocol = require(CorePackages.Workspace.Packages.CallProtocol).CallProtocol.default
 local CallProtocolEnums = require(CorePackages.Workspace.Packages.CallProtocol).Enums
 
-local VoiceChatCore = require(CorePackages.Workspace.Packages.VoiceChatCore)
-
 local FFlagDebugDefaultChannelStartMuted = game:DefineFastFlag("DebugDefaultChannelStartMuted", true)
 local FFlagUseNotificationServiceIsConnected = game:DefineFastFlag("UseNotificationServiceIsConnected", false)
 local FFlagDefaultChannelEnableDefaultVoice = game:DefineFastFlag("DefaultChannelEnableDefaultVoice", true)
-local FFlagAlwaysJoinWhenUsingAudioAPI = game:DefineFastFlag("AlwaysJoinWhenUsingAudioAPI", false)
-local GetFFlagEnableLuaVoiceChatAnalytics = VoiceChatCore.Flags.GetFFlagEnableLuaVoiceChatAnalytics
 local GetFFlagSeamlessVoiceFTUX = require(CorePackages.Workspace.Packages.SharedFlags).GetFFlagSeamlessVoiceFTUX
 
 local GenerateDefaultChannelAvailable = game:GetEngineFeature("VoiceServiceGenerateDefaultChannelAvailable")
@@ -38,13 +34,10 @@ local function initializeDefaultChannel(defaultMuted)
 	log:info("Joining default channel")
 
 	local success = VoiceChatInternal:JoinByGroupIdToken("default", defaultMuted)
-
-	if GetFFlagEnableLuaVoiceChatAnalytics() then
-		if success then
-			Analytics:reportVoiceChatJoinResult(true, "defaultJoinSuccess")
-		else
-			Analytics:reportVoiceChatJoinResult(false, "defaultJoinFailed", "error")
-		end
+	if success then
+		Analytics:reportVoiceChatJoinResult(true, "defaultJoinSuccess")
+	else
+		Analytics:reportVoiceChatJoinResult(false, "defaultJoinFailed", "error")
 	end
 
 	return success
@@ -69,27 +62,12 @@ end
 
 if EnableDefaultVoiceAvailable and FFlagDefaultChannelEnableDefaultVoice then
 	local VoiceChatService = game:FindService("VoiceChatService")
-	if FFlagAlwaysJoinWhenUsingAudioAPI then
-		if not VoiceChatService then
-			log:info("VoiceChatService not found. Assuming default values.")
-			-- We only don't want to early out when the new audio API is enabled
-		elseif not VoiceChatService.EnableDefaultVoice and not VoiceChatService.UseNewAudioApi then
-			log:debug("Default channel is disabled.")
-			if GetFFlagEnableLuaVoiceChatAnalytics() then
-				Analytics:reportVoiceChatJoinResult(false, "defaultDisabled")
-			end
-			return
-		end
-	else
-		if not VoiceChatService then
-			log:info("VoiceChatService not found. Assuming default values.")
-		elseif not VoiceChatService.EnableDefaultVoice then
-			log:debug("Default channel is disabled.")
-			if GetFFlagEnableLuaVoiceChatAnalytics() then
-				Analytics:reportVoiceChatJoinResult(false, "defaultDisabled")
-			end
-			return
-		end
+	if not VoiceChatService then
+		log:info("VoiceChatService not found. Assuming default values.")
+	elseif not VoiceChatService.EnableDefaultVoice and not VoiceChatService.UseNewAudioApi then
+		log:debug("Default channel is disabled.")
+		Analytics:reportVoiceChatJoinResult(false, "defaultDisabled")
+		return
 	end
 end
 

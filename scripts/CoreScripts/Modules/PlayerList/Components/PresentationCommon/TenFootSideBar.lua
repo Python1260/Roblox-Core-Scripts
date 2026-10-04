@@ -7,7 +7,6 @@ local RunService = game:GetService("RunService")
 
 local Roact = require(CorePackages.Packages.Roact)
 local RoactRodux = require(CorePackages.Packages.RoactRodux)
-local FFlagAppShellMigrateLocales = require(CorePackages.Workspace.Packages.SharedFlags).FFlagAppShellMigrateLocales
 
 local Components = script.Parent.Parent
 local PlayerList = Components.Parent
@@ -55,9 +54,7 @@ function TenFootSideBar:openSidebar(player)
 
 	--We can't report localplayer
 	if addReportItem then
-		local loc_text = if FFlagAppShellMigrateLocales
-			then Strings:LocStringUA("Xbox.Old.ReportPlayer")
-			else Strings:LocalizedString("ReportPlayer")
+		local loc_text = Strings:LocStringUA("Xbox.Old.ReportPlayer")
 		self.sideBar:AddItem(loc_text, function()
 			--Force closing player list before open the report tab
 			self.props.closePlayerList()
@@ -67,7 +64,7 @@ function TenFootSideBar:openSidebar(player)
 				local InGameMenu = require(RobloxGui.Modules.InGameMenuInit)
 				InGameMenu.openReportDialog(player, self.__componentName)
 			else
-				local ReportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuNewContainerPage)
+				local ReportAbuseMenu = require(RobloxGui.Modules.Settings.Pages.ReportAbuseMenuContainerPage)
 				ReportAbuseMenu:ReportPlayer(player, self.__componentName)
 			end
 		end)

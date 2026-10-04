@@ -22,8 +22,11 @@ if FFlagFeedbackModuleEarlyFontInitialization then
 	params.Width = 0
 	local _unused = TextService:GetTextBoundsAsync(params)
 end
-	-- TODO: Show exit modal in capture mode rather than just exiting to UGC game.
+	local MessageBusService = game:GetService("MessageBusService")
+	local SCENE_EXIT_MID = MessageBusService:GetMessageId("CaptureMode", "sceneSelectionExitReason")
+
 	local function handleNativeExit()
+			MessageBusService:Publish(SCENE_EXIT_MID, { reason = "nativeExit" })
 		game:GetService("ExperienceStateCaptureService"):ToggleCaptureMode()
 	end
 

@@ -23,37 +23,94 @@ local GuiService = game:GetService("GuiService")
 local GamepadUtils = require(CorePackages.Workspace.Packages.InputUi).Gamepad.GamepadUtils
 local isSpatial = require(CorePackages.Workspace.Packages.AppCommonLib).isSpatial
 local ChatIconVisibleSignals = require(script.Parent.ChatIconVisibleSignals).default
-local SignalsRoblox = require(CorePackages.Packages.SignalsRoblox)
+local SignalsUtils = require(CorePackages.Workspace.Packages.SignalsUtils)
+
+local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
+local SideSheetPlacement = ChromePackage.Enums.SideSheetPlacement
+
+type ChatOpenCapability = {
+	isAvailable: () -> boolean,
+	ensureOpenChat: (isCurrentRequest: () -> boolean) -> (),
+}
+
+type ChatIntegration = ChromePackage.IntegrationProps & {
+	chatOpenCapability: ChatOpenCapability?,
+}
+
+-- Do not render the chat integration when the debug flag turning off experience chat is enabled
+local FFlagDebugDisableExperienceChatMain = require(RobloxGui.Modules.Flags.FFlagDebugDisableExperienceChatMain)
+if FFlagDebugDisableExperienceChatMain then
+	return nil :: ChatIntegration?
+end
 
 local ExpChat = require(CorePackages.Workspace.Packages.ExpChat)
 local ExpChatFocusNavigationStore = ExpChat.Stores.GetFocusNavigationStore(false)
+local shouldSkipHistoricalMessage = ExpChat.shouldSkipHistoricalMessage
+local shouldSuppressUnreadForTabMetadata = ExpChat.shouldSuppressUnreadForTabMetadata
+-- TODO: exp-chat should own friends unread-count tracking and expose an
+-- abstracted interface for chrome, rather than chrome reaching into a
+-- friends-chat store directly.
+local GetFriendsChatIconUnreadStore = require(CorePackages.Workspace.Packages.FriendsChat.GetFriendsChatIconUnreadStore)
 
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 local FFlagExpChatWindowSyncUnibar = SharedFlags.FFlagExpChatWindowSyncUnibar
-
-local AppChat = require(CorePackages.Workspace.Packages.AppChat)
-local InExperienceAppChatModal = AppChat.App.InExperienceAppChatModal
+local FFlagExpChatInitializeWindowFromGameSettings = SharedFlags.FFlagExpChatInitializeWindowFromGameSettings
+local FFlagRemoveFriendsChatUnibarEntrypoints = SharedFlags.FFlagRemoveFriendsChatUnibarEntrypoints
+local FFlagExpChatEnableFriendsTab = SharedFlags.FFlagExpChatEnableFriendsTab
+local FFlagExpChatCanShowFriendsTab = SharedFlags.FFlagExpChatCanShowFriendsTab
+local InExperienceAppChatModal = require(CorePackages.Workspace.Packages.AppChat.InExperienceAppChatModal)
 
 local ChatSelector = require(RobloxGui.Modules.ChatSelector)
 local getExperienceChatVisualConfig = require(CorePackages.Workspace.Packages.ExpChat).getExperienceChatVisualConfig
-local GetFFlagSimpleChatUnreadMessageCount = SharedFlags.GetFFlagSimpleChatUnreadMessageCount
-local GetFFlagDisableLegacyChatSimpleUnreadMessageCount = SharedFlags.GetFFlagDisableLegacyChatSimpleUnreadMessageCount
+local ExpChatShared = require(CorePackages.Workspace.Packages.ExpChatShared)
+local GetFFlagTextChatEnableUniverseChatTabs = ExpChatShared.Flags.GetFFlagTextChatEnableUniverseChatTabs
+local shouldRenderTextChannelInDefaultWindow = ExpChatShared.shouldRenderTextChannelInDefaultWindow
+local getTextChannelDisplayMode = ExpChatShared.getTextChannelDisplayMode
+local FFlagExpChatSuppressWelcomeMessageUnibarUnread =
+	game:DefineFastFlag("ExpChatSuppressWelcomeMessageUnibarUnread", false)
 local FFlagExpChatUnibarThumbstickNavigate = game:DefineFastFlag("ExpChatUnibarThumbstickNavigate", false)
 local FFlagExpChatUnibarAvailabilityRefactor = game:DefineFastFlag("ExpChatUnibarAvailabilityRefactor", false)
-local FFlagHideChatButtonForChatDisabledUsers = game:DefineFastFlag("HideChatButtonForChatDisabledUsers", false)
 local isInExperienceUIVREnabled =
 	require(CorePackages.Workspace.Packages.SharedExperimentDefinition).isInExperienceUIVREnabled
 local InExperienceUIVRIXP = require(CorePackages.Workspace.Packages.SharedExperimentDefinition).InExperienceUIVRIXP
-local FFlagExpChatPerfTracking = SharedFlags.FFlagExpChatPerfTracking
 local ExpChatPerfTracker = ExpChat.ExpChatPerfTracker
+
+local ArgoPartyExperimentation = require(CorePackages.Workspace.Packages.SocialExperiments).ArgoPartyExperimentation
 
 local unreadMessages = 0
 -- note: do not rely on ChatSelector:GetVisibility after startup; it's state is incorrect if user opens via keyboard shortcut
-local chatVisibility: boolean = ChatSelector:GetVisibility()
-local chatChromeIntegration
+local chatVisibility: boolean
+if FFlagExpChatInitializeWindowFromGameSettings then
+	-- isSmallTouchScreen is applied later, so the window can still briefly appear on small touch screens.
+	chatVisibility = GameSettings.ChatVisible
+	ChatSelector:SetVisible(chatVisibility)
+else
+	chatVisibility = ChatSelector:GetVisibility()
+end
+local chatChromeIntegration: ChatIntegration
 
 local chatSelectorVisibilitySignal = ChatSelector.VisibilityStateChanged
+
+local function updateUnreadNotification()
+	if not chatChromeIntegration.notification then
+		return
+	end
+
+	if not FFlagExpChatEnableFriendsTab then
+		chatChromeIntegration.notification:fireCount(unreadMessages)
+		return
+	end
+
+	local friendsChatUnreadMessages = GetFriendsChatIconUnreadStore(false).getUnreadCountToDisplay(false)
+	local unreadCount = unreadMessages + friendsChatUnreadMessages
+	if chatVisibility or unreadCount == 0 then
+		chatChromeIntegration.notification:clear()
+	else
+		chatChromeIntegration.notification:fireCount(unreadCount)
+	end
+end
+
 local function localUserCanChat()
 	if not RunService:IsStudio() then
 		local success, localUserCanChat = pcall(function()
@@ -104,7 +161,7 @@ end, function()
 	local isVisible = ChatSelector.GetVisibility()
 	if not FFlagExpChatUnibarAvailabilityRefactor then
 		-- Is there a less imperative way to do this?
-		if FFlagHideChatButtonForChatDisabledUsers and not isVisible and not localUserCanChat() then
+		if not isVisible and not localUserCanChat() then
 			chatChromeIntegration.availability:unavailable()
 		end
 	end
@@ -115,22 +172,30 @@ end, function()
 	end
 
 	chatVisibility = isVisible :: boolean
-	if GetFFlagSimpleChatUnreadMessageCount() then
-		if isVisible and chatChromeIntegration.notification then
-			chatChromeIntegration.notification:clear()
-		end
-	else
-		if isVisible and unreadMessages and chatChromeIntegration.notification then
+	if FFlagExpChatEnableFriendsTab then
+		if isVisible then
 			unreadMessages = 0
-			chatChromeIntegration.notification:clear()
+			-- Opening the chat window clears the friends portion of the badge; it
+			-- only reappears when new messages arrive afterward.
+			GetFriendsChatIconUnreadStore(false).clearDisplayCount()
 		end
+		updateUnreadNotification()
+	elseif isVisible and unreadMessages and chatChromeIntegration.notification then
+		unreadMessages = 0
+		chatChromeIntegration.notification:clear()
 	end
 end)
 
-local dismissCallback = function()
-	if InExperienceAppChatModal:getVisible() then
-		InExperienceAppChatModal.default:setVisible(false)
+local function hideAppChat()
+	if not InExperienceAppChatModal:getVisible() then
+		return
 	end
+
+	InExperienceAppChatModal.default:setVisible(false)
+end
+
+local function revealChat()
+	hideAppChat()
 
 	ChatSelector:SetVisible(true)
 
@@ -139,28 +204,57 @@ local dismissCallback = function()
 	end
 end
 
+local function isChatOpenAvailable(): boolean
+	return chatChromeIntegration.availability:get() ~= ChromeService.AvailabilitySignal.Unavailable
+end
+
+local function isSpatialDirectOpen(): boolean
+	return (isInExperienceUIVREnabled and isSpatial()) and not InExperienceUIVRIXP:isMovePanelToCenter()
+end
+
+-- Reveals ExpChat for the Friends Chat handoff. Callers are expected to have
+-- already checked `isAvailable` and reserved the chat session.
+local function ensureOpenChat(isCurrentRequest: () -> boolean)
+	if chatVisibility then
+		hideAppChat()
+	elseif isSpatialDirectOpen() then
+		revealChat()
+	else
+		ChromeIntegrationUtils.dismissRobloxMenuAndRun(function()
+			-- Dismissing the menu is slow enough that a newer handoff can
+			-- supersede this one, or chat can stop being available, before the
+			-- menu finishes closing. Revealing anyway would show the previous
+			-- conversation.
+			if isCurrentRequest() and isChatOpenAvailable() then
+				revealChat()
+			end
+		end)
+	end
+end
+
 chatChromeIntegration = ChromeService:register({
 	id = "chat",
 	label = "CoreScripts.TopBar.Chat",
+	-- Hide ExpChat "Chat" button until Friends chat in experience is launched: https://roblox.atlassian.net/browse/EXPR-3846
+	sideSheetPlacement = if ArgoPartyExperimentation.getIsRenameEnabled()
+			and not (FFlagRemoveFriendsChatUnibarEntrypoints and FFlagExpChatCanShowFriendsTab)
+		then SideSheetPlacement.None
+		else SideSheetPlacement.Unibar,
 	activated = function(self)
 		if chatVisibility then
 			ChatSelector:SetVisible(false)
 		else
-			if FFlagExpChatPerfTracking then
-				ExpChatPerfTracker.start(ExpChatPerfTracker.Events.ChatWindowMountTTI, {})
-			end
-			if (isInExperienceUIVREnabled and isSpatial()) and not InExperienceUIVRIXP:isMovePanelToCenter() then
+			ExpChatPerfTracker.start(ExpChatPerfTracker.Events.ChatWindowMountTTI, {})
+			if isSpatialDirectOpen() then
 				ChatSelector:SetVisible(true)
 			else
 				ChromeIntegrationUtils.dismissRobloxMenuAndRun(function()
-					dismissCallback()
+					revealChat()
 				end)
 			end
 		end
 	end,
-	isActivated = function()
-		return chatVisibilitySignal:get()
-	end,
+	isActivated = chatVisibilitySignal,
 	selected = if FFlagEnableConsoleExpControls
 		then function(self)
 			if FFlagExpChatUnibarThumbstickNavigate then
@@ -213,13 +307,20 @@ chatChromeIntegration = ChromeService:register({
 			return CommonIcon(visualConfig.icon.off, visualConfig.icon.on, chatVisibilitySignal)
 		end,
 	},
-})
+}) :: ChatIntegration
+
+chatChromeIntegration.chatOpenCapability = if FFlagExpChatEnableFriendsTab
+	then {
+		isAvailable = isChatOpenAvailable,
+		ensureOpenChat = ensureOpenChat,
+	}
+	else nil
 
 if FFlagExpChatUnibarAvailabilityRefactor then
 	-- We are using a detached effect here because we don't have a great
 	-- place to keep our weak reference alive. This is because chrome registration
 	-- doesn't have a end-lifecycle well defined.
-	SignalsRoblox.createDetachedEffect(function(scope)
+	SignalsUtils.createDetachedEffect(function(scope)
 		local isAvailable = ChatIconVisibleSignals.getIsChatIconVisible(scope)
 
 		-- addresses the unibar button
@@ -242,7 +343,7 @@ if FFlagExpChatUnibarAvailabilityRefactor then
 end
 
 if FFlagChatIntegrationFixShortcut and FFlagEnableConsoleExpControls then
-	SignalsRoblox.createDetachedEffect(function(scope)
+	SignalsUtils.createDetachedEffect(function(scope)
 		local isChatInputBarFocused = ExpChatFocusNavigationStore.getChatInputBarFocused(scope)
 		if isChatInputBarFocused then
 			ChromeService:setShortcutBar(ChromeConstants.UNIBAR_SHORTCUTBAR_ID)
@@ -252,39 +353,59 @@ if FFlagChatIntegrationFixShortcut and FFlagEnableConsoleExpControls then
 	end)
 end
 
-if GetFFlagSimpleChatUnreadMessageCount() then
-	-- TextChatService
-	TextChatService.MessageReceived:Connect(function()
-		if not chatVisibility and chatChromeIntegration.notification:isEmpty() then
-			chatChromeIntegration.notification:fireCount(1)
-		end
-	end)
-
-	-- Legacy Chat
-	if not GetFFlagDisableLegacyChatSimpleUnreadMessageCount() then
-		ChatSelector.MessagesChanged:connect(function(messages: number)
-			if not chatVisibility and chatChromeIntegration.notification:isEmpty() then
-				chatChromeIntegration.notification:fireCount(1)
-			end
-		end)
-	end
-else
-	TextChatService.MessageReceived:Connect(function()
-		if not chatVisibility then
-			unreadMessages += 1
-			chatChromeIntegration.notification:fireCount(unreadMessages)
-		end
-	end)
-
-	local lastMessagesChangedValue = 0
-	ChatSelector.MessagesChanged:connect(function(messages: number)
-		if not chatVisibility then
-			unreadMessages += messages - lastMessagesChangedValue
-			chatChromeIntegration.notification:fireCount(unreadMessages)
-		end
-		lastMessagesChangedValue = messages
+if FFlagExpChatEnableFriendsTab then
+	-- Refresh the badge whenever the friends display count changes.
+	SignalsUtils.createDetachedEffect(function(scope)
+		GetFriendsChatIconUnreadStore(scope).getUnreadCountToDisplay(scope)
+		updateUnreadNotification()
 	end)
 end
+
+-- Purely informational system messages (chat-enabled, welcome, and summary lines)
+-- should not bump the unibar unread badge, mirroring the channel-tab unread
+local function shouldIgnoreUnreadForMessage(textChatMessage: TextChatMessage?): boolean
+	return (textChatMessage ~= nil and shouldSkipHistoricalMessage(textChatMessage))
+		or (
+			FFlagExpChatSuppressWelcomeMessageUnibarUnread
+			and shouldSuppressUnreadForTabMetadata(textChatMessage and textChatMessage.Metadata)
+		)
+end
+
+TextChatService.MessageReceived:Connect(function(textChatMessage: TextChatMessage)
+	local displayMode = getTextChannelDisplayMode()
+	if not shouldRenderTextChannelInDefaultWindow(textChatMessage.TextChannel, displayMode) then
+		return
+	end
+	if shouldIgnoreUnreadForMessage(textChatMessage) then
+		return
+	end
+	if not chatVisibility then
+		unreadMessages += 1
+		updateUnreadNotification()
+	end
+end)
+
+-- Universe Chat
+if GetFFlagTextChatEnableUniverseChatTabs() then
+	TextChatService.UniverseChatMessageReceived:Connect(function(textChatMessage: TextChatMessage)
+		if shouldIgnoreUnreadForMessage(textChatMessage) then
+			return
+		end
+		if not chatVisibility then
+			unreadMessages += 1
+			updateUnreadNotification()
+		end
+	end)
+end
+
+local lastMessagesChangedValue = 0
+ChatSelector.MessagesChanged:connect(function(messages: number)
+	if not chatVisibility then
+		unreadMessages += messages - lastMessagesChangedValue
+		updateUnreadNotification()
+	end
+	lastMessagesChangedValue = messages
+end)
 
 if not FFlagExpChatWindowSyncUnibar then
 	ChatSelector.ChatActiveChanged:connect(function(visible: boolean)
@@ -351,7 +472,7 @@ function _simulateChat()
 		task.wait(math.random(1, 15))
 		if not chatVisibility then
 			unreadMessages += 1
-			chatChromeIntegration.notification:fireCount(unreadMessages)
+			updateUnreadNotification()
 		end
 	end
 end

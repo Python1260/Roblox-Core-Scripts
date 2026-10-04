@@ -25,22 +25,28 @@ local validateShoes = require(root.validation.validateShoes)
 
 local validateBundleReadyForUpload = require(root.validation.validateBundleReadyForUpload)
 local validateShoesBundleReadyForUpload = require(root.validation.validateShoesBundleReadyForUpload)
+local validateAnimationBundleReadyForUpload = require(root.validation.validateAnimationBundleReadyForUpload)
 local validateDynamicHeadMeshPartFormat = require(root.validation.validateDynamicHeadMeshPartFormat)
 local ValidationManager = require(root.validationSystem.ValidationManager)
-local getFFlagUGCValidationEnableFolderStructure = require(root.flags.getFFlagUGCValidationEnableFolderStructure)
-local getFFlagUGCValidationCombineEntrypointResults = require(root.flags.getFFlagUGCValidationCombineEntrypointResults)
+local getFFlagDebugUGCDisableAssetQualityChecks = require(root.flags.getFFlagDebugUGCDisableAssetQualityChecks)
+local getFFlagUGCValidateBackendInExperienceViaCanPublish =
+	require(root.flags.getFFlagUGCValidateBackendInExperienceViaCanPublish)
+local getFFlagUGCValidationAllowFullVaas = require(root.flags.getFFlagUGCValidationAllowFullVaas)
 local LegacyValidationAdapter = require(root.util.LegacyValidationAdapter)
+local AssetQualityValidationClient = require(root.util.AssetQualityValidationClient)
 local SplitHumanoidRigDescriptionForUpload = require(root.util.SplitHumanoidRigDescriptionForUpload)
-
 local UGCValidation = {}
 
 -- New endpoints, all other .validate endpoints should be removed, then we can move these here and keep init.lua super clean
 UGCValidation.ValidateAsset = ValidationManager.ValidateAsset
 UGCValidation.ValidateFinalizedBundle = ValidationManager.ValidateFinalizedBundle
 UGCValidation.combineResultsIntoLegacy = LegacyValidationAdapter.combineResultsIntoLegacy
-UGCValidation.isFolderStructureEnabled = getFFlagUGCValidationEnableFolderStructure
-UGCValidation.isEntrypointMergingEnabled = getFFlagUGCValidationCombineEntrypointResults
+UGCValidation.mergeLegacyIntoModern = LegacyValidationAdapter.mergeLegacyIntoModern
+UGCValidation.isBackendInExperienceViaCanPublishEnabled = getFFlagUGCValidateBackendInExperienceViaCanPublish
+UGCValidation.shouldSkipAssetQualityChecks = getFFlagDebugUGCDisableAssetQualityChecks
+UGCValidation.isFullVaasEnabled = getFFlagUGCValidationAllowFullVaas
 UGCValidation.SplitHrdInUpload = SplitHumanoidRigDescriptionForUpload.fixUploadInstance
+UGCValidation.AssetQualityValidationClient = AssetQualityValidationClient
 
 -- Old endpoints that we need to remove:
 
@@ -448,6 +454,7 @@ export type PreprocessDataResult = Types.PreprocessDataResult
 -- Client only.
 UGCValidation.validateBundleReadyForUpload = validateBundleReadyForUpload
 UGCValidation.validateShoesBundleReadyForUpload = validateShoesBundleReadyForUpload
+UGCValidation.validateAnimationBundleReadyForUpload = validateAnimationBundleReadyForUpload
 
 UGCValidation.util = {
 	-- Utilities for the bundle metadata, which includes information such as what pieces are needed for what bundles.

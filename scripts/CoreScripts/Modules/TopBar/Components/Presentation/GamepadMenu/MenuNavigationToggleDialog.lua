@@ -9,6 +9,7 @@ local ReactUtils = require(CorePackages.Packages.ReactUtils)
 local React = require(CorePackages.Packages.React)
 local UIBlox = require(CorePackages.Packages.UIBlox)
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 
 local useExternalEvent = ReactUtils.useEventConnection
@@ -18,7 +19,9 @@ local Topbar = script.Parent.Parent.Parent.Parent
 local Modules = Topbar.Parent
 local Chrome = Modules.Chrome
 local ChromeEnabled = require(CorePackages.Workspace.Packages.Chrome).Enabled()
-local GamepadConnector = if (not FFlagEnableConsoleExpControls or ChromeEnabled) then require(Topbar.Components.GamepadConnector) else nil :: never
+local GamepadConnector = if (not FFlagEnableConsoleExpControls or ChromeEnabled)
+	then require(Topbar.Components.GamepadConnector)
+	else nil :: never
 local useObservableValue = require(Chrome.ChromeShared.Hooks.useObservableValue)
 
 local Localization = require(CorePackages.Workspace.Packages.InExperienceLocales).Localization
@@ -39,14 +42,14 @@ type Props = {
 
 local function MenuNavigationToggleDialog(props: Props)
 	local tokens = useDesignTokens()
-	local font = tokens.Semantic.Typography.CaptionHeader
-	local horizontalPadding = tokens.Global.Space_200
-	local verticalPadding = tokens.Global.Space_75
-	local cornerRadius = tokens.Semantic.Radius.Medium
-	local iconSize = tokens.Global.Size_300
-	local backgroundUiColor = tokens.Semantic.Color.BackgroundUi.Contrast
-	local textColor = tokens.Semantic.Color.Text.Emphasis.Color3
-	local iconPadding = tokens.Global.Space_50
+	local font = tokens.Typography.CaptionMedium
+	local horizontalPadding = tokens.Size.Size_400
+	local verticalPadding = tokens.Size.Size_150
+	local cornerRadius = tokens.Radius.Medium
+	local iconSize = tokens.Size.Size_600
+	local backgroundUiColor = tokens.Color.OverMedia.OverMedia_0
+	local textColor = tokens.Color.Content.Emphasis.Color3
+	local iconPadding = tokens.Size.Size_100
 
 	local selectButtonImage = if FFlagLocalizeMenuNavigationToggleDialog
 			and game:GetEngineFeature("GetImageForKeyCode")
@@ -95,14 +98,14 @@ local function MenuNavigationToggleDialog(props: Props)
 		local rightTextSize_ = GetTextSize(rightText, font.FontSize, font.Font, Vector2.new(math.huge, math.huge))
 
 		return leftTextSize_, rightTextSize_
-	end, { font.FontSize, font.Font, leftText, rightText })
+	end, { font.FontSize, font.Font, leftText, rightText } :: { unknown })
 
-	local topbarFocus: GuiObject? | boolean? 
-	if ChromeEnabled then 
-		if FFlagEnableConsoleExpControls then 
+	local topbarFocus: GuiObject? | boolean?
+	if ChromeEnabled then
+		if FFlagEnableConsoleExpControls then
 			topbarFocus = useObservableValue(GamepadConnector:getSelectedCoreObject())
 		end
-	else 
+	else
 		topbarFocus = nil
 	end
 
@@ -112,8 +115,7 @@ local function MenuNavigationToggleDialog(props: Props)
 		AutomaticSize = Enum.AutomaticSize.XY,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = props.Position,
-		Visible = if ChromeEnabled and FFlagEnableConsoleExpControls then topbarFocus ~= nil 
-			else true,
+		Visible = if ChromeEnabled and FFlagEnableConsoleExpControls then topbarFocus ~= nil else true,
 	}, {
 		Corner = React.createElement("UICorner", {
 			CornerRadius = UDim.new(0, cornerRadius),

@@ -25,6 +25,18 @@ export type DisplayLocation =
 	| "DISPLAY_LOCATION_MARKETPLACE_LANDING"
 	| "DISPLAY_LOCATION_SEARCH_RESULTS"
 	| "DISPLAY_LOCATION_SEARCH_LANDING"
+	| "DISPLAY_LOCATION_SPOTLIGHT"
+	| "DISPLAY_LOCATION_HOME"
+	| "DISPLAY_LOCATION_SPOTLIGHT_COLLECTION"
+	| "DISPLAY_LOCATION_PARTY_CHAT"
+	| "DISPLAY_LOCATION_MARKETPLACE_FAVORITES_SAVED"
+	| "DISPLAY_LOCATION_PRE_AUTH_LANDING"
+	| "DISPLAY_LOCATION_SETTINGS"
+	| "DISPLAY_LOCATION_BUILD"
+	| "DISPLAY_LOCATION_COMMUNITY_PROFILE"
+	| "DISPLAY_LOCATION_MARKETPLACE_ITEM_DETAILS"
+	| "DISPLAY_LOCATION_HOME_SORT_DETAIL"
+	| "DISPLAY_LOCATION_SANDBOX"
 	| number -- Unknown
 
 messages.DisplayLocation = {
@@ -53,6 +65,30 @@ messages.DisplayLocation = {
 			return "DISPLAY_LOCATION_SEARCH_RESULTS"
 		elseif value == 11 then
 			return "DISPLAY_LOCATION_SEARCH_LANDING"
+		elseif value == 12 then
+			return "DISPLAY_LOCATION_SPOTLIGHT"
+		elseif value == 13 then
+			return "DISPLAY_LOCATION_HOME"
+		elseif value == 14 then
+			return "DISPLAY_LOCATION_SPOTLIGHT_COLLECTION"
+		elseif value == 15 then
+			return "DISPLAY_LOCATION_PARTY_CHAT"
+		elseif value == 16 then
+			return "DISPLAY_LOCATION_MARKETPLACE_FAVORITES_SAVED"
+		elseif value == 17 then
+			return "DISPLAY_LOCATION_PRE_AUTH_LANDING"
+		elseif value == 18 then
+			return "DISPLAY_LOCATION_SETTINGS"
+		elseif value == 19 then
+			return "DISPLAY_LOCATION_BUILD"
+		elseif value == 20 then
+			return "DISPLAY_LOCATION_COMMUNITY_PROFILE"
+		elseif value == 21 then
+			return "DISPLAY_LOCATION_MARKETPLACE_ITEM_DETAILS"
+		elseif value == 22 then
+			return "DISPLAY_LOCATION_HOME_SORT_DETAIL"
+		elseif value == 23 then
+			return "DISPLAY_LOCATION_SANDBOX"
 		else
 			return nil
 		end
@@ -83,6 +119,30 @@ messages.DisplayLocation = {
 			return 10
 		elseif self == "DISPLAY_LOCATION_SEARCH_LANDING" then
 			return 11
+		elseif self == "DISPLAY_LOCATION_SPOTLIGHT" then
+			return 12
+		elseif self == "DISPLAY_LOCATION_HOME" then
+			return 13
+		elseif self == "DISPLAY_LOCATION_SPOTLIGHT_COLLECTION" then
+			return 14
+		elseif self == "DISPLAY_LOCATION_PARTY_CHAT" then
+			return 15
+		elseif self == "DISPLAY_LOCATION_MARKETPLACE_FAVORITES_SAVED" then
+			return 16
+		elseif self == "DISPLAY_LOCATION_PRE_AUTH_LANDING" then
+			return 17
+		elseif self == "DISPLAY_LOCATION_SETTINGS" then
+			return 18
+		elseif self == "DISPLAY_LOCATION_BUILD" then
+			return 19
+		elseif self == "DISPLAY_LOCATION_COMMUNITY_PROFILE" then
+			return 20
+		elseif self == "DISPLAY_LOCATION_MARKETPLACE_ITEM_DETAILS" then
+			return 21
+		elseif self == "DISPLAY_LOCATION_HOME_SORT_DETAIL" then
+			return 22
+		elseif self == "DISPLAY_LOCATION_SANDBOX" then
+			return 23
 		else
 			return self
 		end
@@ -113,6 +173,30 @@ messages.DisplayLocation = {
 			return "DISPLAY_LOCATION_SEARCH_RESULTS"
 		elseif name == "DISPLAY_LOCATION_SEARCH_LANDING" then
 			return "DISPLAY_LOCATION_SEARCH_LANDING"
+		elseif name == "DISPLAY_LOCATION_SPOTLIGHT" then
+			return "DISPLAY_LOCATION_SPOTLIGHT"
+		elseif name == "DISPLAY_LOCATION_HOME" then
+			return "DISPLAY_LOCATION_HOME"
+		elseif name == "DISPLAY_LOCATION_SPOTLIGHT_COLLECTION" then
+			return "DISPLAY_LOCATION_SPOTLIGHT_COLLECTION"
+		elseif name == "DISPLAY_LOCATION_PARTY_CHAT" then
+			return "DISPLAY_LOCATION_PARTY_CHAT"
+		elseif name == "DISPLAY_LOCATION_MARKETPLACE_FAVORITES_SAVED" then
+			return "DISPLAY_LOCATION_MARKETPLACE_FAVORITES_SAVED"
+		elseif name == "DISPLAY_LOCATION_PRE_AUTH_LANDING" then
+			return "DISPLAY_LOCATION_PRE_AUTH_LANDING"
+		elseif name == "DISPLAY_LOCATION_SETTINGS" then
+			return "DISPLAY_LOCATION_SETTINGS"
+		elseif name == "DISPLAY_LOCATION_BUILD" then
+			return "DISPLAY_LOCATION_BUILD"
+		elseif name == "DISPLAY_LOCATION_COMMUNITY_PROFILE" then
+			return "DISPLAY_LOCATION_COMMUNITY_PROFILE"
+		elseif name == "DISPLAY_LOCATION_MARKETPLACE_ITEM_DETAILS" then
+			return "DISPLAY_LOCATION_MARKETPLACE_ITEM_DETAILS"
+		elseif name == "DISPLAY_LOCATION_HOME_SORT_DETAIL" then
+			return "DISPLAY_LOCATION_HOME_SORT_DETAIL"
+		elseif name == "DISPLAY_LOCATION_SANDBOX" then
+			return "DISPLAY_LOCATION_SANDBOX"
 		else
 			return nil
 		end

@@ -15,7 +15,9 @@ local View = require(Components.View)
 type Bindable<T> = Types.Bindable<T>
 type ColorStyleValue = Types.ColorStyleValue
 
+local Flags = require(Foundation.Utility.Flags)
 local blendTransparencies = require(Foundation.Utility.blendTransparencies)
+local mapBindable = require(Foundation.Utility.mapBindable)
 local useBindable = require(Foundation.Utility.useBindable)
 local withCommonProps = require(Foundation.Utility.withCommonProps)
 local withDefaults = require(Foundation.Utility.withDefaults)
@@ -23,10 +25,9 @@ local withDefaults = require(Foundation.Utility.withDefaults)
 local useKnobVariants = require(script.Parent.useKnobVariants)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 local usePresentationContext = require(Foundation.Providers.Style.PresentationContext).usePresentationContext
-local ColorMode = require(Foundation.Enums.ColorMode)
+local ColorNamespace = require(Foundation.Enums.ColorNamespace)
 local InputSize = require(Foundation.Enums.InputSize)
 type InputSize = InputSize.InputSize
-local Flags = require(Foundation.Utility.Flags)
 
 export type KnobProps = {
 	-- The size variant of the knob
@@ -50,9 +51,17 @@ local function Knob(knobProps: KnobProps)
 	local props = withDefaults(knobProps, defaultProps)
 	local tokens = useTokens()
 	local presentationContext = usePresentationContext()
-	local variantProps =
-		useKnobVariants(tokens, props.size, presentationContext and presentationContext.colorMode == ColorMode.Inverse)
+	local variantProps = useKnobVariants(
+		tokens,
+		props.size,
+		presentationContext and presentationContext.colorNamespace == ColorNamespace.Inverse
+	)
 	local knobStyle = props.style or variantProps.knob.style
+	local knobTransparency = if Flags.FoundationKnobRaisedShadow
+		then mapBindable(knobStyle, function(style: ColorStyleValue)
+			return style.Transparency or 0
+		end)
+		else nil :: never
 
 	local getShadowStyle = React.useCallback(function(style: ColorStyleValue)
 		return {
@@ -85,10 +94,10 @@ local function Knob(knobProps: KnobProps)
 		View,
 		withCommonProps(props, {
 			Size = variantProps.knob.size,
-			isDisabled = if Flags.FoundationToggleVisualUpdate then props.isDisabled else nil,
+			isDisabled = props.isDisabled,
 		}),
 		{
-			Icon = if Flags.FoundationToggleVisualUpdate and props.icon
+			Icon = if props.icon
 				then React.createElement(
 					View,
 					{
@@ -145,17 +154,28 @@ local function Knob(knobProps: KnobProps)
 					ZIndex = 4,
 					testId = `{props.testId}--circle`,
 				}),
-			Shadow = if props.hasShadow and not (Flags.FoundationToggleVisualUpdate and props.isDisabled)
-				then React.createElement(Image, {
-					tag = variantProps.knobShadow.tag,
-					imageStyle = if ReactIs.isBinding(knobStyle)
-						then (knobStyle :: React.Binding<ColorStyleValue>):map(getShadowStyle)
-						else getShadowStyle(knobStyle :: ColorStyleValue),
-					Image = "component_assets/dropshadow_28",
-					Size = variantProps.knobShadow.size,
-					ZIndex = 3,
-					testId = `{props.testId}--shadow`,
-				})
+			Shadow = if props.hasShadow and not props.isDisabled
+				then if Flags.FoundationKnobRaisedShadow
+					then React.createElement(View, {
+						tag = "position-center-center anchor-center-center radius-circle shadow-raised-100",
+						GroupTransparency = knobTransparency,
+						Size = circleSize,
+						Visible = mapBindable(knobTransparency, function(transparency: number)
+							return transparency < 1
+						end),
+						ZIndex = 3,
+						testId = `{props.testId}--shadow`,
+					})
+					else React.createElement(Image, {
+						tag = variantProps.knobShadow.tag,
+						imageStyle = if ReactIs.isBinding(knobStyle)
+							then (knobStyle :: React.Binding<ColorStyleValue>):map(getShadowStyle)
+							else getShadowStyle(knobStyle :: ColorStyleValue),
+						Image = "component_assets/dropshadow_28",
+						Size = variantProps.knobShadow.size,
+						ZIndex = 3,
+						testId = `{props.testId}--shadow`,
+					})
 				else nil,
 		}
 	)

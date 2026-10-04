@@ -6,9 +6,6 @@ local Constants = require(root.Components.Constants)
 local ReportAnythingAnalytics = require(root.ReportAnything.Utility.ReportAnythingAnalytics)
 local AbuseReportBuilder = require(root.ReportAnything.Utility.AbuseReportBuilder)
 
-local FFlagAddPreselectedAbuseTypeAnalytics =
-	require(CorePackages.Workspace.Packages.SharedFlags).FFlagAddPreselectedAbuseTypeAnalytics
-
 local INTERACTION_TYPE_SUBMIT = 1
 local INTERACTION_TYPE_ABANDON = 2
 
@@ -38,7 +35,6 @@ local _getCommonParameters = function(
 		personChangeCount = analyticsState.personChangeCount,
 		reasonChangeCount = analyticsState.reasonChangeCount,
 		captureSceneCount = analyticsState.captureSceneCount,
-		chatLineChangeCount = analyticsState.chatLineChangeCount,
 
 		reasonSelection = analyticsState.reasonSelection,
 		commentAdded = analyticsState.commentAdded,
@@ -53,9 +49,7 @@ local _getCommonParameters = function(
 
 		typeofabuseSelection = analyticsState.typeofabuseSelection, -- will be overwritten
 		memoryRequirementMet = analyticsState.memoryRequirementMet,
-		preselectedAbuseSelection = if FFlagAddPreselectedAbuseTypeAnalytics
-			then analyticsState.preselectedAbuseSelection
-			else nil,
+		preselectedAbuseSelection = analyticsState.preselectedAbuseSelection,
 	} :: Types.AnalyticsArguments -- Cryo will add the rest below
 
 	parameters = Cryo.Dictionary.join(parameters, reportAnythingAnalyticsParameters)

@@ -25,14 +25,16 @@ local React = require(CorePackages.Packages.React)
 local RobloxTranslator = require(CorePackages.Workspace.Packages.RobloxTranslator)
 local SettingsShowSignal = require(CorePackages.Workspace.Packages.CoreScriptsCommon).SettingsShowSignal
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local Signals = require(CorePackages.Packages.Signals)
 local SignalsReact = require(CorePackages.Packages.SignalsReact)
 local UIBlox = require(CorePackages.Packages.UIBlox)
 
 -- Flags
 local isSpatial = require(CorePackages.Workspace.Packages.AppCommonLib).isSpatial
-
-local FFlagEnableUnibarFtuxTooltips = SharedFlags.FFlagEnableUnibarFtuxTooltips
 local FFlagShowUnibarOnVirtualCursor = SharedFlags.FFlagShowUnibarOnVirtualCursor
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local FFlagSideSheetFocusNav = SharedFlags.FFlagSideSheetFocusNav
+local FFlagEnablePlaytestModeUnibar = SharedFlags.FFlagEnablePlaytestModeUnibar
 
 -- Components
 local View = Foundation.View
@@ -40,6 +42,11 @@ local Icon = Foundation.Icon
 local ControlState = Foundation.Enums.ControlState
 local useTokens = Foundation.Hooks.useTokens
 local useCursor = Foundation.Hooks.useCursor
+
+local useIsPlaytestMode = require(Chrome.ChromeShared.Hooks.useIsPlaytestMode)
+
+local InExperienceSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet)
+local getSideSheetVisibility = InExperienceSideSheet.getSideSheetVisibility
 
 local menuIconHoveredSignal = require(TopBar.Components.Presentation.menuIconHoveredSignal)
 local BadgeOver12 = require(TopBar.Components.Presentation.BadgeOver12)
@@ -63,6 +70,8 @@ local shouldDisableBottomBarInteraction = function()
     end
 end
 
+local lightTokens = if FFlagEnablePlaytestModeUnibar then Foundation.Utility.getTokens(Foundation.Enums.ColorMode.Light) else nil
+
 local BADGE_INDENT = 1
 
 local DEFAULT_DELAY_TIME = 0.65
@@ -73,6 +82,8 @@ local TOGGLE_MENU_HOTKEYS = { Enum.KeyCode.Escape }
 local BADGE_INDENT = 1
 local BADGE_OFFSET = 4
 
+type Tokens = Foundation.Tokens
+
 type MenuIconProps = {
 	menuIconRef: React.RefObject<GuiObject?>?,
 	unibarMenuRef: React.RefObject<GuiObject?>?,
@@ -82,6 +93,20 @@ type MenuIconProps = {
 
 local function MenuIcon(props: MenuIconProps)
     local tokens = useTokens()
+
+	local isPlaytestMode
+	if FFlagEnablePlaytestModeUnibar then
+		isPlaytestMode = useIsPlaytestMode()
+	end
+
+    local iconForegroundStyle = if FFlagEnablePlaytestModeUnibar and isPlaytestMode 
+            then (lightTokens :: Tokens).Color.Content.Emphasis
+        elseif isSideSheetEnabled 
+            then tokens.Color.ActionEmphasis.Foreground
+        else nil
+	local iconBackgroundStyle = if FFlagEnablePlaytestModeUnibar and isPlaytestMode 
+        then (lightTokens :: Tokens).Color.OverMedia.OverMedia_0
+        else tokens.Color.OverMedia.OverMedia_0 
 
 	local uiScale = SignalsReact.useSignalState(function(scope) 
 		return Display.GetDisplayStore(scope).getUIScale(scope)
@@ -151,6 +176,14 @@ local function MenuIcon(props: MenuIconProps)
 			animateMenuIcon(if isOpen then iconSizeStates.menuOpen else iconSizeStates.menuClosed)
 		end)
 
+		local disposeSideSheetVisibilityEffect = nil
+		if isSideSheetEnabled then
+			disposeSideSheetVisibilityEffect = Signals.createEffect(function(scope)
+				local isOpen = getSideSheetVisibility(scope)
+				animateMenuIcon(if isOpen then iconSizeStates.menuOpen else iconSizeStates.menuClosed)
+			end)
+		end
+
         local triggerMenuIconConn
         if props.menuIconRef then
             triggerMenuIconConn = ChromeService:onTriggerMenuIcon():connect(function()
@@ -160,6 +193,9 @@ local function MenuIcon(props: MenuIconProps)
         end
 
         return function()
+			if isSideSheetEnabled and disposeSideSheetVisibilityEffect then
+				disposeSideSheetVisibilityEffect()
+			end
             preferredTransparencyConn:Disconnect()
             settingsShowConn:Disconnect()
             if triggerMenuIconConn then
@@ -175,10 +211,7 @@ local function MenuIcon(props: MenuIconProps)
                 return
             end
             isHovering.current = true
-
-            if FFlagEnableUnibarFtuxTooltips then
-                menuIconHoveredSignal:fire(true)
-            end
+            menuIconHoveredSignal:fire(true)
 
             task.delay(DEFAULT_DELAY_TIME, function()
                 if isHovering.current and not clickLatched.current then
@@ -261,16 +294,20 @@ local function MenuIcon(props: MenuIconProps)
     local renderCallback = React.useCallback(function(triggerPointChanged) 
         return React.createElement(View, {
             tag = "radius-circle aspect-1-1",
-            backgroundStyle = preferredTransparency:map(function(trans) 
-                local color = tokens.Color.OverMedia.OverMedia_0
-                color.Transparency = color.Transparency * trans
-                return color
-            end),
+            backgroundStyle = if not isSideSheetEnabled 
+				then preferredTransparency:map(function(trans) 
+					local color = iconBackgroundStyle
+					color.Transparency = color.Transparency * trans
+					return color
+				end) 
+				else nil,
             Size = UDim2.fromScale(1, 1),
             NextSelectionRight = nextSelectionRight,
-            selection = {
+            selection = if not (isSideSheetEnabled and FFlagSideSheetFocusNav) then {
                 Selectable = true,
                 SelectionImageObject = menuIconCursor
+            } else {
+                Selectable = false,
             },
             selectionGroup = {
                 SelectionBehaviorLeft = Enum.SelectionBehavior.Stop,
@@ -280,8 +317,8 @@ local function MenuIcon(props: MenuIconProps)
             ref = props.menuIconRef,
             onAbsoluteSizeChanged = triggerPointChanged,
             onAbsolutePositionChanged = triggerPointChanged,
-            onActivated = menuIconActivated,
-            onStateChanged = menuIconStateChanged,
+            onActivated = if not isSideSheetEnabled then menuIconActivated else nil,
+            onStateChanged = if not isSideSheetEnabled then menuIconStateChanged else nil,
         }, {
             BadgeOver12 = if props.showBadgeOver12 then
                 React.createElement(BadgeOver12, {
@@ -292,9 +329,10 @@ local function MenuIcon(props: MenuIconProps)
                 size = menuIconSize.size,
                 Position = UDim2.fromScale(0.5, 0.5),
                 AnchorPoint = Vector2.new(0.5, 0.5),
+				style = iconForegroundStyle,
             })
         })
-    end, { preferredTransparency, nextSelectionRight, menuIconCursor, menuIconActivated, menuIconStateChanged, props.showBadgeOver12 } :: {unknown})
+    end, { preferredTransparency, nextSelectionRight, menuIconCursor, menuIconActivated, menuIconStateChanged, props.showBadgeOver12, iconForegroundStyle, iconBackgroundStyle } :: {unknown})
 
     return renderWithTooltipCompat(tooltipProps, tooltipOptions, renderCallback)
 end

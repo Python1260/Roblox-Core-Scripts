@@ -10,27 +10,23 @@ local SetAssetFromBundleInfo = require(InspectAndBuyFolder.Actions.SetAssetFromB
 local SetAvatarPreviewDetails = require(InspectAndBuyFolder.Actions.SetAvatarPreviewDetails)
 local SetFavoriteAsset = require(InspectAndBuyFolder.Actions.SetFavoriteAsset)
 local UpdateBulkPuchaseResults = require(InspectAndBuyFolder.Actions.UpdateBulkPuchaseResults)
-local AvatarExperienceCommon = require(CorePackages.Workspace.Packages.AvatarExperienceCommon)
-local ItemType = AvatarExperienceCommon.Enums.ItemTypeEnum
+local AvatarExperienceModel = require(CorePackages.Workspace.Packages.AvatarExperienceModel)
+local ItemType = AvatarExperienceModel.Enums.ItemTypeEnum
 local FFlagAXEnableFetchAvatarPreview = require(InspectAndBuyFolder.Flags.FFlagAXEnableFetchAvatarPreview)
 local FFlagAXEnableInspectAndBuyBulkPurchase =
 	require(CorePackages.Workspace.Packages.SharedFlags).FFlagAXEnableInspectAndBuyBulkPurchase
-local FFlagAXEnableFavoritesInfoForAssetsAndBundles =
-	require(InspectAndBuyFolder.Flags.FFlagAXEnableFavoritesInfoForAssetsAndBundles)
 
 return Rodux.createReducer({}, {
 	--[[
 		Sets the favorite status of an asset.
 	]]
-	[SetFavoriteAsset.name] = if FFlagAXEnableFavoritesInfoForAssetsAndBundles
-		then function(state, action)
-			local prevAsset = state[action.id] or {}
-			local nextAsset = Cryo.Dictionary.join({}, prevAsset)
-			state[action.id] =
-				Cryo.Dictionary.join(nextAsset, AssetInfo.fromGetFavoriteForAsset(action.id, action.isFavorite))
-			return state
-		end
-		else nil,
+	[SetFavoriteAsset.name] = function(state, action)
+		local prevAsset = state[action.id] or {}
+		local nextAsset = Cryo.Dictionary.join({}, prevAsset)
+		state[action.id] =
+			Cryo.Dictionary.join(nextAsset, AssetInfo.fromGetFavoriteForAsset(action.id, action.isFavorite))
+		return state
+	end,
 	--[[
 		Updates asset ownerships based on the bulk purchase results.
 	]]

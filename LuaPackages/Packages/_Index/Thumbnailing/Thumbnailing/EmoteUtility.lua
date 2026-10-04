@@ -12,7 +12,9 @@ local RbxAnalyticsService = game:GetService("RbxAnalyticsService")
 local FStringEmoteUtilityFallbackKeyframeSequenceAssetId =
 	game:DefineFastString("EmoteUtilityFallbackKeyframeSequenceAssetId", "10921261056")
 local FFlagEmoteUtilityDefaultMoodFromCharacter = game:DefineFastFlag("EmoteUtilityDefaultMoodFromCharacter", false)
-local FFlagEmoteUtilitySupportAJU = game:DefineFastFlag("EmoteUtilitySupportAJU", false)
+local FFlagEmoteUtilityUseIdleAnimationFallback = game:DefineFastFlag("EmoteUtilityUseIdleAnimationFallback", false)
+local FFlagEmoteUtilityReportPoseAnimationDownloadFailure =
+	game:DefineFastFlag("EmoteUtilityReportPoseAnimationDownloadFailure", false)
 
 local module = {}
 
@@ -45,7 +47,7 @@ module.FallbackKeyframeSequenceAssetId = FStringEmoteUtilityFallbackKeyframeSequ
 module.debugLoadAssetsFromFiles = false
 module.mapAssetIdToFileName = nil :: MapAssetIdToFileNameType?
 
-module.EmoteUtilitySupportAJU = FFlagEmoteUtilitySupportAJU
+module.EmoteUtilitySupportAJU = true
 
 -- In cases where no asset id is provided for posing the avatar, fall back a pose based on this animation.
 -- Note: this only works on prod, not sitetest or gametest.
@@ -110,15 +112,18 @@ local function isOnRCC(): boolean
 	return success and isRCC
 end
 
+local function getAnalyticsTarget(): string
+	if isOnRCC() then
+		return "RCC"
+	else
+		return "Client"
+	end
+end
+
 -- Helper for assembling & sending a report counter.
 local function reportCounter(actionName: string, success: boolean)
-	local prefix
+	local prefix = getAnalyticsTarget()
 	local suffix
-	if isOnRCC() then
-		prefix = "RCC"
-	else
-		prefix = "Client"
-	end
 	if success then
 		suffix = "Success"
 	else
@@ -168,16 +173,9 @@ local function getAnimationAndIsIdle(animationAssetIdOrUrl: AnimationAssetIdOrUr
 	-- If we didn't succeed, send more details of failure.
 	-- Also return nil.
 	if not success or not animation then
-		local target
-		if isOnRCC() then
-			target = "RCC"
-		else
-			target = "Client"
-		end
-
 		local eventCtx = "EmoteUtility_getPoseAsset"
 		local eventName = actionName .. "_Failed"
-		RbxAnalyticsService:SendEventDeferred(target, eventCtx, eventName, {
+		RbxAnalyticsService:SendEventDeferred(getAnalyticsTarget(), eventCtx, eventName, {
 			animationAssetIdOrUrl = animationAssetIdOrUrl,
 		})
 
@@ -231,21 +229,45 @@ local function getAnimationClipByAssetId(animationClipAssetId: string): Animatio
 	reportCounter("EmoteUtility_GetAnimationClipAsync", success)
 
 	if not success then
-		local targetName
-		if isOnRCC() then
-			targetName = "RCC"
-		else
-			targetName = "Client"
-		end
 		local eventCtx = "EmoteUtility_GetAnimationClip"
 		local eventName = "EmoteUtility_GetAnimationClip_GetAnimationClipAsyncFailed"
-		RbxAnalyticsService:SendEventDeferred(targetName, eventCtx, eventName, {
+		RbxAnalyticsService:SendEventDeferred(getAnalyticsTarget(), eventCtx, eventName, {
 			keyframeSequenceId = animationClipAssetId,
 		})
 		return nil
 	end
 
 	return animationClip
+end
+
+local function getThumbnailKeyframeFromAnimationOrUrl(
+	animationOrUrl: Animation | string,
+	rotationDegrees: number,
+	defaultThumbnailKeyframeNumber: number?
+): Keyframe?
+	local thumbnailKeyframeNumber = defaultThumbnailKeyframeNumber
+	local thumbnailTime = nil
+	local animationClip
+	if typeof(animationOrUrl) == "string" then
+		animationClip = getAnimationClipByAssetId(animationOrUrl)
+	else
+		thumbnailKeyframeNumber =
+			module.GetNumberValueWithDefault(animationOrUrl, "ThumbnailKeyframe", defaultThumbnailKeyframeNumber)
+		thumbnailTime = module.GetNumberValueWithDefault(animationOrUrl, "ThumbnailTime", nil)
+		animationClip = module.GetAnimationClip(animationOrUrl)
+	end
+	if not animationClip then
+		return nil
+	end
+
+	if animationClip:IsA("KeyframeSequence") then
+		return module.GetThumbnailKeyframe(thumbnailKeyframeNumber, animationClip :: KeyframeSequence, rotationDegrees)
+	elseif animationClip:IsA("CurveAnimation") then
+		return module.GetThumbnailKeyframeFromCurve(thumbnailTime, animationClip :: CurveAnimation, rotationDegrees)
+	else
+		error("Unsupported Animation type:" .. animationClip.ClassName)
+		return nil
+	end
 end
 
 -- It's possible that a Keyframe contains invalid NumberPoses (e.g APIs not yet enabled)
@@ -483,9 +505,9 @@ local function getMainThumbnailKeyframe(
 	useRotationInPoseAsset: boolean,
 	useFallbackAnimations: boolean?
 ): (Keyframe?, boolean, AnimationAssetIdOrUrl?)
-	local thumbnailKeyframe
-	local givenPoseTrumpsToolPose = false
-	local finalAnimationAssetIdOrUrl = nil
+	local thumbnailKeyframe: Keyframe?
+	local givenPoseTrumpsToolPose: boolean = false
+	local finalAnimationAssetIdOrUrl: AnimationAssetIdOrUrl? = nil
 
 	if animationAssetIdOrUrl then
 		finalAnimationAssetIdOrUrl = animationAssetIdOrUrl
@@ -506,51 +528,35 @@ local function getMainThumbnailKeyframe(
 			givenPoseTrumpsToolPose = true
 		end
 
-		local thumbnailKeyframeNumber = module.GetNumberValueWithDefault(animation, "ThumbnailKeyframe", nil)
-
-		local thumbnailTime = module.GetNumberValueWithDefault(animation, "ThumbnailTime", nil)
-
-		local rotationDegrees = 0
+		local rotationDegrees: number = 0
 		if useRotationInPoseAsset then
 			rotationDegrees = module.GetNumberValueWithDefault(animation, "ThumbnailCharacterRotation", 0) :: number
 		end
 
-		local emoteAnimationClip = module.GetAnimationClip(animation)
-		if emoteAnimationClip then
-			if emoteAnimationClip:IsA("KeyframeSequence") then
-				thumbnailKeyframe =
-					module.GetThumbnailKeyframe(thumbnailKeyframeNumber, emoteAnimationClip, rotationDegrees)
-			elseif emoteAnimationClip:IsA("CurveAnimation") then
-				thumbnailKeyframe =
-					module.GetThumbnailKeyframeFromCurve(thumbnailTime, emoteAnimationClip, rotationDegrees)
-			else
-				error("Unsupported Animation type:" .. emoteAnimationClip.ClassName)
-			end
-		end
+		thumbnailKeyframe = getThumbnailKeyframeFromAnimationOrUrl(animation, rotationDegrees)
 	else
 		if useFallbackAnimations then
-			local keyframeSequenceAssetUrl = module.FALLBACK_KEYFRAME_SEQUENCE_ASSET_URL
+			local poseAnimationOrUrl: Animation | string = module.FALLBACK_KEYFRAME_SEQUENCE_ASSET_URL
 			local animateScript = character:FindFirstChild("Animate")
 			if animateScript then
-				local equippedPoseValue = animateScript:FindFirstChild("Pose") or animateScript:FindFirstChild("pose")
-				if equippedPoseValue then
-					local poseAnim = equippedPoseValue:FindFirstChildOfClass("Animation")
-					if poseAnim then
-						keyframeSequenceAssetUrl = poseAnim.AnimationId
-					end
+				local equippedPoseValue: Instance? = animateScript:FindFirstChild("Pose")
+					or animateScript:FindFirstChild("pose")
+				if not equippedPoseValue and FFlagEmoteUtilityUseIdleAnimationFallback then
+					equippedPoseValue = animateScript:FindFirstChild("Idle") or animateScript:FindFirstChild("idle")
+				end
+				local equippedPoseAnimation: Animation? = if equippedPoseValue
+					then equippedPoseValue:FindFirstChildOfClass("Animation")
+					else nil
+				if equippedPoseAnimation then
+					poseAnimationOrUrl = equippedPoseAnimation
 				end
 			end
 
-			finalAnimationAssetIdOrUrl = keyframeSequenceAssetUrl
-
-			local poseAnimationClip = getAnimationClipByAssetId(keyframeSequenceAssetUrl)
-			if poseAnimationClip then
-				if not poseAnimationClip:IsA("KeyframeSequence") then
-					-- unexpected bad situation: we can't seem to find a keyframe.
-					return nil, false, finalAnimationAssetIdOrUrl
-				end
-				local poseKeyframeSequence = poseAnimationClip :: KeyframeSequence
-				thumbnailKeyframe = poseKeyframeSequence:GetKeyframes()[1] :: Keyframe
+			thumbnailKeyframe = getThumbnailKeyframeFromAnimationOrUrl(poseAnimationOrUrl, 0, 1)
+			if typeof(poseAnimationOrUrl) == "string" then
+				finalAnimationAssetIdOrUrl = poseAnimationOrUrl
+			else
+				finalAnimationAssetIdOrUrl = poseAnimationOrUrl.AnimationId
 			end
 		end
 	end
@@ -562,7 +568,6 @@ end
 	Get keyframe to pose face based on mood asset id.
 ]]
 local function getMoodThumbnailKeyframe(moodAssetIdOrUrl: AnimationAssetIdOrUrl?): Keyframe?
-	local thumbnailKeyframe
 	if not moodAssetIdOrUrl then
 		return nil
 	end
@@ -576,22 +581,7 @@ local function getMoodThumbnailKeyframe(moodAssetIdOrUrl: AnimationAssetIdOrUrl?
 	end
 	assert(animation, "animation is non-nil. Silence type checker.")
 
-	local thumbnailKeyframeNumber = module.GetNumberValueWithDefault(animation, "ThumbnailKeyframe", nil)
-
-	local thumbnailTime = module.GetNumberValueWithDefault(animation, "ThumbnailTime", nil)
-
-	local emoteAnimationClip = module.GetAnimationClip(animation)
-	if emoteAnimationClip then
-		if emoteAnimationClip:IsA("KeyframeSequence") then
-			thumbnailKeyframe = module.GetThumbnailKeyframe(thumbnailKeyframeNumber, emoteAnimationClip, 0)
-		elseif emoteAnimationClip:IsA("CurveAnimation") then
-			thumbnailKeyframe = module.GetThumbnailKeyframeFromCurve(thumbnailTime, emoteAnimationClip, 0)
-		else
-			error("Unsupported Animation type:" .. emoteAnimationClip.ClassName)
-		end
-	end
-
-	return thumbnailKeyframe
+	return getThumbnailKeyframeFromAnimationOrUrl(animation, 0)
 end
 
 --[[
@@ -697,7 +687,26 @@ local function applyCFrame(part0: BasePart, part1: BasePart, joint: AnimatableJo
 		local attach1 = (joint :: AnimationConstraint).Attachment1 :: Attachment
 		part1.CFrame = part0.CFrame * getAttachmentCFrame(attach0) * poseCFrame * getAttachmentCFrame(attach1):Inverse()
 	elseif joint:IsA("Motor6D") then
-		(joint :: Motor6D).C1 = (joint :: Motor6D).C1 * poseCFrame:Inverse()
+		local c0 = (joint :: Motor6D).C0
+		local c1 = (joint :: Motor6D).C1
+		part1.Anchored = true
+		part1.CFrame = part0.CFrame * c0 * poseCFrame * c1:Inverse()
+	end
+end
+
+local function getJointPose(joint: AnimatableJoint): CFrame
+	if joint:IsA("AnimationConstraint") then
+		return (joint :: AnimationConstraint).Transform
+	elseif joint:IsA("Motor6D") then
+		local motor = joint :: Motor6D
+		local pose = motor.Transform
+		if motor.CurrentAngle ~= 0 then
+			pose = pose * CFrame.Angles(0, 0, motor.CurrentAngle)
+		end
+		return pose
+	else
+		error("Unsupported joint type:" .. joint.ClassName)
+		return CFrame.new()
 	end
 end
 
@@ -706,50 +715,43 @@ end
 	We have to play the animation a bit to get things to jump into place.
 ]]
 module.ForceAnimationToStep = function(character: Model)
-	if FFlagEmoteUtilitySupportAJU then
-		local partsToProcess = { character:FindFirstChild("HumanoidRootPart") :: BasePart }
-		local visited: { [BasePart]: boolean } = {}
-		local jointQueue: { { part0: BasePart, part1: BasePart, joint: Instance } } = {}
+	local partsToProcess = { character:FindFirstChild("HumanoidRootPart") :: BasePart }
+	local visited: { [BasePart]: boolean } = {}
+	local jointQueue: { { part0: BasePart, part1: BasePart, joint: AnimatableJoint } } = {}
 
-		while #partsToProcess > 0 do
-			local currentPart = table.remove(partsToProcess, 1) :: BasePart
-			if visited[currentPart] then
+	while #partsToProcess > 0 do
+		local currentPart = table.remove(partsToProcess, 1) :: BasePart
+		if visited[currentPart] then
+			continue
+		end
+		visited[currentPart] = true
+
+		for _, joint in currentPart:GetJoints() do
+			if not joint:IsA("Motor6D") and not joint:IsA("AnimationConstraint") then
 				continue
 			end
-			visited[currentPart] = true
 
-			for _, joint in currentPart:GetJoints() do
-				local part0, part1 = getJointParts(joint)
-
-				if part0 == currentPart and part1 and not visited[part1 :: BasePart] then
-					table.insert(jointQueue, { part0 = currentPart, part1 = part1 :: BasePart, joint = joint })
-					table.insert(partsToProcess, part1 :: BasePart)
-				end
+			local part0, part1 = getJointParts(joint)
+			if part0 == currentPart and part1 and not visited[part1 :: BasePart] then
+				table.insert(jointQueue, { part0 = currentPart, part1 = part1 :: BasePart, joint = joint })
+				table.insert(partsToProcess, part1 :: BasePart)
 			end
 		end
+	end
 
-		-- Disable all AnimationConstraints so they don't fight
-		-- the CFrame placements we're about to make.
-		for _, desc in character:GetDescendants() do
-			if desc:IsA("AnimationConstraint") then
-				desc.Enabled = false
-			end
+	-- Disable all AnimationConstraints so they don't fight
+	-- the CFrame placements we're about to make.
+	for _, desc in character:GetDescendants() do
+		if desc:IsA("AnimationConstraint") then
+			desc.Enabled = false
 		end
+	end
 
-		for _, entry in jointQueue do
-			local joint = entry.joint
-			if joint:IsA("Motor6D") or joint:IsA("AnimationConstraint") then
-				local poseCFrame: CFrame = (joint :: any).Transform
-				applyCFrame(entry.part0, entry.part1, joint :: AnimatableJoint, poseCFrame)
-			end
-		end
-	else
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			local animator = humanoid:FindFirstChildOfClass("Animator")
-			if animator then
-				animator:StepAnimations(0.1)
-			end
+	for _, entry in jointQueue do
+		local joint = entry.joint
+		if joint:IsA("Motor6D") or joint:IsA("AnimationConstraint") then
+			local poseCFrame: CFrame = getJointPose(joint)
+			applyCFrame(entry.part0, entry.part1, joint :: AnimatableJoint, poseCFrame)
 		end
 	end
 end
@@ -798,7 +800,7 @@ module.GetJointBetween = function(part0: Part?, part1: Part?): AnimatableJoint?
 	for _, obj in part1:GetChildren() do
 		if obj:IsA("Motor6D") and obj.Part0 == part0 then
 			return obj
-		elseif FFlagEmoteUtilitySupportAJU and obj:IsA("AnimationConstraint") and obj.Part0 == part0 then
+		elseif obj:IsA("AnimationConstraint") and obj.Part0 == part0 then
 			return obj
 		end
 	end
@@ -1109,7 +1111,7 @@ module.SetPlayerCharacterNeutralPose = function(character: Model)
 		if instance:IsA("Motor6D") then
 			local motor6D = instance :: Motor6D
 			motor6D.Transform = CFrame.new()
-		elseif FFlagEmoteUtilitySupportAJU and instance:IsA("AnimationConstraint") then
+		elseif instance:IsA("AnimationConstraint") then
 			instance.Transform = CFrame.new()
 		end
 
@@ -1362,7 +1364,7 @@ module.SetPlayerCharacterPoseWithMoodFallback = function(
 	moodAssetId: number?,
 	ignoreRotationInPoseAsset: boolean?,
 	forCloseup: boolean?
-)
+): string?
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
 		return
@@ -1373,8 +1375,17 @@ module.SetPlayerCharacterPoseWithMoodFallback = function(
 
 	local keyframesForPose =
 		module.LoadKeyframesForPose(character, animationAssetId, moodAssetId, ignoreRotationInPoseAsset, forCloseup)
-
 	module.ApplyKeyframesForPose(character, keyframesForPose)
+
+	if not FFlagEmoteUtilityReportPoseAnimationDownloadFailure or not keyframesForPose then
+		return nil
+	end
+
+	return humanoid.RigType == Enum.HumanoidRigType.R15
+			and animationAssetId ~= nil
+			and keyframesForPose.poseKeyframe == nil
+			and "Failed to download requested pose animation"
+		or nil
 end
 
 --[[

@@ -7,6 +7,7 @@ local UIBlox = Core.Parent
 local getTextSizeOffset = require(UIBlox.Utility.getTextSizeOffset)
 
 local Packages = UIBlox.Parent
+local Cryo = require(Packages.Cryo)
 local React = require(Packages.React)
 local Roact = require(Packages.Roact)
 
@@ -32,14 +33,17 @@ local StyleTypes = require(script.Parent.StyleTypes)
 local TokenPackage = require(script.Parent.Tokens)
 local StyleContext = require(UIBlox.Core.Style.StyleContext)
 local Logger = require(UIBlox.Logger)
+local UIBloxConfig = require(UIBlox.UIBloxConfig)
 
 local getTokens = TokenPackage.getTokens
-local validateTokens = TokenPackage.validateTokens
 local getFoundationTokens = TokenPackage.getFoundationTokens
 local TokensMappers = TokenPackage.Mappers
+local foundationSurfaceTokensDiffer = require(script.Parent.foundationSurfaceTokensDiffer)
 
 type AppStyle = StyleTypes.AppStyle
+type BaseTokens = StyleTypes.BaseTokens
 type Tokens = StyleTypes.Tokens
+type RbxDesignFoundationsV4Tokens = StyleTypes.RbxDesignFoundationsV4Tokens
 type ThemeName = Constants.ThemeName
 type FontName = Constants.FontName
 type DeviceType = Constants.DeviceType
@@ -81,17 +85,30 @@ local function AppStyleProvider(props: Props)
 	local style: StyleProps = Object.assign({}, defaultStyle, props.style)
 	local themeName, setThemeName = React.useState(style.themeName)
 	local scale = style.settings and style.settings.scale
-	local tokens: Tokens = getTokens(style.deviceType, themeName, scale) :: Tokens
+	local baseTokens: BaseTokens = getTokens(style.deviceType, themeName, scale)
 	local textSizeOffset, setTextSizeOffset = React.useState(0)
 	local theme = getThemeFromName(themeName)
-	local foundationProviderPresent = useTokens().Config ~= nil
+	local contextTokens = useTokens()
+	local foundationProviderPresent = contextTokens.Config ~= nil
 
-	local foundationTokens = getFoundationTokens(style.deviceType, themeName)
-	tokens = TokensMappers.mapColorTokensToFoundation(tokens, foundationTokens)
-	theme = TokensMappers.mapThemeToFoundation(theme, foundationTokens)
+	local foundationTokens: RbxDesignFoundationsV4Tokens = getFoundationTokens(style.deviceType, themeName)
 
-	-- TODO: Add additional validation for tokens here to make it safe. We can remove the call after design token stuff is fully stable.
-	assert(validateTokens(tokens), "Invalid tokens!")
+	-- Merge foundationTokens with contextTokens: contextTokens has Color/Config with overrides,
+	-- foundationTokens has Semantic/Global/Component that mapColorTokensToFoundation needs
+	local mergedTokens = if foundationProviderPresent
+		then Cryo.Dictionary.join(foundationTokens, contextTokens)
+		else foundationTokens
+	baseTokens = TokensMappers.mapColorTokensToFoundation(baseTokens, mergedTokens)
+
+	theme =
+		TokensMappers.mapThemeToFoundation(theme, if foundationProviderPresent then contextTokens else foundationTokens)
+	-- Use contextTokens (reactive with tokenOverrides) when FoundationProvider is present,
+	-- otherwise fall back to static foundationTokens
+	local tokens: Tokens = TokensMappers.addFoundationFlatKeys(
+		baseTokens,
+		if foundationProviderPresent then contextTokens else foundationTokens
+	)
+
 	local appStyle: AppStyle = {
 		Font = getFontFromName(style.fontName, tokens),
 		Theme = theme,
@@ -116,9 +133,13 @@ local function AppStyleProvider(props: Props)
 	end, { isMountedRef, style.themeName, setThemeName } :: { any })
 
 	React.useEffect(function()
-		local success, newTextSizeOffset = getTextSizeOffset(tokens.Semantic.Typography.Body.Font)
+		local success, newTextSizeOffset = getTextSizeOffset(
+			if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+				then tokens.Typography.BodyLarge.Font
+				else tokens.Semantic.Typography.Body.Font
+		)
 		if success then
-			setTextSizeOffset(newTextSizeOffset)
+			setTextSizeOffset(newTextSizeOffset :: number)
 		end
 	end, { style.settings.preferredTextSize })
 
@@ -147,6 +168,10 @@ local function AppStyleProvider(props: Props)
 			},
 			styleMetadata = {
 				ThemeName = themeNameConstant,
+				-- True when `Color.Surface` Surface_0/100/200/300 differ from static `getFoundationTokens`
+				HasSurfaceOverrides = if foundationProviderPresent
+					then foundationSurfaceTokensDiffer(foundationTokens, contextTokens)
+					else false,
 			},
 		},
 	}, Roact.oneChild(props.children :: any))

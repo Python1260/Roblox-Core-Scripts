@@ -21,41 +21,53 @@ local Workspace = game:GetService("Workspace")
 local StarterPlayer = game:GetService("StarterPlayer")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
 local VRService = game:GetService("VRService")
+local ContextActionService = game:GetService("ContextActionService")
 
 -- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
 local CommonUtils = require(script.Parent:WaitForChild("CommonUtils"))
 local FlagUtil = CommonUtils.get("FlagUtil")
-local FFlagUserPlayerModuleHiddenAPI = FlagUtil.getUserFlag("UserPlayerModuleHiddenAPI")
-local FFlagUserPSActionsPathAware = FlagUtil.getUserFlag("UserPSActionsPathAware")
-local FFlagUserPlayerScriptsControlModuleModernize = FlagUtil.getUserFlag("UserPlayerScriptsControlModuleModernize")
-local FFlagUserPSSpecifySimulationFrequency = FlagUtil.getUserFlag("UserPSSpecifySimulationFrequency")
-local FFlagUserPlayerScriptsClickToMoveUsesIAS = FlagUtil.getUserFlag("UserPlayerScriptsClickToMoveUsesIAS")
-
+local FFlagUserPlayerScriptsCCLIntegrationD = FlagUtil.getUserFlag("UserPlayerScriptsCCLIntegrationD")
+local FFlagUserPlayerScriptsBindActivateOnIAS = FlagUtil.getUserFlag("UserPlayerScriptsBindActivateOnIAS")
+local FFlagUserPlayerScriptsFireThroughScriptableBindings = FlagUtil.getUserFlag("UserPlayerScriptsFireThroughScriptableBindings")
+local FFlagUserPlayerScriptsUseReplicatedCameraAPI = FlagUtil.getUserFlag("UserPlayerScriptsUseReplicatedCameraAPI")
+local FFlagUserPlayerScriptsStopFireCameraAction = FlagUtil.getUserFlag("UserPlayerScriptsStopFireCameraAction")
+local FFlagUserPlayerScriptsSAuthDirectAPIs = FlagUtil.getUserFlag("UserPlayerScriptsSAuthDirectAPIs2")
+local FFlagUserPlayerScriptsPlayerControlState = FlagUtil.getUserFlag("UserPlayerScriptsPlayerControlState2")
+local FFlagUserPlayerScriptsTaskDeferSimulation = FlagUtil.getUserFlag("UserPlayerScriptsTaskDeferSimulation")
+local FFlagUserPlayerScriptsFixSAuthRenderStepMove = FlagUtil.getUserFlag("UserPlayerScriptsFixSAuthRenderStepMove")
+local FFlagUserPlayerScriptsSupportMicroGamepad = FlagUtil.getUserFlag("UserPlayerScriptsSupportMicroGamepad")
+local FFlagUserAbilitiesUserInterfaceC = FlagUtil.getUserFlag("UserAbilitiesUserInterfaceC")
 local CONNECTIONS = {
 	SERVER_AUTHORITY_CHANGED = "SERVER_AUTHORITY_CHANGED",
 }
 
 local ActionController = require(script:WaitForChild("ActionController"))
+local InputReplication = if FFlagUserPlayerScriptsCCLIntegrationD or FFlagUserPlayerScriptsPlayerControlState then require(script:WaitForChild("InputReplication")) else nil
+local InputSlots = if FFlagUserPlayerScriptsCCLIntegrationD then require(script:WaitForChild("InputSlots")) else nil
 local DynamicThumbstick
 if RunService:IsClient() then
 	DynamicThumbstick = require(script:WaitForChild("DynamicThumbstick"))
 end
 
-local TouchThumbstick = require(script:WaitForChild("TouchThumbstick"))
+local ClassicThumbstick = require(script:WaitForChild("ClassicThumbstick"))
 
 -- These controllers handle only walk/run movement, jumping is handled by the
 -- TouchJump controller if any of these are active
 local ClickToMove = require(script:WaitForChild("ClickToMoveController"))
 local TouchJump = require(script:WaitForChild("TouchJump"))
+local TouchAbilities = if FFlagUserPlayerScriptsCCLIntegrationD then require(script:WaitForChild("TouchAbilities")) else nil
 
 local VehicleController = require(script:WaitForChild("VehicleController"))
-
-local cameraRotation: InputAction? = nil
-if FFlagUserPlayerScriptsControlModuleModernize then
-	local inputContexts = script.Parent:WaitForChild("InputContexts")
-	local characterContext = inputContexts:WaitForChild("Character") :: InputContext
-	cameraRotation = characterContext:WaitForChild("CameraRotation") :: InputAction
+local AvatarAbilitiesInterface
+local avatarAbilitiesInterface
+if FFlagUserPlayerScriptsCCLIntegrationD then
+	AvatarAbilitiesInterface = require(script:WaitForChild("AvatarAbilitiesInterface"))
+	avatarAbilitiesInterface = AvatarAbilitiesInterface.get(Players.LocalPlayer)
 end
+
+local inputContexts = script.Parent:WaitForChild("InputContexts")
+local cameraContext = inputContexts:WaitForChild("CameraContext") :: InputContext
+local cameraRotationAction = cameraContext:WaitForChild("CameraRotationAction") :: InputAction
 
 local CONTROL_ACTION_PRIORITY = Enum.ContextActionPriority.Medium.Value
 local NECK_OFFSET = -0.7
@@ -67,8 +79,8 @@ local movementEnumToModuleMap = {
 	[Enum.DevTouchMovementMode.DPad] = DynamicThumbstick,
 	[Enum.TouchMovementMode.Thumbpad] = DynamicThumbstick,
 	[Enum.DevTouchMovementMode.Thumbpad] = DynamicThumbstick,
-	[Enum.TouchMovementMode.Thumbstick] = TouchThumbstick,
-	[Enum.DevTouchMovementMode.Thumbstick] = TouchThumbstick,
+	[Enum.TouchMovementMode.Thumbstick] = ClassicThumbstick,
+	[Enum.DevTouchMovementMode.Thumbstick] = ClassicThumbstick,
 	[Enum.TouchMovementMode.DynamicThumbstick] = DynamicThumbstick,
 	[Enum.DevTouchMovementMode.DynamicThumbstick] = DynamicThumbstick,
 	[Enum.TouchMovementMode.ClickToMove] = ClickToMove,
@@ -99,9 +111,11 @@ function ControlModule.new() -- TODO ControlModule should be static
 	self.activeControlModule = nil	-- Used to prevent unnecessarily expensive checks on each input event
 	self.activeController = nil
 	self.touchJumpController = nil
+	self.touchAbilitiesController = nil
 	self.moveFunction = Players.LocalPlayer.Move
 	self.humanoid = nil
 	self.controlsEnabled = true
+	self.enabled = false
 
 	-- For Roblox self.vehicleController
 	self.humanoidSeatedConn = nil
@@ -119,11 +133,6 @@ function ControlModule.new() -- TODO ControlModule should be static
 	if Players.LocalPlayer.Character then
 		self:OnCharacterAdded(Players.LocalPlayer.Character)
 	end
-	if not FFlagUserPlayerModuleHiddenAPI then
-		RunService:BindToRenderStep("ControlScriptRenderstep", Enum.RenderPriority.Input.Value, function(dt)
-			self:Update({}, dt)
-		end)
-	end
 
 	UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
 		self:UpdateMovementMode()
@@ -138,6 +147,11 @@ function ControlModule.new() -- TODO ControlModule should be static
 	Players.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 		self:UpdateMovementMode()
 	end)
+	if FFlagUserPlayerScriptsCCLIntegrationD then
+		avatarAbilitiesInterface:GetEnabledChangedSignal():Connect(function()
+			self:UpdateAbilitiesControllers()
+		end)
+	end
 
 	--[[ Touch Device UI ]]--
 	self.playerGui = nil
@@ -165,95 +179,163 @@ function ControlModule.new() -- TODO ControlModule should be static
 		end)
 	end
 
-	self:UpdateMovementMode()
+	if FFlagUserPlayerScriptsBindActivateOnIAS then
+		ContextActionService:BindActivate(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
+	end
 
 	return self
 end
 
+-- remove with FFlagUserPlayerScriptsCCLIntegrationD
 local function _fireCustomInputs(player:Player)
 	local input = player:FindFirstChild("InputContexts")
 	if input == nil then
 		return
 	end
 
-	local characterInputContext = input:FindFirstChild("Character")
-	if characterInputContext == nil then
+	local characterContext = input:FindFirstChild("CharacterContext")
+	if characterContext == nil then
 		return
-	end	
-
-	local cameraInput = characterInputContext:FindFirstChild("Camera")
-	if cameraInput then
-		local camera = Workspace.CurrentCamera
-		cameraInput:Fire(camera.CFrame.LookVector)
 	end
 
-	local rotationInput = characterInputContext.Rotation
-	if rotationInput then
-		rotationInput:Fire(UserGameSettings.RotationType == Enum.RotationType.CameraRelative)
+	local cameraContext = input:FindFirstChild("CameraContext")
+
+	if FFlagUserPlayerScriptsSAuthDirectAPIs then
+		local rotationAction = characterContext:FindFirstChild("RotationAction")
+		if rotationAction then
+			local binding = rotationAction:FindFirstChild("RotationScriptableBinding")
+			if binding then
+				binding:Fire(UserGameSettings.RotationType == Enum.RotationType.CameraRelative)
+			end
+		end
+	else
+		local shouldFireCameraAction = true
+		if FFlagUserPlayerScriptsStopFireCameraAction then
+			local success, state = pcall(function() return player:GetCameraState() end)
+			if success and state then
+				local cframe = state.CFrame
+				if cframe ~= CFrame.identity and state.FieldOfView > 0 and state.ViewportSize.Magnitude > 0 then
+					shouldFireCameraAction = false
+				end
+			end
+		end
+		if shouldFireCameraAction then
+			local cameraAction = cameraContext and cameraContext:FindFirstChild("CameraAction")
+			if cameraAction then
+				local camera = Workspace.CurrentCamera
+				if FFlagUserPlayerScriptsFireThroughScriptableBindings then
+					local binding = cameraAction:FindFirstChild("CameraScriptableBinding")
+					if binding then
+						local success, result = pcall(function()
+							binding.Type = Enum.InputBindingType.Scriptable
+							binding:Fire(camera.CFrame.LookVector)
+						end)
+						if not success then
+							cameraAction:Fire(camera.CFrame.LookVector)
+						end
+					else
+						cameraAction:Fire(camera.CFrame.LookVector)
+					end
+				else
+					cameraAction:Fire(camera.CFrame.LookVector)
+				end
+			end
+		end
+
+		if FFlagUserPlayerScriptsFireThroughScriptableBindings then
+			local rotationAction = characterContext:FindFirstChild("RotationAction")
+			if rotationAction then
+				local binding = rotationAction:FindFirstChild("RotationScriptableBinding")
+				if binding then
+					local success, result = pcall(function()
+						binding.Type = Enum.InputBindingType.Scriptable
+						binding:Fire(UserGameSettings.RotationType == Enum.RotationType.CameraRelative)
+					end)
+					if not success then
+						rotationAction:Fire(UserGameSettings.RotationType == Enum.RotationType.CameraRelative)
+					end
+				else
+					rotationAction:Fire(UserGameSettings.RotationType == Enum.RotationType.CameraRelative)
+				end
+			end
+		else
+			local rotationAction = characterContext.RotationAction
+			if rotationAction then
+				rotationAction:Fire(UserGameSettings.RotationType == Enum.RotationType.CameraRelative)
+			end
+		end
 	end
 end
 
+-- remove with FFlagUserPlayerScriptsCCLIntegrationD
 local function _cloneInputs(player:Player)
 	local newInput = StarterPlayer.PlayerModule.InputContexts:Clone()
-	newInput.Character.Enabled = true
+	newInput.CharacterContext.Enabled = true
+	newInput.CameraContext.Enabled = true
 	newInput.Parent = player
 end
 
 function ControlModule:InitializeServerAuthority()
 	if RunService:IsServer() then
 		-- Server Creates Inputs
-		for _, player in Players:GetPlayers() do
-			_cloneInputs(player)
-		end
-		Players.PlayerAdded:Connect(_cloneInputs)
-		-- Server processes all input
-		if (FFlagUserPSSpecifySimulationFrequency) then
-			RunService:BindToSimulation(function(dt)
-				for _, player in Players:GetPlayers() do
-					self:ProcessInputs(player, dt)
-				end
-			end, Enum.StepFrequency.Hz60)
+		if FFlagUserPlayerScriptsCCLIntegrationD then
+			for _, player in Players:GetPlayers() do
+				InputReplication.CloneInputsIfAbsent(player)
+			end
+			Players.PlayerAdded:Connect(InputReplication.CloneInputsIfAbsent)
 		else
-			RunService:BindToSimulation(function(dt)
-				for _, player in Players:GetPlayers() do
-					self:ProcessInputs(player, dt)
-				end
-			end)		
+			for _, player in Players:GetPlayers() do
+				_cloneInputs(player)
+			end
+			Players.PlayerAdded:Connect(_cloneInputs)
 		end
-	else
-		-- Fire Custom Inputs
-		RunService:BindToRenderStep("CameraInput", Enum.RenderPriority.Last.Value, function()
-			_fireCustomInputs(Players.LocalPlayer)
-		end)
-		-- Client processes local player input only
-		if (FFlagUserPSSpecifySimulationFrequency) then
-			RunService:BindToSimulation(function(dt)
-				self:ProcessInputs(Players.LocalPlayer, dt)
-			end, Enum.StepFrequency.Hz60)
-		else
-			RunService:BindToSimulation(function(dt)
-				self:ProcessInputs(Players.LocalPlayer, dt)
+		if FFlagUserPlayerScriptsPlayerControlState then
+			for _, player in Players:GetPlayers() do
+				InputReplication.createPlayerControlState(player)
+			end
+			Players.PlayerAdded:Connect(InputReplication.createPlayerControlState)
+		end
+		-- precreate AvatarAbilitiesInterface on server before simulation callbacks
+		if FFlagUserPlayerScriptsCCLIntegrationD and FFlagUserPlayerScriptsTaskDeferSimulation then
+			for _, player in Players:GetPlayers() do
+				AvatarAbilitiesInterface.get(player)
+			end
+			Players.PlayerAdded:Connect(function(player)
+				AvatarAbilitiesInterface.get(player)
 			end)
 		end
+		-- Server processes all input
+		RunService:BindToSimulation(function(dt)
+			for _, player in Players:GetPlayers() do
+				self:ProcessInputs(player, dt)
+			end
+		end, Enum.StepFrequency.Hz60)
+	else
+		if FFlagUserPlayerScriptsPlayerControlState then
+			InputReplication.watchForPlayerControlState(Players.LocalPlayer)
+		end
+		-- Fire Custom Inputs
+		RunService:BindToRenderStep("CameraInput", Enum.RenderPriority.Last.Value, function()
+			if FFlagUserPlayerScriptsPlayerControlState then
+				InputReplication.writeInputToPCS(Players.LocalPlayer, self, true)
+			elseif FFlagUserPlayerScriptsCCLIntegrationD then
+				InputReplication.FireCustomInputs(Players.LocalPlayer)
+			else
+				_fireCustomInputs(Players.LocalPlayer)
+			end
+		end)
+		-- Client processes local player input only
+		RunService:BindToSimulation(function(dt)
+			self:ProcessInputs(Players.LocalPlayer, dt)
+		end, Enum.StepFrequency.Hz60)
 	end
 
-	if FFlagUserPSActionsPathAware and self.data and self.data.eventBus then
+	if self.data and self.data.eventBus then
 		self.data.isServerAuthority = true
 		self.data.eventBus:publish(CONNECTIONS.SERVER_AUTHORITY_CHANGED, true)
 	end
 end
 
-if not FFlagUserPSActionsPathAware then
-	-- Convenience function so that calling code does not have to first get the activeController
-	-- and then call GetMoveVector on it. When there is no active controller, this function returns the
-	-- zero vector
-	function ControlModule:GetMoveVector(): Vector3
-		if self.activeController then
-			return self.activeController:GetMoveVector()
-		end
-		return Vector3.new(0,0,0)
-	end
-end
 
 local function NormalizeAngle(angle): number
 	angle = (angle + math.pi*4) % (math.pi*2)
@@ -316,42 +398,93 @@ function ControlModule:GetActiveController()
 	return self.activeController
 end
 
+function ControlModule:UpdateAbilitiesControllers()
+	local shouldShowTouchControls = self.enabled and self.touchControlFrame and (UserInputService.PreferredInput == Enum.PreferredInput.Touch)
+		and (
+			self.activeControlModule == ClickToMove
+			or self.activeControlModule == ClassicThumbstick
+			or self.activeControlModule == DynamicThumbstick
+		)
+	local shouldShowTouchJump = shouldShowTouchControls and not avatarAbilitiesInterface:isEnabled()
+	local shouldShowTouchAbilities = shouldShowTouchControls and avatarAbilitiesInterface:isEnabled()
+	if shouldShowTouchJump then
+		if not self.controllers[TouchJump] then
+			self.controllers[TouchJump] = TouchJump.new(self.data, self.playerData)
+		end
+
+		self.touchJumpController = self.controllers[TouchJump]
+		self.touchJumpController:Enable(true, self.touchControlFrame)
+	else
+		if self.touchJumpController then
+			self.touchJumpController:Enable(false)
+		end
+	end
+	if shouldShowTouchAbilities then
+		if not self.controllers[TouchAbilities] then
+			self.controllers[TouchAbilities] = TouchAbilities.new(self.touchControlFrame)
+		end
+
+		self.touchAbilitiesController = self.controllers[TouchAbilities]
+		self.touchAbilitiesController:Enable(true)
+	else
+		if self.touchAbilitiesController then
+			self.touchAbilitiesController:Enable(false)
+		end
+	end
+end
+
 -- Checks for conditions for enabling/disabling the active controller and updates whether the active controller is enabled/disabled
 function ControlModule:UpdateActiveControlModuleEnabled()
 	-- helpers for disable/enable
 	local disable = function()
+		if FFlagUserPlayerScriptsCCLIntegrationD then
+			self.enabled = false
+		end
 		self.activeController:Enable(false)
-		if self.touchJumpController then 
-			self.touchJumpController:Enable(false)
+		if FFlagUserPlayerScriptsCCLIntegrationD then
+			self:UpdateAbilitiesControllers()
+		else
+			if self.touchJumpController then 
+				self.touchJumpController:Enable(false)
+			end
 		end
 
 		if self.moveFunction then
-			self.moveFunction(Players.LocalPlayer, Vector3.new(0,0,0), true)
+			if not FFlagUserPlayerScriptsCCLIntegrationD or not avatarAbilitiesInterface:isEnabled() then
+				self.moveFunction(Players.LocalPlayer, Vector3.new(0,0,0), true)
+			end
 		end
 	end
 
 	local enable = function()
-		if self.touchControlFrame and (UserInputService.PreferredInput == Enum.PreferredInput.Touch)
-			and (
-				self.activeControlModule == ClickToMove
-				or self.activeControlModule == TouchThumbstick
-				or self.activeControlModule == DynamicThumbstick
-			)
-		then
-			if not self.controllers[TouchJump] then
-				self.controllers[TouchJump] = TouchJump.new(self.data, self.playerData)
-			end
-			self.touchJumpController = self.controllers[TouchJump]
-			self.touchJumpController:Enable(true, self.touchControlFrame)
+		if FFlagUserPlayerScriptsCCLIntegrationD then
+			self.enabled = true
+			self:UpdateAbilitiesControllers()
 		else
-			if self.touchJumpController then
-				self.touchJumpController:Enable(false)
+			if self.touchControlFrame and (UserInputService.PreferredInput == Enum.PreferredInput.Touch)
+				and (
+					self.activeControlModule == ClickToMove
+					or self.activeControlModule == ClassicThumbstick
+					or self.activeControlModule == DynamicThumbstick
+				)
+			then
+				if not self.controllers[TouchJump] then
+					self.controllers[TouchJump] = TouchJump.new(self.data, self.playerData)
+				end
+				self.touchJumpController = self.controllers[TouchJump]
+				self.touchJumpController:Enable(true, self.touchControlFrame)
+			else
+				if self.touchJumpController then
+					self.touchJumpController:Enable(false)
+				end
 			end
 		end
 
 		if self.activeControlModule == ClickToMove then
 			-- For ClickToMove, when it is the player's choice, we also enable the full keyboard controls.
 			-- When the developer is forcing click to move, the most keyboard controls (WASD) are not available, only jump.
+
+			-- remove last parameter (self.touchJumpController) with FFlagUserDoubleJumpButtonFix
 			self.activeController:Enable(
 				true,
 				Players.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.UserChoice,
@@ -378,7 +511,7 @@ function ControlModule:UpdateActiveControlModuleEnabled()
 	-- GuiService.TouchControlsEnabled == false and the active controller is a touch controller,
 	-- disable controls
 	if not GuiService.TouchControlsEnabled and (UserInputService.PreferredInput == Enum.PreferredInput.Touch) and
-		(self.activeControlModule == ClickToMove or self.activeControlModule == TouchThumbstick or
+		(self.activeControlModule == ClickToMove or self.activeControlModule == ClassicThumbstick or
 			self.activeControlModule == DynamicThumbstick) then
 		disable()
 		return
@@ -410,14 +543,15 @@ end
 
 -- Returns module (possibly nil) and success code to differentiate returning nil due to error vs Scriptable
 function ControlModule:SelectComputerMovementModule(): ({}?, boolean)
-	if FFlagUserPlayerScriptsControlModuleModernize then
-		if not (UserInputService.PreferredInput == Enum.PreferredInput.KeyboardAndMouse or UserInputService.PreferredInput == Enum.PreferredInput.Gamepad) then
-			return nil, false
-		end
-	else
-		if not (UserInputService.KeyboardEnabled or UserInputService.GamepadEnabled) then
-			return nil, false
-		end
+	local preferMicroGamepad = false
+	if FFlagUserPlayerScriptsSupportMicroGamepad then
+		pcall(function()
+			preferMicroGamepad = UserInputService.PreferredInput == Enum.PreferredInput.MicroGamepad
+		end)
+	end
+	if not (UserInputService.PreferredInput == Enum.PreferredInput.KeyboardAndMouse or
+		UserInputService.PreferredInput == Enum.PreferredInput.Gamepad or preferMicroGamepad) then
+		return nil, false
 	end
 
 	local computerModule = ActionController
@@ -465,18 +599,6 @@ function ControlModule:SelectTouchModule(): ({}?, boolean)
 	return touchModule, true
 end
 
--- Remove with FFlagUserPlayerScriptsControlModuleModernize
-local function getGamepadRightThumbstickPosition(): Vector3
-	assert(not FFlagUserPlayerScriptsControlModuleModernize)
-	local state = UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1)
-	for _, input in pairs(state) do
-		if input.KeyCode == Enum.KeyCode.Thumbstick2 then
-			return input.Position
-		end
-	end
-	return Vector3.new(0,0,0)
-end
-
 function ControlModule:calculateRawMoveVector(humanoid: Humanoid, cameraRelativeMoveVector: Vector3): Vector3
 	local camera = Workspace.CurrentCamera
 	if not camera then
@@ -503,11 +625,9 @@ function ControlModule:calculateRawMoveVector(humanoid: Humanoid, cameraRelative
 				return Vector3.zero
 			end
 
-			local pitch
-			if FFlagUserPlayerScriptsControlModuleModernize and cameraRotation and cameraRotation.Enabled then
-				pitch = -cameraRotation:GetState().Y / 2.31
-			else
-				pitch = -getGamepadRightThumbstickPosition().Y * math.rad(80)
+			local pitch = 0
+			if cameraRotationAction and cameraRotationAction.Enabled then
+				pitch = -cameraRotationAction:GetState().Y / 2.31
 			end
 			local yawAngle = math.atan2(-cameraRelativeMoveVector.X, -cameraRelativeMoveVector.Z)
 			local _, cameraYaw, _ = cameraCFrame:ToEulerAnglesYXZ()
@@ -539,107 +659,71 @@ function ControlModule:calculateRawMoveVector(humanoid: Humanoid, cameraRelative
 	)
 end
 
-if FFlagUserPSActionsPathAware then
-	-- This function should be used to set up necessary connections. DO NOT STORE STATE
-	function ControlModule:initialize(data, playerData)
-		self.data = data
-		self.playerData = playerData -- DO NOT DO THIS, THIS IS A CONVERSION STEP. MODULES SHOULD NOT SAVE STATE
+-- This function should be used to set up necessary connections. DO NOT STORE STATE
+function ControlModule:initialize(data, playerData)
+	self.data = data
+	self.playerData = playerData -- DO NOT DO THIS, THIS IS A CONVERSION STEP. MODULES SHOULD NOT SAVE STATE
 
-		ActionController.initializeActions(self.data, self.playerData)
+	self:UpdateMovementMode()
+
+	ActionController.initializeActions(self.data, self.playerData)
+	if FFlagUserPlayerScriptsCCLIntegrationD then
+		InputSlots.setupSlotActions(self.playerData.player, self.data.isServerAuthority)
 	end
 end
 
 function ControlModule:Update(data, playerData, dt)
-	if FFlagUserPSActionsPathAware then
-		assert(playerData.player)
-		assert(playerData.character)
+	assert(playerData.player)
+	assert(playerData.character)
 
-		-- We may need to wait for actions to come from the server so we initialize again
-		ActionController.initializeActions(data, playerData)
-		if not playerData.actions["Move"] or not playerData.actions["Jump"] then
-			return
-		end
+	-- We may need to wait for actions to come from the server so we initialize again
+	ActionController.initializeActions(data, playerData)
+	if not playerData.actions["MoveAction"] or not playerData.actions["JumpAction"] then
+		return
 	end
 
 	if self.activeController and self.activeController.enabled and self.humanoid then
-		if FFlagUserPSActionsPathAware then
-			ActionController.update(playerData)
-		else
-			if FFlagUserPlayerModuleHiddenAPI then
-				-- TODO remove all controllers but ActionController
-				-- then read data directly without calling GetMoveVector()
-				if self.activeController.Update then
-					self.activeController:Update(data)
-				end
-			end
-		end
+		ActionController.update(playerData)
 		
-		if FFlagUserPlayerScriptsClickToMoveUsesIAS then 
-			local clickToMoveController = self:GetClickToMoveController()
-			clickToMoveController:Update(playerData, dt)
-		end
+		local clickToMoveController = self:GetClickToMoveController()
+		clickToMoveController:Update(playerData, dt)
 
 		-- Now retrieve info from the controller
-		local moveVector
-
-		if FFlagUserPSActionsPathAware then
-			moveVector = Vector3.new(playerData.moveVector.X, 0, -playerData.moveVector.Y)
-		else
-			moveVector = self:GetMoveVector()
-		end
-
-		local cameraRelative = true  -- Remove with FFlagUserPlayerScriptsClickToMoveUsesIAS
-
-		if not FFlagUserPlayerScriptsClickToMoveUsesIAS then 
-			local clickToMoveController = self:GetClickToMoveController()
-			if self.activeController == clickToMoveController then
-				clickToMoveController:Update(playerData, dt)
-				cameraRelative = clickToMoveController:IsMoveVectorCameraRelative()
-			else
-				if moveVector.magnitude > 0 then
-					-- Clean up any developer started MoveTo path
-					clickToMoveController:CleanupPath()
-				else
-					-- Get move vector for developer started MoveTo
-					clickToMoveController:Update(playerData, dt)
-					if not FFlagUserPSActionsPathAware then
-						moveVector = clickToMoveController:GetMoveVector()
-					end
-					cameraRelative = clickToMoveController:IsMoveVectorCameraRelative()
-				end
-			end
-		end
+		local moveVector = Vector3.new(playerData.moveVector.X, 0, -playerData.moveVector.Y)
 
 		-- Are we driving a vehicle ?
 		local vehicleConsumedInput = false
 		if self.vehicleController then
-			moveVector, vehicleConsumedInput = self.vehicleController:Update(moveVector, if FFlagUserPlayerScriptsClickToMoveUsesIAS then true else cameraRelative)
+			moveVector, vehicleConsumedInput = self.vehicleController:Update(moveVector, true)
 		end
 
 		-- If not, move the player
 		-- Verification of vehicleConsumedInput is commented out to preserve legacy behavior,
 		-- in case some game relies on Humanoid.MoveDirection still being set while in a VehicleSeat
 		--if not vehicleConsumedInput then
-		if FFlagUserPlayerScriptsClickToMoveUsesIAS then
-			moveVector = self:calculateRawMoveVector(self.humanoid, moveVector)
-		else
-			if cameraRelative then 
-				moveVector = self:calculateRawMoveVector(self.humanoid, moveVector)
-			end
-		end
+		moveVector = self:calculateRawMoveVector(self.humanoid, moveVector)
 
 		self.inputMoveVector = moveVector
 		if VRService.VREnabled then
 			moveVector = self:updateVRMoveVector(moveVector)
 		end
 
-		self.moveFunction(Players.LocalPlayer, moveVector, false)
-
-		-- And make them jump if needed
-		if FFlagUserPSActionsPathAware then
-			self.humanoid.Jump = playerData.isJumping
+		if FFlagUserPlayerScriptsPlayerControlState then
+			if not data.isServerAuthority then
+				if FFlagUserPlayerScriptsCCLIntegrationD and avatarAbilitiesInterface:isEnabled() then
+					InputReplication.writeInputToPCS(Players.LocalPlayer, self, false)
+				else
+					self.moveFunction(Players.LocalPlayer, moveVector, false)
+					self.humanoid.Jump = playerData.isJumping
+				end
+			end
 		else
-			self.humanoid.Jump = self.activeController:GetIsJumping() or (self.touchJumpController and self.touchJumpController:GetIsJumping())
+			if (not FFlagUserPlayerScriptsFixSAuthRenderStepMove or not data.isServerAuthority)
+				and (not FFlagUserPlayerScriptsCCLIntegrationD or not avatarAbilitiesInterface:isEnabled()) then
+				self.moveFunction(Players.LocalPlayer, moveVector, false)
+				-- And make them jump if needed
+				self.humanoid.Jump = playerData.isJumping
+			end
 		end
 	end
 end
@@ -794,6 +878,9 @@ function ControlModule:CreateTouchGuiContainer()
 	self.touchGui.Name = "TouchGui"
 	self.touchGui.ResetOnSpawn = false
 	self.touchGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	if FFlagUserPlayerScriptsCCLIntegrationD and FFlagUserAbilitiesUserInterfaceC then
+	    self.touchGui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
+	end
 
 	self.touchGui.ClipToDeviceSafeArea = false
 
@@ -814,75 +901,108 @@ function ControlModule:GetClickToMoveController()
 end
 
 function ControlModule:ProcessInputs(player:Player, dt:number)
-	local character = player.Character
-	if character == nil then
-		return
-	end
-	local humanoid = character:FindFirstChild("Humanoid")
-	if humanoid == nil then
-		return
-	end
-	local input = player:FindFirstChild("InputContexts")
-	if input == nil then
-		return
-	end
-	local characterInputContext = input:FindFirstChild("Character")
-	if characterInputContext == nil then
-		return
-	end	
-
-	local moveInput = characterInputContext.Move
-	local cameraInput = characterInputContext.Camera
-	local rotationInput = characterInputContext.Rotation
-	local jumpInput = characterInputContext.Jump
-
-	local function isValidInput2D(vector2:Vector2):boolean
-		return not (
-			vector2.X ~= vector2.X or
-			vector2.Y ~= vector2.Y or
-			vector2.X == math.huge or
-			vector2.Y == math.huge)
-	end
-
-	local function isValidInput3D(vector3:Vector3):boolean
-		return not (
-			vector3.X ~= vector3.X or
-			vector3.Y ~= vector3.Y or
-			vector3.Z ~= vector3.Z or
-			vector3.X == math.huge or
-			vector3.Y == math.huge or 
-			vector3.Z == math.huge)
-	end
-
-	local moveVector2D = if moveInput ~= nil then moveInput:GetState() else Vector2.new(0.0, 0.0)
-	local cameraVector3D = if cameraInput ~= nil then cameraInput:GetState() else Vector3.new(0.0, 0.0)
-
-	if isValidInput2D(moveVector2D) and isValidInput3D(cameraVector3D) and cameraVector3D.Magnitude > 0.0 then
-		if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
-			cameraVector3D = Vector3.new(cameraVector3D.X, 0.0, cameraVector3D.Z).Unit
+	if FFlagUserPlayerScriptsCCLIntegrationD then
+		local thisAvatarAbilitiesInterface = AvatarAbilitiesInterface.get(player)
+		
+		-- when CCL is enabled, server inputs are instead handled within CCL code
+		if not thisAvatarAbilitiesInterface:isEnabled() then
+			if FFlagUserPlayerScriptsPlayerControlState then
+				InputReplication.processPCSInputs(player)
+			else
+				InputReplication.SendInputToHumanoidForServerAuth(player)
+			end
+		end
+	elseif FFlagUserPlayerScriptsPlayerControlState then
+		InputReplication.processPCSInputs(player)
+	else
+		local character = player.Character
+		if character == nil then
+			return
+		end
+		local humanoid = character:FindFirstChild("Humanoid")
+		if humanoid == nil then
+			return
+		end
+		local input = player:FindFirstChild("InputContexts")
+		if input == nil then
+			return
+		end
+		local characterContext = input:FindFirstChild("CharacterContext")
+		if characterContext == nil then
+			return
 		end
 
-		local rightVector = cameraVector3D:Cross(Vector3.yAxis).Unit
+		local cameraContext = input:FindFirstChild("CameraContext")
 
-		local moveVector = cameraVector3D * moveVector2D.Y + rightVector * moveVector2D.X
-		humanoid:Move(moveVector)
+		local moveAction = characterContext.MoveAction
+		local cameraAction = cameraContext and cameraContext.CameraAction
+		local rotationAction = characterContext.RotationAction
+		local jumpAction = characterContext.JumpAction
 
-		local rotationIsCameraRelative = rotationInput:GetState()
-		if rotationIsCameraRelative then
-			humanoid.AutoRotate = false
-			if humanoid.SeatPart == nil and humanoid.RootPart ~= nil and not humanoid.Sit and not humanoid.RootPart:IsGrounded() then
-				humanoid.RootPart.CFrame = CFrame.new(
-					humanoid.RootPart.CFrame.Position,
-					humanoid.RootPart.CFrame.Position + cameraVector3D
-				)
+		local function isValidInput2D(vector2:Vector2):boolean
+			return not (
+				vector2.X ~= vector2.X or
+				vector2.Y ~= vector2.Y or
+				vector2.X == math.huge or
+				vector2.Y == math.huge)
+		end
+
+		local function isValidInput3D(vector3:Vector3):boolean
+			return not (
+				vector3.X ~= vector3.X or
+				vector3.Y ~= vector3.Y or
+				vector3.Z ~= vector3.Z or
+				vector3.X == math.huge or
+				vector3.Y == math.huge or 
+				vector3.Z == math.huge)
+		end
+
+		local moveVector2D = if moveAction ~= nil then moveAction:GetState() else Vector2.new(0.0, 0.0)
+		local cameraVector3D
+		if FFlagUserPlayerScriptsSAuthDirectAPIs then
+			cameraVector3D = player:GetCameraState().CFrame.LookVector
+		elseif FFlagUserPlayerScriptsUseReplicatedCameraAPI then
+			local success, result = pcall(function() return player:GetCameraState() end)
+			if success and result then
+				local cframe = result.CFrame
+				if cframe ~= CFrame.identity and result.FieldOfView > 0 and result.ViewportSize.Magnitude > 0 then
+					cameraVector3D = cframe.LookVector
+				end
+			end
+			if not cameraVector3D then
+				cameraVector3D = if cameraAction ~= nil then cameraAction:GetState() else Vector3.new(0.0, 0.0, 0.0)
 			end
 		else
-			humanoid.AutoRotate = true
+			cameraVector3D = if cameraAction ~= nil then cameraAction:GetState() else Vector3.new(0.0, 0.0, 0.0)
 		end
-	end
 
-	local jumpBool = if jumpInput ~= nil then jumpInput:GetState() else false
-	humanoid.Jump = jumpBool
+		if isValidInput2D(moveVector2D) and isValidInput3D(cameraVector3D) and cameraVector3D.Magnitude > 0.0 then
+			if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
+				cameraVector3D = Vector3.new(cameraVector3D.X, 0.0, cameraVector3D.Z).Unit
+			end
+
+			local rightVector = cameraVector3D:Cross(Vector3.yAxis).Unit
+
+			local moveVector = cameraVector3D * moveVector2D.Y + rightVector * moveVector2D.X
+			humanoid:Move(moveVector)
+
+			local rotationIsCameraRelative = rotationAction:GetState()
+			if rotationIsCameraRelative then
+				humanoid.AutoRotate = false
+				if humanoid.SeatPart == nil and humanoid.RootPart ~= nil and not humanoid.Sit and not humanoid.RootPart:IsGrounded() then
+					humanoid.RootPart.CFrame = CFrame.new(
+						humanoid.RootPart.CFrame.Position,
+						humanoid.RootPart.CFrame.Position + cameraVector3D
+					)
+				end
+			else
+				humanoid.AutoRotate = true
+			end
+		end
+
+		local jumpBool = if jumpAction ~= nil then jumpAction:GetState() else false
+		humanoid.Jump = jumpBool
+	end
 end
 
 if RunService:IsClient() then

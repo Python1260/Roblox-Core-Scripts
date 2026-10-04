@@ -4,16 +4,16 @@ local CorePackages = game:GetService("CorePackages")
 local LocalizationService = game:GetService("LocalizationService")
 local UserInputService = game:GetService("UserInputService")
 local GamepadService = game:GetService("GamepadService")
-local LuauPolyfill = require(CorePackages.Packages.LuauPolyfill)
-local reverse = LuauPolyfill.Array.reverse
 
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 
 local SignalLib = require(CorePackages.Workspace.Packages.AppCommonLib)
 local Localization = require(CorePackages.Workspace.Packages.InExperienceLocales).Localization
 
-local Signal = SignalLib.Signal
 local ChromePackage = require(CorePackages.Workspace.Packages.Chrome)
+local SideSheetPlacement = ChromePackage.Enums.SideSheetPlacement
+
+local Signal = SignalLib.Signal
 local FocusUtils = ChromePackage.FocusUtils
 local FocusOnChromeSignal = FocusUtils.FocusOnChromeSignal
 local FocusOffChromeSignal = FocusUtils.FocusOffChromeSignal
@@ -30,24 +30,25 @@ local ShortcutService = require(Root.Service.ShortcutService)
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 local isInExperienceUIVREnabled =
 	require(CorePackages.Workspace.Packages.SharedExperimentDefinition).isInExperienceUIVREnabled
+local isPioneerLaunch = require(CorePackages.Workspace.Packages.PioneerUtils).isPioneerLaunch
 local FFlagIntegrationsChromeShortcutTelemetry = require(Root.Parent.Flags.FFlagIntegrationsChromeShortcutTelemetry)
 local FFlagChromeDeprecateMRUs = game:DefineFastFlag("ChromeDeprecateMRUs", false)
-local FFlagVirtualCursorTopbarAlwaysVisible = SharedFlags.FFlagVirtualCursorTopbarAlwaysVisible
-local FFlagEnableSideSheet = SharedFlags.FFlagEnableSideSheet
-local FFlagRequireSideSheetPackage = SharedFlags.FFlagRequireSideSheetPackage
+local isSideSheetEnabled = require(CorePackages.Workspace.Packages.InExperienceSideSheetUtils.isSideSheetEnabled)
+local FFlagEnableSideSheetWidgets = SharedFlags.FFlagEnableSideSheetWidgets
 local FFlagEnableChromeWindowsNotInMenu = require(Root.Flags).FFlagEnableChromeWindowsNotInMenu
+local FFlagChromeNineDotActivityIndicator = require(Root.Flags).FFlagChromeNineDotActivityIndicator
 
 local CHROME_INTERACTED_KEY = "ChromeInteracted3"
 local CHROME_WINDOW_POSITION_KEY = "ChromeWindowPosition"
 local CHROME_WINDOW_STATE_KEY = "ChromeWindowStatus"
 
 local toggleSideSheet
-local registerVerticalIntegrations
-if FFlagRequireSideSheetPackage then
-	toggleSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet).toggleSideSheet
-	registerVerticalIntegrations =
-		require(CorePackages.Workspace.Packages.InExperienceSideSheet).registerVerticalIntegrations
-end
+local getSideSheetVisibility
+local registerSideSheetIntegrations
+local InExperienceSideSheet = require(CorePackages.Workspace.Packages.InExperienceSideSheet)
+toggleSideSheet = InExperienceSideSheet.toggleSideSheet
+getSideSheetVisibility = InExperienceSideSheet.getSideSheetVisibility
+registerSideSheetIntegrations = InExperienceSideSheet.registerSideSheetIntegrations
 
 type ActivateProps = ChromePackage.ActivateProps
 type IntegrationComponentProps = ChromePackage.IntegrationComponentProps
@@ -122,12 +123,16 @@ export type ChromeService = {
 	dragConnection: (ChromeService, componentId: IntegrationId) -> { current: RBXScriptConnection? }?,
 	register: (ChromeService, IntegrationRegisterProps) -> IntegrationProps,
 	updateMenuList: (ChromeService) -> (),
+	updateSideSheet: (ChromeService) -> (),
+	isIntegrationValid: (ChromeService, IntegrationId) -> boolean,
 	availabilityChanged: (ChromeService, IntegrationProps) -> (),
 	subMenuNotifications: (ChromeService, subMenuId: IntegrationId) -> utils.NotifySignal,
 	totalNotifications: (ChromeService) -> utils.NotifySignal,
 	notificationIndicator: (ChromeService) -> ObservableIntegration,
+	nineDotActivityIndicatorVisible: (ChromeService) -> utils.ObservableValue<boolean>,
+	setNineDotActivityIndicatorVisible: (ChromeService, featureKey: string, visible: boolean) -> (),
+	updateNineDotActivityIndicatorVisible: (ChromeService) -> (),
 	updateNotificationTotals: (ChromeService) -> (),
-	configureReset: (ChromeService) -> (),
 	configureMenu: (ChromeService, menuConfig: MenuConfig) -> (),
 	configureSubMenu: (ChromeService, parent: IntegrationId, menuConfig: IntegrationIdList) -> (),
 	gesture: (
@@ -138,6 +143,7 @@ export type ChromeService = {
 	) -> (),
 	withinCurrentTopLevelMenu: (ChromeService, componentId: IntegrationId) -> (IntegrationComponentProps?, number),
 	withinCurrentSubmenu: (ChromeService, componentId: IntegrationId) -> boolean,
+	withinOpenSideSheet: (ChromeService, componentId: IntegrationId) -> boolean,
 	storeChromeInteracted: (ChromeService) -> (),
 	activate: (ChromeService, componentId: IntegrationId, props: ActivateProps?) -> (),
 	toggleWindow: (ChromeService, componentId: IntegrationId) -> (),
@@ -155,6 +161,7 @@ export type ChromeService = {
 	) -> (),
 	updateWindowPosition: (ChromeService, componentId: IntegrationId, position: UDim2) -> (),
 	createIconProps: (ChromeService, IntegrationId, number?, boolean?) -> IntegrationComponentProps,
+	createWidgetProps: (ChromeService, IntegrationId, number?) -> IntegrationComponentProps?,
 	orderAlignment: (ChromeService) -> ObservableAlignment,
 	configureOrderAlignment: (ChromeService, alignment: Enum.HorizontalAlignment) -> (),
 
@@ -206,6 +213,8 @@ export type ChromeService = {
 	_totalNotifications: utils.NotifySignal,
 	_mostRecentlyUsedAndPinnedLimit: number,
 	_notificationIndicator: ObservableIntegration,
+	_nineDotActivityIndicatorVisible: utils.ObservableValue<boolean>,
+	_nineDotActivityIndicatorKeys: { [string]: boolean? },
 
 	_onIntegrationRegistered: SignalLib.Signal,
 	_onIntegrationActivated: SignalLib.Signal,
@@ -233,6 +242,7 @@ local DummyIntegration = {
 	notification = NotifySignal.new(),
 	components = {},
 	hideNotificationCountWhileOpen = false,
+	sideSheetPlacement = if isSideSheetEnabled then SideSheetPlacement.None else nil :: never,
 }
 
 function createUnibarLayoutInfo(position: Vector2, openSize: Vector2): UnibarLayoutInfo
@@ -267,6 +277,10 @@ function ChromeService.new(): ChromeService
 	self._currentShortcutBar = ObservableValue.new(nil)
 
 	self._notificationIndicator = ObservableValue.new(nil)
+	self._nineDotActivityIndicatorVisible = if FFlagChromeNineDotActivityIndicator
+		then ObservableValue.new(false)
+		else nil :: never
+	self._nineDotActivityIndicatorKeys = if FFlagChromeNineDotActivityIndicator then {} else nil :: never
 	self._orderAlignment = ObservableValue.new(Enum.HorizontalAlignment.Left)
 
 	self._onIntegrationRegistered = Signal.new()
@@ -300,6 +314,13 @@ function ChromeService.new(): ChromeService
 			service._currentShortcutBar:set(shortcutBarId)
 		end)
 	end
+
+	if FFlagChromeNineDotActivityIndicator then
+		self._currentSubMenu:connect(function()
+			service:updateNineDotActivityIndicatorVisible()
+		end)
+	end
+
 	FocusOnChromeSignal:connect(function(integrationIdToFocus: IntegrationId?)
 		-- initial focus on submenu integration not supported
 		if integrationIdToFocus and not self._subMenuConfig["nine_dot"][integrationIdToFocus] then
@@ -373,8 +394,31 @@ function ChromeService:notificationIndicator()
 	return self._notificationIndicator
 end
 
+function ChromeService:nineDotActivityIndicatorVisible(): utils.ObservableValue<boolean>
+	return self._nineDotActivityIndicatorVisible
+end
+
+function ChromeService:setNineDotActivityIndicatorVisible(featureKey: string, visible: boolean)
+	self._nineDotActivityIndicatorKeys[featureKey] = if visible then true else nil
+	self:updateNineDotActivityIndicatorVisible()
+end
+
+-- The dot is one shared pixel, so visibility is the union of every feature
+-- currently requesting it rather than the most recent caller's value.
+function ChromeService:updateNineDotActivityIndicatorVisible()
+	local visible = next(self._nineDotActivityIndicatorKeys) ~= nil
+
+	-- Requests are kept while the menu is open so the dot reappears on close,
+	-- unless the requesting feature cleared it from inside the menu.
+	if self._currentSubMenu:get() == "nine_dot" then
+		visible = false
+	end
+
+	self._nineDotActivityIndicatorVisible:set(visible)
+end
+
 function ChromeService:toggleSubMenu(subMenuId: IntegrationId)
-	if FFlagEnableSideSheet and toggleSideSheet then
+	if isSideSheetEnabled and toggleSideSheet then
 		toggleSideSheet(true)
 		return
 	end
@@ -402,7 +446,7 @@ function ChromeService:inFocusNav()
 end
 
 function ChromeService:enableFocusNav()
-	if FFlagVirtualCursorTopbarAlwaysVisible and GamepadService.GamepadCursorEnabled then
+	if GamepadService.GamepadCursorEnabled then
 		return
 	end
 	if not self._inFocusNav:get() then
@@ -415,7 +459,7 @@ function ChromeService:enableFocusNav()
 end
 
 function ChromeService:disableFocusNav()
-	if FFlagVirtualCursorTopbarAlwaysVisible and GamepadService.GamepadCursorEnabled then
+	if GamepadService.GamepadCursorEnabled then
 		return
 	end
 	if self._inFocusNav:get() then
@@ -523,6 +567,12 @@ function ChromeService:register(component: IntegrationRegisterProps): Integratio
 	self._integrationsConnections[component.id] = {}
 	local conns = self._integrationsConnections[component.id]
 
+	if isSideSheetEnabled then
+		if component.sideSheetPlacement == nil then
+			component.sideSheetPlacement = SideSheetPlacement.BelowFold
+		end
+	end
+
 	if component.initialAvailability == nil then
 		component.initialAvailability = ChromeService.AvailabilitySignal.Unavailable
 	end
@@ -583,7 +633,7 @@ function ChromeService:register(component: IntegrationRegisterProps): Integratio
 	if FFlagEnableConsoleExpControls and component.selected then
 		conns[#conns + 1] = self:selectedItem():connect(function(id)
 			if populatedComponent.id == id then
-				if FFlagVirtualCursorTopbarAlwaysVisible and GamepadService.GamepadCursorEnabled then
+				if GamepadService.GamepadCursorEnabled then
 					return
 				end
 				component.selected(populatedComponent)
@@ -619,14 +669,30 @@ function ChromeService:createIconProps(id: IntegrationId, order: number?): Integ
 	end
 end
 
-function reverseOrder(t)
-	local n = #t
-	local revOrder = {}
-	for i = 1, n do
-		revOrder[i] = t[i].order
+function ChromeService:createWidgetProps(id: IntegrationId, order: number?): IntegrationComponentProps?
+	local integration = self._integrations[id]
+	if not integration or not integration.components.Widget then
+		return nil
 	end
-	for i = 1, n do
-		t[i].order = revOrder[n - i + 1]
+
+	return {
+		id = id,
+		children = {},
+		order = order or 0,
+		component = integration.components.Widget,
+		integration = integration,
+		activated = noop,
+	}
+end
+
+function ChromeService:isIntegrationValid(id: IntegrationId)
+	-- Only display available items
+	local integration = self._integrations[id]
+	if integration then
+		local availability = integration.availability
+		return availability and availability:get() ~= ChromeService.AvailabilitySignal.Unavailable
+	else
+		return false
 	end
 end
 
@@ -676,17 +742,6 @@ function ChromeService:updateMenuList()
 		}
 	end
 
-	local function valid(id: IntegrationId)
-		-- Only display available items
-		local integration = self._integrations[id]
-		if integration then
-			local availability = integration.availability
-			return availability and availability:get() ~= ChromeService.AvailabilitySignal.Unavailable
-		else
-			return false
-		end
-	end
-
 	local function collectMenu(items: MenuConfig | MenuList | IntegrationIdList, parent: any, windowList: WindowList)
 		local validIconCount = 0
 		for k, v in pairs(items) do
@@ -703,9 +758,9 @@ function ChromeService:updateMenuList()
 					error(`Only tables or strings should be passed into the items list, received {v} (at key {k})`)
 				end
 
-				if self._subMenuConfig[v] then
+				if not isSideSheetEnabled and self._subMenuConfig[v] then
 					-- This item has a sub-menu configured, populate the children
-					if valid(v) then
+					if self:isIntegrationValid(v) then
 						local child = iconProps(v)
 						validIconCount += 1
 						collectMenu(self._subMenuConfig[v], child, windowList)
@@ -715,7 +770,7 @@ function ChromeService:updateMenuList()
 					end
 				else
 					-- Standard item addition, check for valid and add depending on integration type
-					if valid(v) then
+					if self:isIntegrationValid(v) then
 						local isWindowOpen = self:isWindowOpen(v)
 						if isWindowOpen then
 							table.insert(windowList, windowProps(v))
@@ -742,11 +797,6 @@ function ChromeService:updateMenuList()
 		table.remove(root.children, #root.children)
 	end
 
-	if self._orderAlignment:get() == Enum.HorizontalAlignment.Left then
-		root.children = reverse(root.children)
-		reverseOrder(root.children)
-	end
-
 	if FFlagEnableChromeWindowsNotInMenu then
 		local windowIds = {}
 		for _, w in windowList do
@@ -765,9 +815,83 @@ function ChromeService:updateMenuList()
 	self:repairSelected()
 end
 
+if isSideSheetEnabled then
+	function ChromeService:updateSideSheet()
+		local order = 0 -- A general order that items are adding to the menu. Can be used to control LayoutOrder
+		local aboveFold = {}
+		local unibar = {}
+		local belowFold = {}
+		local sessionAction = {}
+		local scrollableContentTopWidgets = {}
+		local scrollableContentBottomWidgets = {}
+
+		local function addIntegration(id: IntegrationId)
+			local integration = self._integrations[id]
+
+			if
+				not integration
+				or integration.sideSheetPlacement == SideSheetPlacement.None
+				or not self:isIntegrationValid(id)
+			then
+				return
+			end
+
+			if integration.sideSheetPlacement == SideSheetPlacement.Unibar then
+				table.insert(unibar, self:createIconProps(id, order))
+			elseif integration.sideSheetPlacement == SideSheetPlacement.AboveFold then
+				table.insert(aboveFold, self:createIconProps(id, order))
+			elseif integration.sideSheetPlacement == SideSheetPlacement.BelowFold then
+				table.insert(belowFold, self:createIconProps(id, order))
+			elseif integration.sideSheetPlacement == SideSheetPlacement.SessionAction then
+				table.insert(sessionAction, self:createIconProps(id, order))
+			elseif integration.sideSheetPlacement == SideSheetPlacement.ScrollableContentTop then
+				if FFlagEnableSideSheetWidgets or isPioneerLaunch() then
+					local widgetProps = self:createWidgetProps(id, order)
+					if widgetProps then
+						table.insert(scrollableContentTopWidgets, widgetProps)
+					end
+				end
+			elseif integration.sideSheetPlacement == SideSheetPlacement.ScrollableContentBottom then
+				if FFlagEnableSideSheetWidgets or isPioneerLaunch() then
+					local widgetProps = self:createWidgetProps(id, order)
+					if widgetProps then
+						table.insert(scrollableContentBottomWidgets, widgetProps)
+					end
+				end
+			end
+		end
+
+		for _, config in self._menuConfig do
+			for _, id in config do
+				order += 1
+				addIntegration(id)
+			end
+		end
+
+		for _, config in self._subMenuConfig do
+			for _, id in config do
+				order += 1
+				addIntegration(id)
+			end
+		end
+
+		registerSideSheetIntegrations({
+			unibarIntegrations = unibar,
+			aboveFoldIntegrations = aboveFold,
+			belowFoldIntegrations = belowFold,
+			sessionActionIntegrations = sessionAction,
+			scrollableContentTopWidgetIntegrations = scrollableContentTopWidgets,
+			scrollableContentBottomWidgetIntegrations = scrollableContentBottomWidgets,
+		})
+	end
+end
+
 function ChromeService:availabilityChanged(component: IntegrationProps)
 	self:updateNotificationTotals()
 	self:updateMenuList()
+	if isSideSheetEnabled then
+		self:updateSideSheet()
+	end
 end
 
 function ChromeService:subMenuNotifications(subMenuId: IntegrationId)
@@ -845,13 +969,6 @@ function ChromeService:updateNotificationTotals()
 	end
 end
 
-function ChromeService:configureReset()
-	self._menuConfig = {}
-	self._subMenuConfig = {}
-	self._subMenuNotifications = {}
-	self:updateMenuList()
-end
-
 function ChromeService:configureMenu(menuConfig: MenuConfig)
 	self._menuConfig = menuConfig
 	self:updateNotificationTotals()
@@ -859,15 +976,15 @@ function ChromeService:configureMenu(menuConfig: MenuConfig)
 end
 
 function ChromeService:configureSubMenu(parent: IntegrationId, menuConfig: IntegrationIdList)
-	if FFlagEnableSideSheet and registerVerticalIntegrations then
-		registerVerticalIntegrations(menuConfig, self._integrations)
-	end
 	self._subMenuConfig[parent] = menuConfig
 	if not self._subMenuNotifications[parent] then
 		self._subMenuNotifications[parent] = NotifySignal.new(true)
 	end
 	self:updateNotificationTotals()
 	self:updateMenuList()
+	if isSideSheetEnabled then
+		self:updateSideSheet()
+	end
 end
 
 if FFlagEnableConsoleExpControls then
@@ -1022,6 +1139,22 @@ function ChromeService:withinCurrentSubmenu(componentId: IntegrationId)
 	end
 
 	return false
+end
+
+if isSideSheetEnabled then
+	function ChromeService:withinOpenSideSheet(componentId: IntegrationId)
+		if not getSideSheetVisibility() then
+			return false
+		end
+
+		for i, integration in self._integrations do
+			if integration.id == componentId and integration.sideSheetPlacement ~= SideSheetPlacement.None then
+				return true
+			end
+		end
+
+		return false
+	end
 end
 
 function ChromeService:windowPosition(componentId: IntegrationId)

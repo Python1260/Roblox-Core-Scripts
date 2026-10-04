@@ -7,15 +7,26 @@ local Images = require(script.Parent.Images)
 
 local UIBloxImages = UIBlox.App.ImageSet.Images
 
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
+
+local FFlagFixInGameMenuMoreButtonIcon = game:DefineFastFlag("FixInGameMenuMoreButtonIcon", false)
+
 return {
 	Images = {
 		RobloxLogo = Images["LuaApp/graphic/ic_logo"],
 		CloseButton = "rbxasset://textures/ui/TopBar/close.png",
 		RespawnIcon = Images["InGameMenu/Icons/RespawnIcon"],
-		ReportIcon = Images["LuaApp/icons/GameDetails/feedback"],
+		ReportIcon = if FFlagCoreUiMigrateUIBloxToFoundation
+			then "icons/actions/feedback"
+			else Images["LuaApp/icons/GameDetails/feedback"],
 
-		CloseModal = Images["LuaApp/icons/navigation/close"],
-		NavigateBack = Images["LuaApp/icons/navigation/pushBack"],
+		CloseModal = if FFlagCoreUiMigrateUIBloxToFoundation
+			then "icons/navigation/close"
+			else Images["LuaApp/icons/navigation/close"],
+		NavigateBack = if FFlagCoreUiMigrateUIBloxToFoundation
+			then "icons/navigation/pushBack"
+			else Images["LuaApp/icons/navigation/pushBack"],
 		NavigateForward = Images["LuaApp/icons/navigation/pushRight"],
 
 		SendInvite = Images["LuaApp/icons/GameDetails/invite"],
@@ -53,9 +64,15 @@ return {
 		UnFriend = Images["InGameMenu/Icons/UnFriend"],
 		Friends = Images["InGameMenu/Icons/Friends"],
 
-		MoreActions = Images["LuaApp/icons/GameDetails/more"],
+		-- UIBloxImages (not the InGameMenu-local Images) carries a Foundation migration
+		-- key: in-experience UIBlox Button always routes to Foundation, whose findIcon
+		-- rejects the legacy spritesheet slice and renders no glyph (APPEXP-4212).
+		MoreActions = if FFlagFixInGameMenuMoreButtonIcon
+			then UIBloxImages["icons/common/more"]
+			else Images["LuaApp/icons/GameDetails/more"],
 		ViewAvatar = Images["InGameMenu/Icons/ViewAvatar"],
 
+		RoundedRectImageKey = "component_assets/circle_17",
 		RoundedRect = {
 			ScaleType = Enum.ScaleType.Slice,
 			SliceCenter = Rect.new(8, 8, 9, 9),
@@ -72,7 +89,9 @@ return {
 			SliceCenter = Rect.new(0, 0, 0, 0),
 			Image = "rbxasset://textures/ui/InGameMenu/WhiteSquare.png",
 		},
-		Circle = UIBloxImages["component_assets/circle_29"],
+		Circle = if FFlagCoreUiMigrateUIBloxToFoundation
+			then "component_assets/circle_29"
+			else UIBloxImages["component_assets/circle_29"],
 		CircleCutout = "rbxasset://textures/ui/InGameMenu/CircleCutout.png",
 
 		QuarterCircle = "rbxasset://textures/ui/InGameMenu/QuarterCircle.png",
@@ -113,6 +132,8 @@ return {
 		},
 		SliderButton = Images["InGameMenu/Graphic/SliderButton"],
 
-		PlaceholderGameIcon = UIBloxImages["icons/imageUnavailable"],
+		PlaceholderGameIcon = if FFlagCoreUiMigrateUIBloxToFoundation
+			then "icons/imageUnavailable"
+			else UIBloxImages["icons/imageUnavailable"],
 	},
 }

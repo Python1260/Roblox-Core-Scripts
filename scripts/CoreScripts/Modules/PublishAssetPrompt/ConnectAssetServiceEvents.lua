@@ -9,17 +9,23 @@ local AssetService = game:GetService("AssetService")
 local AvatarCreationService = game:GetService("AvatarCreationService")
 local ExpAuthSvc = game:GetService("ExperienceAuthService")
 local RobloxReplicatedStorage = game:GetService("RobloxReplicatedStorage")
+local CorePackages = game:GetService("CorePackages")
 
 local PublishAssetPrompt = script.Parent
 local OpenPublishAssetPrompt = require(PublishAssetPrompt.Thunks.OpenPublishAssetPrompt)
 local OpenPublishAvatarPrompt = require(PublishAssetPrompt.Thunks.OpenPublishAvatarPrompt)
 local OpenPublishAvatarAssetPrompt = require(PublishAssetPrompt.Thunks.OpenPublishAvatarAssetPrompt)
+local OpenPublishMakeupLookPrompt = require(PublishAssetPrompt.Thunks.OpenPublishMakeupLookPrompt)
 local OpenResultModal = require(PublishAssetPrompt.Thunks.OpenResultModal)
 local SetHumanoidModel = require(PublishAssetPrompt.Actions.SetHumanoidModel)
 local SetAccessoryInstance = require(PublishAssetPrompt.Actions.SetAccessoryInstance)
 local SetPriceInRobux = require(PublishAssetPrompt.Actions.SetPriceInRobux)
 local OpenValidationErrorModal = require(PublishAssetPrompt.Actions.OpenValidationErrorModal)
+local Analytics = require(CorePackages.Workspace.Packages.PurchasePrompt).PublishAssetAnalytics
 
+local GetFFlagUploadMakeupSupport = require(PublishAssetPrompt.Flags.GetFFlagUploadMakeupSupport)
+local FFlagPublishAssetPromptItemDetailsTelemetry =
+	require(PublishAssetPrompt.Flags.FFlagPublishAssetPromptItemDetailsTelemetry)
 local EngineFeaturePromptImportAnimationClipFromVideoAsyncEnabled =
 	game:GetEngineFeature("PromptImportAnimationClipFromVideoAsyncEnabled")
 
@@ -47,6 +53,18 @@ local function updateModelAttachmentsWithWrapDeformers(avatarModel: Instance)
 	end
 end
 
+local function setAnalyticsItemDetails(metadata)
+	if metadata["instanceToPublish"] or metadata["serializedInstance"] then
+		Analytics.setItemDetails(Analytics.ItemType.Asset, metadata["assetType"].Name)
+	elseif metadata["outfitToPublish"] then
+		Analytics.setItemDetails(Analytics.ItemType.Outfit, Enum.OutfitType.Avatar.Name)
+	elseif metadata["makeupLookToPublish"] then
+		Analytics.setItemDetails(Analytics.ItemType.Outfit, Enum.OutfitType.Makeup.Name)
+	elseif metadata["accessoryToPublish"] then
+		Analytics.setItemDetails(Analytics.ItemType.Asset, metadata["accessoryType"].Name)
+	end
+end
+
 local function ConnectAssetServiceEvents(store)
 	local connections = {}
 
@@ -62,6 +80,10 @@ local function ConnectAssetServiceEvents(store)
 				and scopes[1] == Enum.ExperienceAuthScope.CreatorAssetsCreate
 				and not isVideoToAnimationFlow
 			then
+				if FFlagPublishAssetPromptItemDetailsTelemetry then
+					setAnalyticsItemDetails(metadata)
+				end
+
 				-- We need to handle asset passed as either instance or as serialized string.
 				if metadata["instanceToPublish"] then
 					store:dispatch(
@@ -72,6 +94,9 @@ local function ConnectAssetServiceEvents(store)
 					store:dispatch(OpenPublishAssetPrompt(instance, metadata["assetType"], guid, scopes))
 				elseif metadata["outfitToPublish"] then
 					store:dispatch(OpenPublishAvatarPrompt(guid, scopes))
+				elseif GetFFlagUploadMakeupSupport() and metadata["makeupLookToPublish"] then
+					local makeupEntries = metadata["makeupEntries"]
+					store:dispatch(OpenPublishMakeupLookPrompt(guid, scopes, makeupEntries))
 				elseif metadata["accessoryToPublish"] then
 					local accessoryType = metadata["accessoryType"]
 					store:dispatch(OpenPublishAvatarAssetPrompt(accessoryType, guid, scopes))
@@ -97,7 +122,16 @@ local function ConnectAssetServiceEvents(store)
 			connections,
 			AvatarCreationService.UgcValidationSuccess:Connect(function(guid, serializedModel, priceFromToken)
 				local state = store:getState()
-				if state and state.promptRequest.promptInfo.promptType == "PublishAvatarAsset" then
+				if
+					state
+					and (
+						state.promptRequest.promptInfo.promptType == "PublishAvatarAsset"
+						or (
+							GetFFlagUploadMakeupSupport()
+							and state.promptRequest.promptInfo.promptType == "PublishMakeupLook"
+						)
+					)
+				then
 					local avatarAssetInstance = AvatarCreationService:DeserializeAvatarModel(serializedModel)
 					store:dispatch(SetAccessoryInstance(avatarAssetInstance))
 

@@ -13,10 +13,17 @@ local Cryo = InGameMenuDependencies.Cryo
 local RoactRodux = InGameMenuDependencies.RoactRodux
 local t = InGameMenuDependencies.t
 
-local withSelectionCursorProvider = UIBlox.App.SelectionImage.withSelectionCursorProvider
-local CursorKind = UIBlox.App.SelectionImage.CursorKind
+local Foundation = require(CorePackages.Packages.Foundation)
+local FFlagCoreUiMigrateUIBloxToFoundation = require(CorePackages.Workspace.Packages.SharedFlags).FFlagCoreUiMigrateUIBloxToFoundation
 
-local withStyle = UIBlox.Core.Style.withStyle
+local withSelectionCursorProvider = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.UNSTABLE.withCursorMigration
+	else UIBlox.App.SelectionImage.withSelectionCursorProvider
+local CursorKind = if FFlagCoreUiMigrateUIBloxToFoundation
+	then Foundation.Enums.CursorType
+	else UIBlox.App.SelectionImage.CursorKind
+
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 local Images = UIBlox.App.ImageSet.Images
 
 local InGameMenu = script.Parent.Parent.Parent
@@ -432,7 +439,9 @@ function PlayersPage:renderWithLocalizedAndSelectionCursor(localized, getSelecti
 			SelectionImageObject = getSelectionCursor(CursorKind.RoundedRect),
 		}),
 	}, {
-		PlayerListContent = withStyle(function(style)
+		PlayerListContent = withFoundationOrUIBloxStyle(function(_tokens)
+			return {}
+		end, function(style)
 			return Roact.createElement("Frame", {
 				BackgroundTransparency = 1,
 				Size = UDim2.new(1, 0, 1, 0),

@@ -6,6 +6,8 @@ local ResponsiveProvider = Responsive.ResponsiveProvider
 local Tokens = require(script.Providers.Style.Tokens)
 local Types = require(script.Components.Types)
 
+local StyleSheetRegistry = require(script.StyleSheet.StyleSheetRegistry)
+
 local Packages = script.Parent
 local BuilderIcons = require(Packages.BuilderIcons)
 
@@ -13,6 +15,7 @@ export type ActionProps = Types.ActionProps
 export type AspectRatio = Types.AspectRatio
 export type Bindable<T> = Types.Bindable<T>
 export type CommonProps = Types.CommonProps
+export type CornerRadius = Types.CornerRadius
 export type FlexItem = Types.FlexItem
 export type ListLayout = Types.ListLayout
 export type Padding = Types.Padding
@@ -32,18 +35,26 @@ export type ColorStyle = Types.ColorStyle
 export type ColorStyleValue = Types.ColorStyleValue
 export type FontStyle = Types.FontStyle
 export type Tokens = Tokens.Tokens
+export type TokenOverrides = Tokens.TokenOverrides
 
 -- Enums and their types
 local AccessoryType = require(script.Enums.AccessoryType)
 local AlertSeverity = require(script.Enums.AlertSeverity)
 local AlertVariant = require(script.Enums.AlertVariant)
 local AvatarGroupType = require(script.Enums.AvatarGroupType)
+local AvatarIconSize = require(script.Enums.AvatarIconSize)
+local AvatarSize = require(script.Enums.AvatarSize)
+local BadgeShape = require(script.Enums.BadgeShape)
 local BadgeSize = require(script.Enums.BadgeSize)
 local BadgeVariant = require(script.Enums.BadgeVariant)
+local BannerContextPresentation = require(script.Enums.BannerContextPresentation)
+local BannerContextVariant = require(script.Enums.BannerContextVariant)
 local Breakpoint = require(script.Enums.Breakpoint)
 local ButtonVariant = require(script.Enums.ButtonVariant)
+local ChipGroupVariant = require(script.Enums.ChipGroupVariant)
 local ChipSize = require(script.Enums.ChipSize)
 local ChipVariant = require(script.Enums.ChipVariant)
+local ColorMode = require(script.Enums.ColorMode)
 local ControlState = require(script.Enums.ControlState)
 local CursorType = require(script.Enums.CursorType)
 local DateTimePickerVariant = require(script.Enums.DateTimePickerVariant)
@@ -51,30 +62,50 @@ local Device = require(script.Enums.Device)
 local DialogSize = require(script.Enums.DialogSize)
 local DividerVariant = require(script.Enums.DividerVariant)
 local FillBehavior = require(script.Enums.FillBehavior)
+local FontName = require(script.Enums.FontName)
 local IconName = BuilderIcons.Icon
 local IconPosition = require(script.Enums.IconPosition)
 local IconSize = require(script.Enums.IconSize)
 local IconVariant = BuilderIcons.IconVariant
+local InputFocusBehavior = require(script.Enums.InputFocusBehavior)
 local InputLabelSize = require(script.Enums.InputLabelSize)
 local InputPlacement = require(script.Enums.InputPlacement)
 local InputSize = require(script.Enums.InputSize)
 local InputVariant = require(script.Enums.InputVariant)
+local LinkVariant = require(script.Enums.LinkVariant)
 local ListItemInputType = require(script.Enums.ListItemInputType)
 local NumberInputControlsVariant = require(script.Enums.NumberInputControlsVariant)
 local OnChangeCallbackReason = require(script.Enums.OnChangeCallbackReason)
 local OnCloseCallbackReason = require(script.Enums.OnCloseCallbackReason)
+local OptionSelectorGroupSize = require(script.Enums.OptionSelectorGroupSize)
 local Orientation = require(script.Enums.Orientation)
+local PaginationSize = require(script.Enums.PaginationSize)
+local PaginationVariant = require(script.Enums.PaginationVariant)
+local Placement = require(script.Enums.Placement)
 local PopoverAlign = require(script.Enums.PopoverAlign)
 local PopoverSide = require(script.Enums.PopoverSide)
 local ProgressShape = require(script.Enums.ProgressShape)
 local ProgressSize = require(script.Enums.ProgressSize)
 local Radius = require(script.Enums.Radius)
+local RatingValue = require(script.Enums.RatingValue)
+local ScrubBehavior = require(script.Enums.ScrubBehavior)
 local SearchInputShape = require(script.Enums.SearchInputShape)
+local SegmentedControlVariant = require(script.Enums.SegmentedControlVariant)
+local ShortcutSeparator = require(script.Enums.ShortcutSeparator)
+local ShortcutVariant = require(script.Enums.ShortcutVariant)
+local SliderType = require(script.Enums.SliderType)
 local SliderVariant = require(script.Enums.SliderVariant)
 local StateLayerAffordance = require(script.Enums.StateLayerAffordance)
 local StateLayerMode = require(script.Enums.StateLayerMode)
+local StatusBadgeShape = require(script.Enums.StatusBadgeShape)
+local StatusBadgeSize = require(script.Enums.StatusBadgeSize)
+local StatusBadgeVariant = require(script.Enums.StatusBadgeVariant)
+local StatusIndicatorShape = require(script.Enums.StatusIndicatorShape)
+local StatusIndicatorSize = require(script.Enums.StatusIndicatorSize)
 local StatusIndicatorVariant = require(script.Enums.StatusIndicatorVariant)
+-- **DEPRECATED**: Theme is deprecated. Use ColorMode instead.
 local Theme = require(script.Enums.Theme)
+local ThemeName = require(script.Enums.ThemeName)
 local ThumbnailSize = require(script.Enums.ThumbnailSize)
 local ThumbnailType = require(script.Enums.ThumbnailType)
 local UserPresence = require(script.Enums.UserPresence)
@@ -83,13 +114,20 @@ local Visibility = require(script.Enums.Visibility)
 export type AccessoryType = AccessoryType.AccessoryType
 export type AlertSeverity = AlertSeverity.AlertSeverity
 export type AlertVariant = AlertVariant.AlertVariant
+export type BannerContextPresentation = BannerContextPresentation.BannerContextPresentation
+export type BannerContextVariant = BannerContextVariant.BannerContextVariant
 export type AvatarGroupType = AvatarGroupType.AvatarGroupType
+export type AvatarIconSize = AvatarIconSize.AvatarIconSize
+export type AvatarSize = AvatarSize.AvatarSize
+export type BadgeShape = BadgeShape.BadgeShape
 export type BadgeSize = BadgeSize.BadgeSize
 export type BadgeVariant = BadgeVariant.BadgeVariant
 export type Breakpoint = Breakpoint.Breakpoint
 export type ButtonVariant = ButtonVariant.ButtonVariant
+export type ChipGroupVariant = ChipGroupVariant.ChipGroupVariant
 export type ChipSize = ChipSize.ChipSize
 export type ChipVariant = ChipVariant.ChipVariant
+export type ColorMode = ColorMode.ColorMode
 export type ControlState = ControlState.ControlState
 export type CursorType = CursorType.CursorType
 export type DateTimePickerVariant = DateTimePickerVariant.DateTimePickerVariant
@@ -97,30 +135,50 @@ export type Device = Device.Device
 export type DialogSize = DialogSize.DialogSize
 export type DividerVariant = DividerVariant.DividerVariant
 export type FillBehavior = FillBehavior.FillBehavior
+export type FontName = FontName.FontName
 export type IconName = BuilderIcons.Icon
 export type IconPosition = IconPosition.IconPosition
 export type IconSize = IconSize.IconSize
 export type IconVariant = BuilderIcons.IconVariant
+export type InputFocusBehavior = InputFocusBehavior.InputFocusBehavior
 export type InputLabelSize = InputLabelSize.InputLabelSize
 export type InputPlacement = InputPlacement.InputPlacement
 export type InputSize = InputSize.InputSize
 export type InputVariant = InputVariant.InputVariant
+export type LinkVariant = LinkVariant.LinkVariant
 export type ListItemInputType = ListItemInputType.ListItemInputType
 export type NumberInputControlsVariant = NumberInputControlsVariant.NumberInputControlsVariant
+export type ScrubBehavior = ScrubBehavior.ScrubBehavior
 export type OnChangeCallbackReason = OnChangeCallbackReason.OnChangeCallbackReason
 export type OnCloseCallbackReason = OnCloseCallbackReason.OnCloseCallbackReason
+export type OptionSelectorGroupSize = OptionSelectorGroupSize.OptionSelectorGroupSize
 export type Orientation = Orientation.Orientation
+export type PaginationSize = PaginationSize.PaginationSize
+export type PaginationVariant = PaginationVariant.PaginationVariant
+export type Placement = Placement.Placement
 export type PopoverAlign = PopoverAlign.PopoverAlign
 export type PopoverSide = PopoverSide.PopoverSide
 export type ProgressShape = ProgressShape.ProgressShape
 export type ProgressSize = ProgressSize.ProgressSize
+export type RatingValue = RatingValue.RatingValue
 export type Radius = Radius.Radius
 export type SearchInputShape = SearchInputShape.SearchInputShape
+export type SegmentedControlVariant = SegmentedControlVariant.SegmentedControlVariant
+export type ShortcutSeparator = ShortcutSeparator.ShortcutSeparator
+export type ShortcutVariant = ShortcutVariant.ShortcutVariant
+export type SliderType = SliderType.SliderType
 export type SliderVariant = SliderVariant.SliderVariant
 export type StateLayerAffordance = StateLayerAffordance.StateLayerAffordance
 export type StateLayerMode = StateLayerMode.StateLayerMode
+export type StatusBadgeShape = StatusBadgeShape.StatusBadgeShape
+export type StatusBadgeSize = StatusBadgeSize.StatusBadgeSize
+export type StatusBadgeVariant = StatusBadgeVariant.StatusBadgeVariant
+export type StatusIndicatorShape = StatusIndicatorShape.StatusIndicatorShape
+export type StatusIndicatorSize = StatusIndicatorSize.StatusIndicatorSize
 export type StatusIndicatorVariant = StatusIndicatorVariant.StatusIndicatorVariant
+-- **DEPRECATED**: Theme is deprecated. Use ColorMode instead.
 export type Theme = Theme.Theme
+export type ThemeName = ThemeName.ThemeName
 export type ThumbnailSize = ThumbnailSize.ThumbnailSize
 export type ThumbnailType = ThumbnailType.ThumbnailType
 export type UserPresence = UserPresence.UserPresence
@@ -132,11 +190,24 @@ local Accordion = require(script.Components.Accordion)
 export type AccordionProps = Accordion.AccordionProps
 export type AccordionItemProps = Accordion.AccordionItemProps
 
+local Alert = require(script.Components.Alert)
+export type AlertProps = Alert.AlertProps
+
+local BannerContext = require(script.Components.BannerContext)
+export type BannerContextProps = BannerContext.BannerContextProps
+
 local Avatar = require(script.Components.Avatar)
 export type AvatarProps = Avatar.AvatarProps
 
 local AvatarGroup = require(script.Components.AvatarGroup)
 export type AvatarGroupProps = AvatarGroup.AvatarGroupProps
+export type AvatarGroupItem = AvatarGroup.AvatarGroupItem
+
+local AvatarIcon = require(script.Components.AvatarIcon)
+export type AvatarIconProps = AvatarIcon.AvatarIconProps
+
+local AvatarIconGroup = require(script.Components.AvatarIconGroup)
+export type AvatarIconGroupProps = AvatarIconGroup.AvatarIconGroupProps
 
 local Badge = require(script.Components.Badge)
 export type BadgeProps = Badge.BadgeProps
@@ -147,17 +218,35 @@ export type BaseMenuItem = BaseMenu.BaseMenuItem
 export type BaseMenuItems<Item = BaseMenuItem> = BaseMenu.BaseMenuItems<Item>
 export type BaseMenuItemGroup<Item = BaseMenuItem> = BaseMenu.BaseMenuItemGroup<Item>
 
+local Breadcrumb = require(script.Components.Breadcrumb)
+export type BreadcrumbProps = Breadcrumb.BreadcrumbProps
+export type BreadcrumbItem = Breadcrumb.BreadcrumbItem
+
 local Button = require(script.Components.Button)
 export type ButtonProps = Button.ButtonProps
+
+local ButtonGroup = require(script.Components.ButtonGroup)
+export type ButtonGroupProps = ButtonGroup.ButtonGroupProps
+export type ButtonGroupItem = ButtonGroup.ButtonGroupItem
 
 local Checkbox = require(script.Components.Checkbox)
 export type CheckboxProps = Checkbox.CheckboxProps
 
+local CheckboxGroup = require(script.Components.CheckboxGroup)
+export type CheckboxGroupProps = CheckboxGroup.CheckboxGroupProps
+
 local Coachmark = require(script.Components.Coachmark)
 export type CoachmarkProps = Coachmark.CoachmarkProps
 
+local EducationalTooltip = require(script.Components.EducationalTooltip)
+export type EducationalTooltipProps = EducationalTooltip.EducationalTooltipProps
+
 local Chip = require(script.Components.Chip)
 export type ChipProps = Chip.ChipProps
+
+local ChipGroup = require(script.Components.ChipGroup)
+export type ChipGroupProps = ChipGroup.ChipGroupProps
+export type ChipGroupItem = ChipGroup.ChipGroupItem
 
 local ColorPicker = require(script.Components.ColorPicker)
 export type ColorPickerProps = ColorPicker.ColorPickerProps
@@ -186,6 +275,14 @@ export type GridProps = Grid.GridProps
 export type GridCellProps = Grid.GridCellProps
 export type GridDebugProps = Grid.GridDebugProps
 
+local HeaderBar = require(script.Components.HeaderBar)
+export type HeaderBarAction = HeaderBar.HeaderBarAction
+export type HeaderBarActionsProps = HeaderBar.HeaderBarActionsProps
+export type HeaderBarContentProps = HeaderBar.HeaderBarContentProps
+export type HeaderBarLeadingProps = HeaderBar.HeaderBarLeadingProps
+export type HeaderBarProps = HeaderBar.HeaderBarProps
+export type HeaderBarTrailingProps = HeaderBar.HeaderBarTrailingProps
+
 local Empty = require(script.Components.Empty)
 export type EmptyProps = Empty.EmptyProps
 
@@ -201,14 +298,21 @@ export type IconButtonProps = IconButton.IconButtonProps
 local Image = require(script.Components.Image)
 export type ImageProps = Image.ImageProps
 
+local InputChip = require(script.Components.InputChip)
+export type InputChipProps = InputChip.InputChipProps
+
 local InputLabel = require(script.Components.InputLabel)
 export type InputLabelProps = InputLabel.InputLabelProps
 
+-- **DEPRECATED**: KeyLabel is deprecated. Use Shortcut instead.
 local KeyLabel = require(script.Components.KeyLabel)
 export type KeyLabelProps = KeyLabel.KeyLabelProps
 
 local Knob = require(script.Components.Knob)
 export type KnobProps = Knob.KnobProps
+
+local Link = require(script.Components.Link)
+export type LinkProps = Link.LinkProps
 
 local List = require(script.Components.List)
 export type ListProps = List.ListProps
@@ -230,6 +334,9 @@ local OptionSelectorGroup = require(script.Components.OptionSelectorGroup)
 export type OptionSelectorGroupProps = OptionSelectorGroup.OptionSelectorGroupProps
 export type OptionSelectorGroupItemProps = OptionSelectorGroup.OptionSelectorGroupItemProps
 
+local Pagination = require(script.Components.Pagination)
+export type PaginationProps = Pagination.PaginationProps
+
 local Popover = require(script.Components.Popover)
 export type PopoverProps = Popover.PopoverProps
 export type PopoverAnchorProps = Popover.PopoverAnchorProps
@@ -241,6 +348,9 @@ export type ProgressProps = Progress.ProgressProps
 local RadioGroup = require(script.Components.RadioGroup)
 export type RadioGroupProps = RadioGroup.RadioGroupProps
 export type RadioGroupItemProps = RadioGroup.RadioGroupItemProps
+
+local Rating = require(script.Components.Rating)
+export type RatingProps = Rating.RatingProps
 
 local SearchInput = require(script.Components.SearchInput)
 export type SearchInputProps = SearchInput.SearchInputProps
@@ -255,8 +365,14 @@ local Sheet = require(script.Components.Sheet)
 export type SheetProps = Sheet.SheetProps
 export type SheetActionsProps = Sheet.SheetActionsProps
 export type SheetContentProps = Sheet.SheetContentProps
+export type SheetFullBleedProps = Sheet.SheetFullBleedProps
 export type SheetHeaderProps = Sheet.SheetHeaderProps
 export type SheetRef = Sheet.SheetRef
+
+local Shortcut = require(script.Components.Shortcut)
+export type ShortcutProps = Shortcut.ShortcutProps
+export type ShortcutKey = Shortcut.ShortcutKey
+export type ShortcutSize = Shortcut.ShortcutSize
 
 local Skeleton = require(script.Components.Skeleton)
 export type SkeletonProps = Skeleton.SkeletonProps
@@ -268,8 +384,18 @@ local Snackbar = require(script.Components.Snackbar)
 export type SnackbarProps = Snackbar.SnackbarProps
 export type SnackbarAction = Snackbar.SnackbarAction
 
+local StatusBadge = require(script.Components.StatusBadge)
+export type StatusBadgeProps = StatusBadge.StatusBadgeProps
+
 local StatusIndicator = require(script.Components.StatusIndicator)
 export type StatusIndicatorProps = StatusIndicator.StatusIndicatorProps
+
+local Stepper = require(script.Components.Stepper)
+export type StepperProps = Stepper.StepperProps
+export type Step = Stepper.Step
+
+local AlertActions = require(script.Components.AlertActions)
+export type AlertAction = AlertActions.AlertAction
 
 local SystemBanner = require(script.Components.SystemBanner)
 export type SystemBannerProps = SystemBanner.SystemBannerProps
@@ -291,6 +417,9 @@ export type TextInputRef = Types.TextInputRef
 local Toggle = require(script.Components.Toggle)
 export type ToggleProps = Toggle.ToggleProps
 
+local ToggleGroup = require(script.Components.ToggleGroup)
+export type ToggleGroupProps = ToggleGroup.ToggleGroupProps
+
 local Tooltip = require(script.Components.Tooltip)
 export type TooltipProps = Tooltip.TooltipProps
 
@@ -304,50 +433,69 @@ export type ViewProps = View.ViewProps
 local Foundation = strict({
 	-- Components
 	Accordion = Accordion,
+	Alert = Alert,
+	BannerContext = BannerContext,
 	Avatar = Avatar,
 	AvatarGroup = AvatarGroup,
+	AvatarIcon = AvatarIcon,
+	AvatarIconGroup = AvatarIconGroup,
 	Badge = Badge,
+	Breadcrumb = Breadcrumb,
 	Button = Button,
+	ButtonGroup = ButtonGroup,
 	Checkbox = Checkbox,
+	CheckboxGroup = CheckboxGroup,
 	Chip = Chip,
+	ChipGroup = ChipGroup,
 	Coachmark = Coachmark,
 	ColorPicker = ColorPicker,
 	DateTimePicker = DateTimePicker,
 	Dialog = Dialog,
 	Divider = Divider,
 	Dropdown = Dropdown,
+	EducationalTooltip = EducationalTooltip,
 	Grid = Grid,
+	HeaderBar = HeaderBar,
 	Empty = Empty,
 	FeedbackAlert = FeedbackAlert,
 	Icon = Icon,
 	IconButton = IconButton,
 	Image = Image,
+	InputChip = InputChip,
 	InputLabel = InputLabel,
+	-- **DEPRECATED**: KeyLabel is deprecated. Use Shortcut instead.
 	KeyLabel = KeyLabel,
 	Knob = Knob,
+	Link = Link,
 	List = List,
 	Loading = Loading,
 	Menu = Menu,
 	NumberInput = NumberInput,
 	OptionSelectorGroup = OptionSelectorGroup,
+	Pagination = Pagination,
 	Pill = Chip,
 	Popover = Popover,
 	Progress = Progress,
 	RadioGroup = RadioGroup,
+	Rating = Rating,
 	SearchInput = SearchInput,
 	ScrollView = ScrollView,
 	SegmentedControl = SegmentedControl,
 	Sheet = Sheet,
+	Shortcut = Shortcut,
 	Skeleton = Skeleton,
 	Slider = Slider,
 	Snackbar = Snackbar,
+	StatusBadge = StatusBadge,
 	StatusIndicator = StatusIndicator,
+	Stepper = Stepper,
 	SystemBanner = SystemBanner,
 	Tabs = Tabs,
 	Text = Text,
 	TextArea = TextArea,
 	TextInput = TextInput,
 	Toggle = Toggle,
+	ToggleGroup = ToggleGroup,
 	Tooltip = Tooltip,
 	Toast = Toast,
 	View = View,
@@ -378,9 +526,11 @@ local Foundation = strict({
 		useScaledValue = require(script.Utility.useScaledValue),
 		useStyleSheet = require(script.Providers.Style.StyleSheetContext).useStyleSheet,
 		useStyleTags = require(script.Providers.Style.useStyleTags),
+		useTextSize = require(script.Utility.useTextSize),
 		useTextSizeOffset = require(script.Providers.Style.useTextSizeOffset),
 		useTokens = require(script.Providers.Style.useTokens),
 		withCursor = require(script.Providers.Cursor.withCursor),
+		withTokens_DEPRECATED = require(script.Providers.Style.withTokens_DEPRECATED),
 	},
 
 	-- Enums
@@ -388,7 +538,12 @@ local Foundation = strict({
 		AccessoryType = AccessoryType,
 		AlertSeverity = AlertSeverity,
 		AlertVariant = AlertVariant,
+		BannerContextPresentation = BannerContextPresentation,
+		BannerContextVariant = BannerContextVariant,
 		AvatarGroupType = AvatarGroupType,
+		AvatarIconSize = AvatarIconSize,
+		AvatarSize = AvatarSize,
+		BadgeShape = BadgeShape,
 		BadgeSize = BadgeSize,
 		BadgeVariant = BadgeVariant,
 		Breakpoint = Breakpoint,
@@ -398,8 +553,10 @@ local Foundation = strict({
 		-- **DEPRECATED**: CheckboxSize is deprecated. Use InputSize instead.
 		CheckboxSize = require(script.Enums.InputSize),
 		ControlState = ControlState,
+		ChipGroupVariant = ChipGroupVariant,
 		ChipSize = ChipSize,
 		ChipVariant = ChipVariant,
+		ColorMode = ColorMode,
 		CursorType = CursorType,
 		DateTimePickerVariant = DateTimePickerVariant,
 		Device = Device,
@@ -408,32 +565,52 @@ local Foundation = strict({
 		DividerOrientation = require(script.Enums.Orientation),
 		DividerVariant = DividerVariant,
 		FillBehavior = FillBehavior,
+		FontName = FontName,
 		IconName = IconName,
 		IconPosition = IconPosition,
 		IconSize = IconSize,
 		IconVariant = IconVariant,
+		InputFocusBehavior = InputFocusBehavior,
 		InputSize = InputSize,
 		InputVariant = InputVariant,
 		InputPlacement = InputPlacement,
 		InputLabelSize = InputLabelSize,
+		LinkVariant = LinkVariant,
 		ListItemInputType = ListItemInputType,
 		NumberInputControlsVariant = NumberInputControlsVariant,
+		ScrubBehavior = ScrubBehavior,
 		OnChangeCallbackReason = OnChangeCallbackReason,
 		OnCloseCallbackReason = OnCloseCallbackReason,
+		OptionSelectorGroupSize = OptionSelectorGroupSize,
 		Orientation = Orientation,
+		PaginationSize = PaginationSize,
+		PaginationVariant = PaginationVariant,
+		Placement = Placement,
 		PopoverAlign = PopoverAlign,
 		PopoverSide = PopoverSide,
 		ProgressShape = ProgressShape,
 		ProgressSize = ProgressSize,
+		RatingValue = RatingValue,
 		Radius = Radius,
 		SearchInputShape = SearchInputShape,
+		SegmentedControlVariant = SegmentedControlVariant,
+		ShortcutSeparator = ShortcutSeparator,
+		ShortcutVariant = ShortcutVariant,
 		-- **DEPRECATED**: ScrollBarVisibility is deprecated. Use Visibility instead.
 		ScrollBarVisibility = require(script.Enums.Visibility),
+		SliderType = SliderType,
 		SliderVariant = SliderVariant,
 		StateLayerAffordance = StateLayerAffordance,
 		StateLayerMode = StateLayerMode,
+		StatusBadgeShape = StatusBadgeShape,
+		StatusBadgeSize = StatusBadgeSize,
+		StatusBadgeVariant = StatusBadgeVariant,
+		StatusIndicatorShape = StatusIndicatorShape,
+		StatusIndicatorSize = StatusIndicatorSize,
 		StatusIndicatorVariant = StatusIndicatorVariant,
+		-- **DEPRECATED**: Theme is deprecated. Use ColorMode instead.
 		Theme = Theme,
+		ThemeName = ThemeName,
 		ThumbnailType = ThumbnailType,
 		ThumbnailSize = ThumbnailSize,
 		-- **DEPRECATED**: ToggleSize is deprecated. Use InputSize instead.
@@ -444,13 +621,20 @@ local Foundation = strict({
 
 	-- Utility
 	Utility = {
+		getStyleSheet = StyleSheetRegistry.getStyleSheet,
+		addStyleTags = StyleSheetRegistry.addStyleTags,
+		releaseStyleSheet = StyleSheetRegistry.releaseStyleSheet,
+		getTokens = Tokens.getTokens,
 		blendColors = require(script.Utility.blendColors),
 		composeStyleVariant = require(script.Utility.composeStyleVariant),
 		getBuilderIconForKeycode = require(script.Utility.getBuilderIconForKeycode),
 		getBuilderIconForCurrentPlatform = require(script.Utility.getBuilderIconForCurrentPlatform),
+		getBuilderIconVariant = require(script.Utility.getBuilderIconVariant),
 		getGridMetrics = require(script.Utility.getGridMetrics),
 		getRbxThumb = require(script.Utility.getRbxThumb),
 		getIconRichText = require(script.Utility.getIconRichText),
+		getTextBoundsAsync = require(script.Utility.getTextBoundsAsync),
+		getTextSizeOffset = require(script.Utility.getTextSizeOffset),
 		indexBindable = require(script.Utility.indexBindable),
 		-- **DEPRECATED**: Utility.mockComponent is deprecated. Use FoundationTestingLibrary.mockComponent instead.
 		mockComponent = require(script.Utility.mockComponent),
@@ -458,6 +642,7 @@ local Foundation = strict({
 		withDefaults = require(script.Utility.withDefaults),
 		isBuilderIcon = require(script.Utility.isBuilderIcon),
 		isPointInGuiObjectBounds = require(script.Utility.isPointInGuiObjectBounds),
+		normalizeFontFace = require(script.Utility.normalizeFontFace),
 		preloadCloudAssets = require(script.Utility.preloadAssets),
 		Flags = require(script.Utility.Flags),
 	},

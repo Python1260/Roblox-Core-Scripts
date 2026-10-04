@@ -3,10 +3,16 @@ local Types = require(root.util.Types)
 local Constants = require(root.Constants)
 local ValidationEnums = require(root.validationSystem.ValidationEnums)
 local CreateExpectedSchema = require(root.util.CreateExpectedSchema)
+local validateInstanceTreeAgainstSchema = require(root.util.validateInstanceTreeAgainstSchema)
 
 local ErrorSourceStrings = require(root.validationSystem.ErrorSourceStrings)
-local getFFlagUGCValidationExtendSchemaToIgnoreDescendants =
-	require(root.flags.getFFlagUGCValidationExtendSchemaToIgnoreDescendants)
+local getFFlagUGCValidationAnimationPackFolderStructure =
+	require(root.flags.getFFlagUGCValidationAnimationPackFolderStructure)
+local getFFlagUGCValidationAnimationPackDisableModelStructure =
+	require(root.flags.getFFlagUGCValidationAnimationPackDisableModelStructure)
+local getEngineFeatureEngineUGCValidateInstanceTreesEquivalent =
+	require(root.flags.getEngineFeatureEngineUGCValidateInstanceTreesEquivalent)
+local shouldValidateR15LegacyDuplicate = require(root.util.shouldValidateR15LegacyDuplicate)
 local ExpectedRootSchema = {}
 
 ExpectedRootSchema.categories = Constants.AllUploadCategories
@@ -15,87 +21,8 @@ ExpectedRootSchema.requiredData = {
 	ValidationEnums.SharedDataMember.rootInstance,
 	ValidationEnums.SharedDataMember.uploadCategory,
 	ValidationEnums.SharedDataMember.uploadEnum,
+	ValidationEnums.SharedDataMember.consumerConfig,
 }
-
-local function checkName(nameList: any, instanceName: string)
-	if type(nameList) == "table" then
-		return table.find(nameList, instanceName) ~= nil
-	end
-	return nameList == instanceName
-end
-
-local function getReadableName(nameList: any)
-	if type(nameList) == "table" then
-		return table.concat(nameList, " or ")
-	elseif type(nameList) == "string" then
-		return nameList
-	end
-	return "*"
-end
-
-local function validateInstancesFromSchema(
-	instance: Instance,
-	schema: any,
-	authorizedSet: {},
-	reporter: Types.ValidationReporter
-)
-	authorizedSet[instance] = true
-	if getFFlagUGCValidationExtendSchemaToIgnoreDescendants() then
-		if schema._ignoreDescendants then
-			assert(
-				not schema._children,
-				"if _ignoreDescendants is true, there should be no descendants in the schema as they would be ignored anyway"
-			)
-			for _, descendant in instance:GetDescendants() do
-				authorizedSet[descendant] = true
-			end
-
-			return
-		end
-	end
-
-	for _, childSchema in (schema._children or {}) do
-		local found = false
-		for _, child in instance:GetChildren() do
-			if
-				authorizedSet[child] == nil
-				and child.ClassName == childSchema.ClassName
-				and (childSchema.Name == nil or checkName(childSchema.Name, child.Name))
-			then
-				validateInstancesFromSchema(child, childSchema, authorizedSet, reporter)
-				found = true
-				break
-			end
-		end
-
-		if not found and not childSchema._optional then
-			reporter:fail(ErrorSourceStrings.Keys.AssetSchemaMissingItem, {
-				ParentPath = instance:GetFullName(),
-				ExpectedClass = childSchema.ClassName,
-				ExpectedName = getReadableName(childSchema.Name),
-			})
-		end
-	end
-end
-
-local function validateNoInstancesOutsideSchema(
-	instance: Instance,
-	authorizedSet: {},
-	reporter: Types.ValidationReporter
-)
-	local unauthorizedDescendantPaths = {}
-	for _, descendant in pairs(instance:GetDescendants()) do
-		if authorizedSet[descendant] == nil then
-			table.insert(unauthorizedDescendantPaths, descendant:GetFullName())
-		end
-	end
-
-	if #unauthorizedDescendantPaths > 0 then
-		reporter:fail(ErrorSourceStrings.Keys.AssetSchemaUnexpectedItems, {
-			UnexpectedDescendantPaths = table.concat(unauthorizedDescendantPaths, ", "),
-		})
-	end
-end
 
 ExpectedRootSchema.run = function(reporter: Types.ValidationReporter, data: Types.SharedData)
 	local instance: Instance, category: string, uploadEnum: Types.UploadEnum =
@@ -111,29 +38,38 @@ ExpectedRootSchema.run = function(reporter: Types.ValidationReporter, data: Type
 	local schema
 
 	if uploadEnum.bundleType then
-		-- For bundle uploads, we will recheck all the asset schemas and display an early abort message upon failure
-		local fullBodyData = data.entrypointInput :: Types.FullBodyData
-		schema = CreateExpectedSchema.generateBundleSchema(fullBodyData)
+		if uploadEnum.bundleType == Enum.BundleType.Animations then
+			if
+				not getFFlagUGCValidationAnimationPackDisableModelStructure()
+				and getFFlagUGCValidationAnimationPackFolderStructure()
+			then
+				schema = CreateExpectedSchema.generateAnimationPackBundleSchema(instance)
+			else
+				schema = CreateExpectedSchema.generateAnimationPackBundleSchema(nil)
+			end
+		else
+			-- For bundle uploads, we will recheck all the asset schemas and display an early abort message upon failure
+			local fullBodyData = data.entrypointInput :: Types.FullBodyData
+			schema = CreateExpectedSchema.generateBundleSchema(fullBodyData)
+		end
 	else
 		schema = CreateExpectedSchema.generateAssetSchema(category, uploadEnum.assetType, instance)
 	end
 
-	local authorizedSet = {}
-	if schema.ClassName ~= instance.ClassName then
-		-- If the root is wrong, they probably just misclicked. Tell them to fix their selection instead of flooding schema errors
+	validateInstanceTreeAgainstSchema(instance, schema, reporter)
 
-		reporter:fail(ErrorSourceStrings.Keys.AssetSchemaWrongRootClass, {
-			RootClass = instance.ClassName,
-			ExpectedClass = schema.ClassName,
-		})
-	elseif schema.Name ~= nil and not checkName(schema.Name, instance.Name) then
-		reporter:fail(ErrorSourceStrings.Keys.AssetSchemaWrongRootName, {
-			RootName = instance.Name,
-			ExpectedName = schema.Name,
-		})
-	else
-		validateInstancesFromSchema(instance, schema, authorizedSet, reporter)
-		validateNoInstancesOutsideSchema(instance, authorizedSet, reporter)
+	if getEngineFeatureEngineUGCValidateInstanceTreesEquivalent() and shouldValidateR15LegacyDuplicate(data) then
+		-- On folder-structured body-part uploads the backend deserializes a separate R15Fixed copy, so it must
+		-- exist and match the schema. Enforce presence rather than skipping when absent, so a missing duplicate
+		-- can't slip through. (Redundant with the dmdiff tree-equivalence check, but if that is bypassed a
+		-- smuggled instance still surfaces as AssetSchemaUnexpectedItems.)
+		if data.r15LegacyDuplicateRoot == nil then
+			reporter:fail(ErrorSourceStrings.Keys.FolderStructureMismatch)
+		else
+			reporter:setReportingRoot(data.r15LegacyDuplicateRoot)
+			validateInstanceTreeAgainstSchema(data.r15LegacyDuplicateRoot, schema, reporter)
+			reporter:setReportingRoot(instance)
+		end
 	end
 end
 

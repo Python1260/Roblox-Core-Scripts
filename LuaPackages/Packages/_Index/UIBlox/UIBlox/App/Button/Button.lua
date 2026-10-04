@@ -155,6 +155,10 @@ Button.validateProps = t.strictInterface({
 	-- Optional selection cursor
 	cursor = t.optional(t.any),
 
+	-- Force UIBlox button render regardless of the useFoundationButton config flag.
+	-- DO NOT USE: internal escape hatch, not intended for external consumers.
+	DO_NOT_USE_useUIBloxButton = t.optional(t.boolean),
+
 	[React.Change.AbsoluteSize] = t.optional(t.callback),
 	[React.Change.AbsolutePosition] = t.optional(t.callback),
 })
@@ -229,7 +233,7 @@ local ButtonFunctionalWrapper = function(passedProps)
 end
 
 local ButtonForwardRef = React.forwardRef(function(buttonProps, ref)
-	if UIBloxConfig.useFoundationButton then
+	if UIBloxConfig.useFoundationButton and not buttonProps.DO_NOT_USE_useUIBloxButton then
 		local tokens = Foundation.Hooks.useTokens()
 		local props = Cryo.Dictionary.join(Button.defaultProps, buttonProps)
 		local isRoactGamepadEnabled = props.isRoactGamepadEnabled
@@ -237,8 +241,7 @@ local ButtonForwardRef = React.forwardRef(function(buttonProps, ref)
 		local maxWidth = FoundationButtonUtils.getMaxWidth(props.standardSize, props.maxWidth)
 
 		local innerRef = React.useRef(nil)
-		local finalRef = (if UIBloxConfig.useProvidedRefForButton then buttonProps.buttonRef or ref else ref)
-			or innerRef
+		local finalRef = (buttonProps.buttonRef or ref) or innerRef
 
 		React.useLayoutEffect(function()
 			local sizeConstraint
@@ -254,7 +257,7 @@ local ButtonForwardRef = React.forwardRef(function(buttonProps, ref)
 					sizeConstraint:Destroy()
 				end
 			end
-		end, { maxWidth, finalRef })
+		end, { maxWidth, finalRef } :: { unknown })
 
 		return React.createElement(
 			if isRoactGamepadEnabled then RoactGamepad.Focusable[Foundation.Button] else Foundation.Button,
@@ -279,6 +282,9 @@ local ButtonForwardRef = React.forwardRef(function(buttonProps, ref)
 				Position = props.position,
 				LayoutOrder = props.layoutOrder,
 
+				onAbsoluteSizeChanged = props[React.Change.AbsoluteSize],
+				onAbsolutePositionChanged = props[React.Change.AbsolutePosition],
+
 				Selectable = props.Selectable,
 				NextSelectionUp = props.NextSelectionUp,
 				NextSelectionDown = props.NextSelectionDown,
@@ -290,7 +296,7 @@ local ButtonForwardRef = React.forwardRef(function(buttonProps, ref)
 		return React.createElement(
 			ButtonFunctionalWrapper,
 			Cryo.Dictionary.join(buttonProps, {
-				buttonRef = if UIBloxConfig.useProvidedRefForButton then buttonProps.buttonRef or ref else ref,
+				buttonRef = buttonProps.buttonRef or ref,
 			})
 		)
 	end

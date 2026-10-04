@@ -8,9 +8,15 @@ local t = InGameMenuDependencies.t
 local UIBlox = InGameMenuDependencies.UIBlox
 local Cryo = InGameMenuDependencies.Cryo
 
-local withStyle = UIBlox.Core.Style.withStyle
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 local ImageSetLabel = UIBlox.Core.ImageSet.ImageSetLabel
 local Images = UIBlox.App.ImageSet.Images
+
+local Foundation = require(CorePackages.Packages.Foundation)
+local Icon = Foundation.Icon
+local IconSize = Foundation.Enums.IconSize
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
 
 local InGameMenu = script.Parent.Parent
 local withLocalization = require(InGameMenu.Localization.withLocalization)
@@ -117,7 +123,18 @@ function SearchBar:focus()
 end
 
 function SearchBar:render()
-	return withStyle(function(style)
+	return withFoundationOrUIBloxStyle(function(tokens)
+		return {
+			Theme = {
+				TextEmphasis = { Color = tokens.Color.Content.Emphasis.Color3, Transparency = tokens.Color.Content.Emphasis.Transparency },
+				TextDefault = { Color = tokens.Color.Content.Default.Color3, Transparency = tokens.Color.Content.Default.Transparency },
+			},
+			Font = {
+				BaseSize = 1,
+				Body = { Font = tokens.Typography.BodyLarge.Font, RelativeSize = tokens.Typography.BodyLarge.FontSize },
+			},
+		}
+	end, function(style)
 		return withLocalization({
 			search = "CoreScripts.InGameMenu.InviteFriends.Search",
 			cancel = "CoreScripts.InGameMenu.Cancel",
@@ -185,12 +202,18 @@ function SearchBar:render()
 						BorderRadius = Roact.createElement("UICorner", {
 							CornerRadius = UDim.new(0, 4),
 						}),
-						SearchImage = Roact.createElement(ImageSetLabel, {
-							LayoutOrder = 1,
-							BackgroundTransparency = 1,
-							Image = Images["icons/common/search_small"],
-							Size = UDim2.fromOffset(SEARCH_ICON_SIZE, SEARCH_ICON_SIZE),
-						}),
+						SearchImage = if FFlagCoreUiMigrateUIBloxToFoundation
+							then Roact.createElement(Icon, {
+								name = "icons/common/search_small",
+								size = IconSize.Medium,
+								LayoutOrder = 1,
+							})
+							else Roact.createElement(ImageSetLabel, {
+								LayoutOrder = 1,
+								BackgroundTransparency = 1,
+								Image = Images["icons/common/search_small"],
+								Size = UDim2.fromOffset(SEARCH_ICON_SIZE, SEARCH_ICON_SIZE),
+							}),
 						SearchInput = Roact.createElement("TextBox", {
 							LayoutOrder = 2,
 							BackgroundTransparency = 1,

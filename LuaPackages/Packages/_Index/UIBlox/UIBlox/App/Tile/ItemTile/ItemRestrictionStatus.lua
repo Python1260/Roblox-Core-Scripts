@@ -4,9 +4,12 @@ local Tile = ItemTile.Parent
 local App = Tile.Parent
 local UIBlox = App.Parent
 local Packages = UIBlox.Parent
+local UIBloxConfig = require(UIBlox.UIBloxConfig)
 
 local Roact = require(Packages.Roact)
 local t = require(Packages.t)
+local Foundation = require(Packages.Foundation)
+local normalizeFontFace = Foundation.Utility.normalizeFontFace
 local withStyle = require(UIBlox.Core.Style.withStyle)
 
 local GetTextSize = require(UIBlox.Core.Text.GetTextSize)
@@ -14,6 +17,8 @@ local Images = require(UIBlox.App.ImageSet.Images)
 local ImageSetComponent = require(UIBlox.Core.ImageSet.ImageSetComponent)
 
 local ItemTileEnums = require(Tile.Enum.ItemTileEnums)
+
+local FFlagFoundationFontFaceMigration = Foundation.Utility.Flags.FoundationFontFaceMigration
 
 local ItemRestrictionStatus = Roact.PureComponent:extend("ItemRestrictionStatus")
 
@@ -91,7 +96,16 @@ function ItemRestrictionStatus:render()
 			ImageTransparency = theme.UIDefault.Transparency,
 			ScaleType = Enum.ScaleType.Slice,
 			SliceCenter = Rect.new(8, 8, 9, 9),
-			Position = UDim2.new(0, tokens.Global.Size_100, 1, -tokens.Global.Size_100),
+			Position = UDim2.new(
+				0,
+				if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+					then tokens.Size.Size_200
+					else tokens.Global.Size_100,
+				1,
+				if UIBloxConfig.deprecateComponentGlobalSemanticTokenUse
+					then -tokens.Size.Size_200
+					else -tokens.Global.Size_100
+			),
 			Size = UDim2.new(0, xSize, 0, ySize),
 		}, {
 			Icon = icon and Roact.createElement(ImageSetComponent.Label, {
@@ -106,7 +120,8 @@ function ItemRestrictionStatus:render()
 
 			Text = Roact.createElement("TextLabel", {
 				BackgroundTransparency = 1,
-				Font = font,
+				Font = if FFlagFoundationFontFaceMigration then nil else font,
+				FontFace = if FFlagFoundationFontFaceMigration then normalizeFontFace(font) else nil,
 				TextSize = fontSize,
 				Text = additionalText,
 				TextColor3 = theme.TextMuted.Color,

@@ -10,10 +10,15 @@ local UIBlox = InGameMenuDependencies.UIBlox
 local t = InGameMenuDependencies.t
 local InGameMenu = script.Parent.Parent
 
-local withStyle = UIBlox.Core.Style.withStyle
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 local Images = UIBlox.App.ImageSet.Images
 local AssetImage = require(InGameMenu.Components.AssetImage)
 local ImageSetLabel = UIBlox.Core.ImageSet.ImageSetLabel
+
+local Foundation = require(CorePackages.Packages.Foundation)
+local Image = Foundation.Image
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
 
 local getGameIconRequestSize = require(InGameMenu.Components.getGameIconRequestSize)
 
@@ -46,7 +51,14 @@ function GameIcon:render()
 		if iconSize <= MAX_PLACEHOLDER_SIZE then
 			placeholderIconSize = iconSize
 		end
-		return withStyle(function(style)
+		return withFoundationOrUIBloxStyle(function(tokens)
+			return {
+				Theme = {
+					PlaceHolder = { Color = tokens.Color.Common.Shimmer.Color3, Transparency = tokens.Color.Common.Shimmer.Transparency },
+					UIDefault = { Color = tokens.Color.Shift.Shift_200.Color3, Transparency = tokens.Color.Shift.Shift_200.Transparency },
+				},
+			}
+		end, function(style)
 			return Roact.createElement(AssetImage.Label, {
 				imageKey = "RoundedRect",
 				Size = UDim2.fromOffset(iconSize, iconSize),
@@ -56,19 +68,28 @@ function GameIcon:render()
 				Position = self.props.Position,
 				AnchorPoint = self.props.AnchorPoint,
 			}, {
-				PlaceholderIcon = Roact.createElement(ImageSetLabel, {
-					BackgroundTransparency = 1,
-					Size = UDim2.fromOffset(placeholderIconSize, placeholderIconSize),
-					Position = UDim2.fromScale(0.5, 0.5),
-					Image = Images["icons/imageUnavailable"],
-					ImageColor3 = style.Theme.UIDefault.Color,
-					ImageTransparency = style.Theme.UIDefault.Transparency,
-					AnchorPoint = Vector2.new(0.5, 0.5),
-				}, {
-					UICorner = cornerRadius and cornerRadius ~= UDim.new(0, 0) and Roact.createElement("UICorner", {
-						CornerRadius = cornerRadius,
-					}) or nil,
-				}),
+				PlaceholderIcon = if FFlagCoreUiMigrateUIBloxToFoundation
+					then Roact.createElement(Image, {
+						Size = UDim2.fromOffset(placeholderIconSize, placeholderIconSize),
+						Position = UDim2.fromScale(0.5, 0.5),
+						Image = "icons/imageUnavailable",
+						imageStyle = { Color3 = style.Theme.UIDefault.Color, Transparency = style.Theme.UIDefault.Transparency },
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						cornerRadius = cornerRadius,
+					})
+					else Roact.createElement(ImageSetLabel, {
+						BackgroundTransparency = 1,
+						Size = UDim2.fromOffset(placeholderIconSize, placeholderIconSize),
+						Position = UDim2.fromScale(0.5, 0.5),
+						Image = Images["icons/imageUnavailable"],
+						ImageColor3 = style.Theme.UIDefault.Color,
+						ImageTransparency = style.Theme.UIDefault.Transparency,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+					}, {
+						UICorner = cornerRadius and cornerRadius ~= UDim.new(0, 0) and Roact.createElement("UICorner", {
+							CornerRadius = cornerRadius,
+						}) or nil,
+					}),
 			})
 		end)
 	else

@@ -8,8 +8,8 @@ local React = require(CorePackages.Packages.React)
 local SignalsReact = require(CorePackages.Packages.SignalsReact)
 
 local CoreScriptsRoactCommon = require(CorePackages.Workspace.Packages.CoreScriptsRoactCommon)
-local FocusNavigationUtils = require(CorePackages.Workspace.Packages.FocusNavigationUtils)
 local Responsive = require(CorePackages.Workspace.Packages.Responsive)
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
 
 local Settings = script.Parent.Parent.Parent
 local ReactPageSignal = require(Settings.ReactPageSignal)
@@ -22,7 +22,6 @@ local View = Foundation.View
 
 local Traversal = CoreScriptsRoactCommon.Traversal
 local LocalTraversalHistory = Traversal.LocalTraversalHistory.default
-local useLastInputMode = FocusNavigationUtils.useLastInputMode
 local GetInputModeStore = Responsive.GetInputModeStore
 local Input = Responsive.Input
 local TraversalConstants = Traversal.Constants
@@ -30,8 +29,7 @@ local HistoryPage = Traversal.HistoryPage
 local useHistoryItems = Traversal.useHistoryItems
 local FIntMaximumTraversalHistoryItemsFetch = Traversal.Flags.FIntMaximumTraversalHistoryItemsFetch
 local FFlagTraversalExpPagePaddingFixes = Traversal.Flags.FFlagTraversalExpPagePaddingFixes
-local FFlagTraversalPerfFixes = Traversal.Flags.FFlagTraversalPerfFixes
-local FFlagTraversalRemoveLastInput = Traversal.Flags.FFlagTraversalRemoveLastInput
+local FFlagIntegrateTraversalHistoryInSideSheet = SharedFlags.FFlagIntegrateTraversalHistoryInSideSheet
 
 export type TraversalHistoryPageProps = {}
 
@@ -44,10 +42,14 @@ local function TraversalHistoryPage(props: TraversalHistoryPageProps, ref: React
 	local historyItems = useHistoryItems(numItems)
 	local selectedUniverseId, setSelectedUniverseId = React.useState(TraversalConstants.NO_UNIVERSE_ID)
 	local reactPageSignal = SignalsReact.useSignalState(ReactPageSignal)
-	local lastInput
-	if not FFlagTraversalRemoveLastInput then
-		lastInput = useLastInputMode()
-	end
+	React.useEffect(function()
+		local lastInputType = UserInputService:GetLastInputType()
+		local inputMode = GetInputModeStore().getLastInputType()
+		local isUsingFocus = inputMode == Input.Directional or inputMode == Input.Pointer and lastInputType == Enum.UserInputType.Keyboard
+		if isUsingFocus and pageRef.current then
+			GuiService.SelectedCoreObject = pageRef.current
+		end
+	end, {})
 
 	local openDialog = React.useCallback(function(universeId: number)
 		setSelectedUniverseId(universeId)
@@ -55,18 +57,13 @@ local function TraversalHistoryPage(props: TraversalHistoryPageProps, ref: React
 
 	local closeDialog = React.useCallback(function()
 		setSelectedUniverseId(TraversalConstants.NO_UNIVERSE_ID)
-		local isUsingFocus
-		if FFlagTraversalRemoveLastInput then
-			local lastInputType = UserInputService:GetLastInputType()
-			local inputMode = GetInputModeStore().getLastInputType()
-			isUsingFocus = inputMode == Input.Directional or inputMode == Input.Pointer and lastInputType == Enum.UserInputType.Keyboard
-		else
-			isUsingFocus = lastInput == "Focus"
-		end
+		local lastInputType = UserInputService:GetLastInputType()
+		local inputMode = GetInputModeStore().getLastInputType()
+		local isUsingFocus = inputMode == Input.Directional or inputMode == Input.Pointer and lastInputType == Enum.UserInputType.Keyboard
 		if isUsingFocus and pageRef.current then
 			GuiService.SelectedCoreObject = pageRef.current
 		end
-	end, if FFlagTraversalRemoveLastInput then {} else { setSelectedUniverseId, lastInput } :: { unknown })
+	end, {} )
 
 	local items = React.useMemo(function()
 		local mappedItems = Cryo.List.map(historyItems, function(item)
@@ -81,31 +78,15 @@ local function TraversalHistoryPage(props: TraversalHistoryPageProps, ref: React
 		return mappedItems
 	end, { historyItems })
 
-	local isLoading, setIsLoading
-	if not FFlagTraversalPerfFixes then
-		isLoading, setIsLoading = React.useState(false)
-		React.useEffect(function()
-			if historyItems ~= nil then
-				setIsLoading(false)
-			end
-		end, { historyItems, setIsLoading } :: { unknown })
-	end
 	local onLoadMoreHistory = React.useCallback(function(requestAmount: number)
-		if FFlagTraversalPerfFixes then
 			if numItems >= #LocalTraversalHistory:getUniverseHistory() then
 				return
 			end
-		else
-			if isLoading then
-				return
-			end
-			setIsLoading(true)
-		end
 		setNumItems(numItems + requestAmount)
-	end, if FFlagTraversalPerfFixes then { numItems, } else { numItems, setNumItems, isLoading, setIsLoading } :: { unknown })
+	end, { numItems, } )
 
 	return next(items) ~= nil and React.createElement(View, {
-		tag = "size-full " .. (if FFlagTraversalExpPagePaddingFixes then "padding-top-medium" else "padding-large")
+		tag = "size-full " .. if FFlagIntegrateTraversalHistoryInSideSheet then "" else (if FFlagTraversalExpPagePaddingFixes then "padding-top-medium" else "padding-large")
 	}, {
 		HistoryPage = React.createElement(HistoryPage, {
 			historyItems = items,

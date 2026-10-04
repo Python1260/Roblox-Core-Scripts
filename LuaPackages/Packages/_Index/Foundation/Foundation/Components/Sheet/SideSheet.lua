@@ -10,7 +10,6 @@ local CloseAffordanceVariant = require(Foundation.Enums.CloseAffordanceVariant)
 local Constants = require(Foundation.Constants)
 local StateLayerAffordance = require(Foundation.Enums.StateLayerAffordance)
 local useOverlay = require(Foundation.Providers.Overlay.useOverlay)
-local useScaledValue = require(Foundation.Utility.useScaledValue)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 local withDefaults = require(Foundation.Utility.withDefaults)
 
@@ -27,11 +26,11 @@ type ElevationLayer = ElevationLayer.ElevationLayer
 local DialogSize = require(Foundation.Enums.DialogSize)
 type DialogSize = DialogSize.DialogSize
 
+local childrenHasFullBleed = require(script.Parent.childrenHasFullBleed)
 local useHardwareInsets = require(script.Parent.useHardwareInsets)
 local useScreenSize = require(script.Parent.useScreenSize)
 
 local CloseAffordance = require(Foundation.Components.CloseAffordance)
-local Flags = require(Foundation.Utility.Flags)
 local Image = require(Foundation.Components.Image)
 local View = require(Foundation.Components.View)
 
@@ -40,9 +39,6 @@ local usePreferences = require(Foundation.Providers.Preferences.usePreferences)
 type SideSheetProps = {
 	displaySize: Enum.DisplaySize,
 } & SheetProps
-
-local SMALL_DISPLAY_WIDTH = 400
-local LARGE_DISPLAY_WIDTH = 360
 
 local SIDE_SHEET_WIDTHS: { [DialogSize]: { TARGET_WIDTH: number, MIN: number, MAX: number } } = {
 	[DialogSize.Medium] = {
@@ -59,7 +55,7 @@ local SIDE_SHEET_WIDTHS: { [DialogSize]: { TARGET_WIDTH: number, MIN: number, MA
 
 local defaultProps = {
 	testId = "--foundation-sheet",
-	size = if Flags.FoundationSideSheetNewWidthCalculation then DialogSize.Medium else nil :: never,
+	size = DialogSize.Medium,
 }
 
 local SHADOW_IMAGE = Constants.SHADOW_IMAGE
@@ -70,31 +66,20 @@ local function SideSheet(sideSheetProps: SideSheetProps, ref: React.Ref<GuiObjec
 	local overlay = useOverlay()
 	local tokens = useTokens()
 	local elevation = useElevation(ElevationLayer.Sheet, { stackAboveOwner = false })
-	local reducedMotion = false
-	if Flags.FoundationSheetReducedMotion then
-		local preferences = usePreferences()
-		reducedMotion = preferences.reducedMotion
-	end
+	local preferences = usePreferences()
+	local reducedMotion = preferences.reducedMotion
 
 	local hardwareInsets = useHardwareInsets(overlay)
-	local screenSize = if Flags.FoundationSideSheetNewWidthCalculation then useScreenSize() else nil :: never
+	local screenSize = useScreenSize()
 	local safeAreaPadding = hardwareInsets.right
 
 	local isSmallDisplay = props.displaySize == Enum.DisplaySize.Small
 
-	local targetWidth
-	local minWidth
-	local maxWidth
-	if Flags.FoundationSideSheetNewWidthCalculation then
-		local scaleFactor = tokens.Config.UI.Scale
-		targetWidth = SIDE_SHEET_WIDTHS[props.size].TARGET_WIDTH
-		minWidth = SIDE_SHEET_WIDTHS[props.size].MIN * scaleFactor
-		maxWidth = SIDE_SHEET_WIDTHS[props.size].MAX * scaleFactor
-	end
+	local targetWidth = SIDE_SHEET_WIDTHS[props.size].TARGET_WIDTH
+	local minWidth = SIDE_SHEET_WIDTHS[props.size].MIN * tokens.Config.UI.Scale
+	local maxWidth = SIDE_SHEET_WIDTHS[props.size].MAX * tokens.Config.UI.Scale
 
-	local width = if Flags.FoundationSideSheetNewWidthCalculation
-		then math.clamp(screenSize.X * targetWidth, minWidth, maxWidth)
-		else useScaledValue(if isSmallDisplay then SMALL_DISPLAY_WIDTH else LARGE_DISPLAY_WIDTH)
+	local width = math.clamp(screenSize.X * targetWidth, minWidth, maxWidth)
 	local sheetPadding = tokens.Padding.Medium
 
 	local closing = React.useRef(false)
@@ -109,15 +94,19 @@ local function SideSheet(sideSheetProps: SideSheetProps, ref: React.Ref<GuiObjec
 
 	local hasActionsDivider, setHasActionsDivider = React.useBinding(false)
 	local hasHeader, setHasHeader = React.useBinding(false)
+	local hasFullBleed
+	local fullBleedHeight, setFullBleedHeight
+	hasFullBleed = childrenHasFullBleed(props.children)
+	fullBleedHeight, setFullBleedHeight = React.useBinding(0)
 
 	local innerScrollY, setInnerScrollY = React.useBinding(0)
 
 	local closeAffordanceRef = React.useRef(nil) :: React.Ref<GuiObject>
 	local contentStartRef, setContentStartRef = React.useState(nil :: React.Ref<GuiObject>?)
 
-	-- lute-lint-ignore(exhaustiveDeps) tokens.Ease and tokens.Time are stable between themes
+	-- lute-lint-ignore(exhaustiveDeps) tokens.Ease and tokens.Time are stable between colorModes
 	React.useEffect(function()
-		if Flags.FoundationSheetReducedMotion and reducedMotion then
+		if reducedMotion then
 			setRightPositionGoal(Otter.instant(width) :: Otter.Goal<any>)
 			setBackdropTransparencyGoal(Otter.instant(0) :: Otter.Goal<any>)
 		else
@@ -129,14 +118,14 @@ local function SideSheet(sideSheetProps: SideSheetProps, ref: React.Ref<GuiObjec
 				duration = tokens.Time.Time_100,
 			}))
 		end
-	end, { width, if Flags.FoundationSheetReducedMotion then reducedMotion else nil } :: { unknown })
+	end, { width, reducedMotion } :: { unknown })
 
-	-- lute-lint-ignore(exhaustiveDeps) tokens.Ease and tokens.Time are stable between themes
+	-- lute-lint-ignore(exhaustiveDeps) tokens.Ease and tokens.Time are stable between colorModes
 	local closeSheet = React.useCallback(function()
 		if closing.current then
 			return
 		end
-		if Flags.FoundationSheetReducedMotion and reducedMotion then
+		if reducedMotion then
 			closing.current = true
 			setRightPositionGoal(Otter.instant(closedPosition))
 			setBackdropTransparencyGoal(Otter.instant(1))
@@ -150,7 +139,7 @@ local function SideSheet(sideSheetProps: SideSheetProps, ref: React.Ref<GuiObjec
 			}))
 			closing.current = true
 		end
-	end, { closedPosition, if Flags.FoundationSheetReducedMotion then reducedMotion else nil } :: { unknown })
+	end, { closedPosition, reducedMotion } :: { unknown })
 
 	React.useImperativeHandle(props.sheetRef, function()
 		return {
@@ -174,29 +163,43 @@ local function SideSheet(sideSheetProps: SideSheetProps, ref: React.Ref<GuiObjec
 		)
 	end)
 
-	local contextValue = React.useMemo(function()
-		return {
-			actionsHeight = 0,
-			setActionsHeight = Dash.noop,
-			hasActionsDivider = hasActionsDivider,
-			setHasActionsDivider = setHasActionsDivider,
-			sheetHeightAvailable = 0,
-			setSheetHeightAvailable = Dash.noop,
-			safeAreaPadding = 0,
-			bottomPadding = 0,
-			innerScrollingEnabled = true,
-			innerScrollY = innerScrollY,
-			setInnerScrollY = setInnerScrollY,
-			hasHeader = hasHeader,
-			setHasHeader = setHasHeader,
-			closeSheet = closeSheet,
-			sheetType = SheetType.Side,
-			testId = props.testId,
-			closeAffordanceRef = closeAffordanceRef,
-			contentStartRef = contentStartRef,
-			setContentStartRef = setContentStartRef,
-		}
-	end, { props.testId, closeSheet, contentStartRef, closeAffordanceRef } :: { unknown })
+	local contextValue = React.useMemo(
+		function()
+			return {
+				actionsHeight = 0,
+				setActionsHeight = Dash.noop,
+				hasActionsDivider = hasActionsDivider,
+				setHasActionsDivider = setHasActionsDivider,
+				sheetHeightAvailable = 0,
+				setSheetHeightAvailable = Dash.noop,
+				safeAreaPadding = 0,
+				bottomPadding = 0,
+				innerScrollingEnabled = true,
+				innerScrollY = innerScrollY,
+				setInnerScrollY = setInnerScrollY,
+				hasHeader = hasHeader,
+				setHasHeader = setHasHeader,
+				hasFullBleed = hasFullBleed,
+				fullBleedHeight = fullBleedHeight,
+				setFullBleedHeight = setFullBleedHeight,
+				closeSheet = closeSheet,
+				hasRadius = not isSmallDisplay,
+				sheetType = SheetType.Side,
+				testId = props.testId,
+				closeAffordanceRef = closeAffordanceRef,
+				contentStartRef = contentStartRef,
+				setContentStartRef = setContentStartRef,
+			}
+		end,
+		{
+			props.testId,
+			closeSheet,
+			contentStartRef,
+			closeAffordanceRef,
+			hasFullBleed,
+			isSmallDisplay,
+		} :: { unknown }
+	)
 
 	return overlay
 		and ReactRoblox.createPortal(
@@ -242,7 +245,9 @@ local function SideSheet(sideSheetProps: SideSheetProps, ref: React.Ref<GuiObjec
 						onActivated = closeSheet,
 						ref = closeAffordanceRef,
 						NextSelectionDown = contentStartRef,
-						variant = CloseAffordanceVariant.Utility,
+						variant = if hasFullBleed
+							then CloseAffordanceVariant.OverMedia
+							else CloseAffordanceVariant.Utility,
 						Position = UDim2.new(1, -tokens.Margin.Small, 0, tokens.Margin.Small),
 						AnchorPoint = Vector2.new(1, 0),
 						Visible = hasHeader:map(function(value: boolean)

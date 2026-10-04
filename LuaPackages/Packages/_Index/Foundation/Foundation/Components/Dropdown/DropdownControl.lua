@@ -1,20 +1,20 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
-local BuilderIcons = require(Packages.BuilderIcons)
 local React = require(Packages.React)
 
 local Components = Foundation.Components
 local BaseMenu = require(Components.BaseMenu)
 local View = require(Components.View)
 type BaseMenuItem = BaseMenu.BaseMenuItem
+local Constants = require(Foundation.Constants)
 local Icon = require(Components.Icon)
 local InputField = require(Components.InputField)
 local StateLayerAffordance = require(Foundation.Enums.StateLayerAffordance)
 local Text = require(Components.Text)
 local Types = require(Foundation.Components.Types)
 
-local Flags = require(Foundation.Utility.Flags)
+local blendTransparencies = require(Foundation.Utility.blendTransparencies)
 local getInputTextSize = require(Foundation.Utility.getInputTextSize)
 local useTokens = require(Foundation.Providers.Style.useTokens)
 local withCommonProps = require(Foundation.Utility.withCommonProps)
@@ -22,16 +22,24 @@ local withDefaults = require(Foundation.Utility.withDefaults)
 
 local useDropdownVariants = require(script.Parent.useDropdownVariants)
 
-local InputSize = require(Foundation.Enums.InputSize)
-type InputSize = InputSize.InputSize
-
 local ControlState = require(Foundation.Enums.ControlState)
 type ControlState = ControlState.ControlState
 
 local CursorType = require(Foundation.Enums.CursorType)
 type CursorType = CursorType.CursorType
 
+local InputSize = require(Foundation.Enums.InputSize)
+type InputSize = InputSize.InputSize
+
+local InputVariant = require(Foundation.Enums.InputVariant)
+type InputVariant = InputVariant.InputVariant
+
+local BuilderIcons = require(Packages.BuilderIcons)
+local MENU_OPEN_IMAGE = BuilderIcons.Icon.ChevronLargeUp
+local MENU_CLOSE_IMAGE = BuilderIcons.Icon.ChevronLargeDown
+
 type Props = {
+	variant: InputVariant?,
 	hasError: boolean?,
 	isDisabled: boolean?,
 	item: BaseMenuItem?,
@@ -43,11 +51,14 @@ type Props = {
 	label: string,
 	hint: string?,
 	inputRef: React.Ref<GuiObject>?,
-} & Types.CommonProps
+} & Types.SelectionProps & Types.CommonProps
 
 local defaultProps = {
+	variant = InputVariant.Standard,
 	isMenuOpen = false,
 	placeholder = "",
+	-- Default the button to selectable so that consumers don't have to opt in explicitly.
+	Selectable = true,
 }
 
 local function DropdownControl(dropdownControlProps: Props, ref: React.Ref<GuiObject>?)
@@ -55,8 +66,16 @@ local function DropdownControl(dropdownControlProps: Props, ref: React.Ref<GuiOb
 	local tokens = useTokens()
 	local controlState, updateControlState = React.useState(ControlState.Initialize :: ControlState)
 	local showPlaceholder = props.item == nil
-	local variantProps =
-		useDropdownVariants(tokens, props.size, controlState :: ControlState, showPlaceholder, props.hasError or false)
+	local variantProps = useDropdownVariants(
+		tokens,
+		props.size,
+		props.variant,
+		controlState :: ControlState,
+		showPlaceholder,
+		props.hasError or false,
+		props.isMenuOpen,
+		controlState == ControlState.Hover
+	)
 
 	local cursor = React.useMemo(function()
 		return {
@@ -65,14 +84,6 @@ local function DropdownControl(dropdownControlProps: Props, ref: React.Ref<GuiOb
 			borderWidth = tokens.Stroke.Thicker,
 		}
 	end, { tokens })
-
-	-- TODO: move these to globals when cleaning up FoundationDropdownControlIconFix
-	local menuOpenImage = if Flags.FoundationDropdownControlIconFix
-		then BuilderIcons.Icon.ChevronLargeUp
-		else "truncate_arrows/actions_truncationCollapse"
-	local menuCloseImage = if Flags.FoundationDropdownControlIconFix
-		then BuilderIcons.Icon.ChevronLargeDown
-		else "truncate_arrows/actions_truncationExpand"
 
 	return React.createElement(
 		InputField,
@@ -90,10 +101,38 @@ local function DropdownControl(dropdownControlProps: Props, ref: React.Ref<GuiOb
 					isDisabled = props.isDisabled,
 					onActivated = props.onActivated,
 					selection = {
-						Selectable = not props.isDisabled,
+						Selectable = if props.isDisabled then false else props.Selectable,
+						NextSelectionUp = props.NextSelectionUp,
+						NextSelectionDown = props.NextSelectionDown,
+						NextSelectionLeft = props.NextSelectionLeft,
+						NextSelectionRight = props.NextSelectionRight,
 					},
 					cursor = cursor,
 					stateLayer = { affordance = StateLayerAffordance.None },
+					backgroundStyle = if variantProps.container.bgStyle
+						then {
+							Color3 = variantProps.container.bgStyle.Color3,
+							Transparency = if props.isDisabled
+								then blendTransparencies(
+									variantProps.container.bgStyle.Transparency,
+									Constants.DISABLED_TRANSPARENCY
+								)
+								else variantProps.container.bgStyle.Transparency,
+						}
+						else nil,
+					stroke = if variantProps.container.strokeStyle
+						then {
+							Color = variantProps.container.strokeStyle.Color3,
+							Transparency = if props.isDisabled
+								then blendTransparencies(
+									variantProps.container.strokeStyle.Transparency,
+									Constants.DISABLED_TRANSPARENCY
+								)
+								else variantProps.container.strokeStyle.Transparency,
+							Thickness = variantProps.container.strokeThickness,
+							BorderStrokePosition = Enum.BorderStrokePosition.Inner,
+						}
+						else nil,
 					tag = variantProps.container.tag,
 					ref = props.inputRef,
 					testId = `{props.testId}--control`,
@@ -105,9 +144,11 @@ local function DropdownControl(dropdownControlProps: Props, ref: React.Ref<GuiOb
 					}),
 					Arrow = React.createElement(Icon, {
 						LayoutOrder = 2,
-						name = if props.isMenuOpen then menuOpenImage else menuCloseImage,
+						name = if props.isMenuOpen then MENU_OPEN_IMAGE else MENU_CLOSE_IMAGE,
 						size = variantProps.arrow.size,
+						style = if props.isDisabled then tokens.Color.Content.Muted else nil,
 						tag = variantProps.text.tag,
+						testId = `{props.testId}--arrow`,
 					}),
 				})
 			end,

@@ -1,7 +1,5 @@
 local Foundation = script:FindFirstAncestor("Foundation")
 
-local Flags = require(Foundation.Utility.Flags)
-
 local ChipSize = require(Foundation.Enums.ChipSize)
 type ChipSize = ChipSize.ChipSize
 
@@ -43,34 +41,18 @@ local function variantsFactory(tokens: Tokens)
 		},
 	}
 
-	local types: { [ChipVariant]: { [boolean]: VariantProps } } = if Flags.FoundationAddUtilityVariantToChip
-		then {
-			[ChipVariant.Utility] = {
-				[true] = {
-					chip = { backgroundStyle = tokens.Inverse.Surface.Surface_0 },
-					text = { contentStyle = tokens.Inverse.Content.Emphasis },
-				},
-				[false] = {
-					chip = { backgroundStyle = tokens.Color.ActionUtility.Background },
-					text = { contentStyle = tokens.Color.ActionUtility.Foreground },
-				},
+	local types: { [ChipVariant]: { [boolean]: VariantProps } } = {
+		[ChipVariant.Utility] = {
+			[true] = {
+				chip = { backgroundStyle = tokens.Inverse.Surface.Surface_0 },
+				text = { contentStyle = tokens.Inverse.Content.Emphasis },
 			},
-			[ChipVariant.Standard] = {
-				[true] = {
-					chip = { backgroundStyle = tokens.Inverse.Surface.Surface_0 },
-					text = { contentStyle = tokens.Inverse.Content.Emphasis },
-				},
-				[false] = {
-					chip = { backgroundStyle = tokens.Color.ActionStandard.Background },
-					text = { contentStyle = tokens.Color.ActionStandard.Foreground },
-				},
+			[false] = {
+				chip = { backgroundStyle = tokens.Color.ActionUtility.Background },
+				text = { contentStyle = tokens.Color.ActionUtility.Foreground },
 			},
-		}
-		else nil :: any
-
-	local isChecked: { [boolean]: VariantProps } = if Flags.FoundationAddUtilityVariantToChip
-		then nil :: any
-		else {
+		},
+		[ChipVariant.Standard] = {
 			[true] = {
 				chip = { backgroundStyle = tokens.Inverse.Surface.Surface_0 },
 				text = { contentStyle = tokens.Inverse.Content.Emphasis },
@@ -79,13 +61,13 @@ local function variantsFactory(tokens: Tokens)
 				chip = { backgroundStyle = tokens.Color.ActionStandard.Background },
 				text = { contentStyle = tokens.Color.ActionStandard.Foreground },
 			},
-		}
+		},
+	}
 
 	return {
 		common = common,
 		sizes = sizes,
 		types = types,
-		isChecked = isChecked,
 		textSpacing = textSpacing,
 	}
 end
@@ -99,18 +81,12 @@ return function(
 	hasTrailing: boolean
 )
 	local props = VariantsContext.useVariants("Chip", variantsFactory, tokens)
-	return composeStyleVariant(
-		props.common,
-		props.sizes[size],
-		if Flags.FoundationAddUtilityVariantToChip then props.types[variant][isChecked] else nil :: any,
-		{
-			text = {
-				padding = {
-					left = if hasLeading then nil else props.textSpacing[size],
-					right = if hasTrailing then nil else props.textSpacing[size],
-				},
+	return composeStyleVariant(props.common, props.sizes[size], props.types[variant][isChecked], {
+		text = {
+			padding = {
+				left = if hasLeading then nil else props.textSpacing[size],
+				right = if hasTrailing then nil else props.textSpacing[size],
 			},
 		},
-		if Flags.FoundationAddUtilityVariantToChip then nil :: any else props.isChecked[isChecked]
-	)
+	})
 end

@@ -1,12 +1,15 @@
+-- TODO: Clean up with FFlagFoundationUnifiedScrimScrolling (replaced by Components/OverflowScrollContainer)
 local Foundation = script:FindFirstAncestor("Foundation")
 local Packages = Foundation.Parent
 
+local BuilderIcons = require(Packages.BuilderIcons)
 local Dash = require(Packages.Dash)
 local Otter = require(Packages.Otter)
 local React = require(Packages.React)
 local ReactOtter = require(Packages.ReactOtter)
 
-local Flags = require(Foundation.Utility.Flags)
+local IconName = BuilderIcons.Icon
+
 local IconButton = require(Foundation.Components.IconButton)
 local InputSize = require(Foundation.Enums.InputSize)
 local ScrollView = require(Foundation.Components.ScrollView)
@@ -121,51 +124,56 @@ local function OverflowScrollContainer(props: OverflowScrollContainerProps)
 		moveScrollByPixels(SCROLL_STEP)
 	end, { moveScrollByPixels })
 
-	return React.createElement(View, withCommonProps(props, { tag = "size-full-0 auto-y" }), {
-		Scroll = React.createElement(ScrollView, {
-			LayoutOrder = 1,
-			tag = "size-full",
-			onCanvasPositionChanged = updateVisibility,
-			onAbsoluteWindowSizeChanged = updateVisibility,
-			scrollingFrameRef = scrollingFrameRef,
-			selection = if Flags.FoundationTabsDisableScrollSelection
-				then {
+	return React.createElement(
+		View,
+		withCommonProps(props, {
+			tag = "auto-y",
+			Size = UDim2.fromScale(1, 0),
+		}),
+		{
+			Scroll = React.createElement(ScrollView, {
+				LayoutOrder = 1,
+				Size = UDim2.fromScale(1, 1),
+				onCanvasPositionChanged = updateVisibility,
+				onAbsoluteWindowSizeChanged = updateVisibility,
+				scrollingFrameRef = scrollingFrameRef,
+				selection = {
 					Selectable = false,
-				}
-				else nil,
-			scroll = {
-				AutomaticSize = Enum.AutomaticSize.Y,
-				AutomaticCanvasSize = Enum.AutomaticSize.X,
-				ScrollingDirection = Enum.ScrollingDirection.X,
-				scrollBarVisibility = Visibility.None,
-			},
-		}, props.children),
-		OverflowStart = React.createElement(OverflowButton, {
-			LayoutOrder = 3,
-			Position = UDim2.fromScale(0, 0),
-			size = props.size,
-			isStart = true,
-			ZIndex = 2,
-			Visible = isStartVisible,
-			onActivated = onOverflowStartActivated,
-			gradient = START_GRADIENT,
-			tag = "padding-right-small",
-			icon = "chevron-large-left",
-			testId = `{props.testId}--overflow-start`,
-		}),
-		OverflowEnd = React.createElement(OverflowButton, {
-			LayoutOrder = 4,
-			Position = UDim2.fromScale(1, 0),
-			size = props.size,
-			ZIndex = 2,
-			Visible = isEndOverflowVisible,
-			onActivated = onOverflowEndActivated,
-			gradient = END_GRADIENT,
-			tag = "anchor-top-right padding-left-small",
-			icon = "chevron-large-right",
-			testId = `{props.testId}--overflow-end`,
-		}),
-	})
+				},
+				scroll = {
+					AutomaticSize = Enum.AutomaticSize.Y,
+					AutomaticCanvasSize = Enum.AutomaticSize.X,
+					ScrollingDirection = Enum.ScrollingDirection.X,
+					scrollBarVisibility = Visibility.None,
+				},
+			}, props.children),
+			OverflowStart = React.createElement(OverflowButton, {
+				LayoutOrder = 3,
+				Position = UDim2.fromScale(0, 0),
+				size = props.size,
+				isStart = true,
+				ZIndex = 2,
+				Visible = isStartVisible,
+				onActivated = onOverflowStartActivated,
+				gradient = START_GRADIENT,
+				tag = "padding-right-small",
+				icon = IconName.ChevronLargeLeft,
+				testId = `{props.testId}--overflow-start`,
+			}),
+			OverflowEnd = React.createElement(OverflowButton, {
+				LayoutOrder = 4,
+				Position = UDim2.fromScale(1, 0),
+				size = props.size,
+				ZIndex = 2,
+				Visible = isEndOverflowVisible,
+				onActivated = onOverflowEndActivated,
+				gradient = END_GRADIENT,
+				tag = "anchor-top-right padding-left-small",
+				icon = IconName.ChevronLargeRight,
+				testId = `{props.testId}--overflow-end`,
+			}),
+		}
+	)
 end
 
 return OverflowScrollContainer

@@ -5,12 +5,20 @@ local ErrorSourceStrings = require(root.validationSystem.ErrorSourceStrings)
 
 local getAllInstancesIsA = require(root.util.getAllInstancesIsA)
 local R15plusUtils = require(root.util.R15plusUtils)
+local getEngineFeatureEngineUGCValidateInstanceTreesEquivalent =
+	require(root.flags.getEngineFeatureEngineUGCValidateInstanceTreesEquivalent)
+local shouldValidateR15LegacyDuplicate = require(root.util.shouldValidateR15LegacyDuplicate)
 local HrdBonesFollowSchema = {}
 
 HrdBonesFollowSchema.categories =
 	{ ValidationEnums.UploadCategory.TORSO_AND_LIMBS, ValidationEnums.UploadCategory.DYNAMIC_HEAD }
-HrdBonesFollowSchema.requiredData = { ValidationEnums.SharedDataMember.rootInstance }
+HrdBonesFollowSchema.requiredData = {
+	ValidationEnums.SharedDataMember.rootInstance,
+	ValidationEnums.SharedDataMember.uploadEnum,
+	ValidationEnums.SharedDataMember.consumerConfig,
+}
 HrdBonesFollowSchema.fflag = R15plusUtils.checkFlagEnabledForAllowHrd
+local FFlagUGCValidationRemoveHRDBlocker = game:DefineFastFlag("UGCValidationRemoveHRDBlocker", false)
 
 local function fillBoneTreeFlatList(instance: Instance, isBonePath: boolean, flatList: { Instance })
 	for _, child in instance:GetChildren() do
@@ -53,24 +61,26 @@ local function nameIsMappedInRigDescriptions(
 	return false
 end
 
-HrdBonesFollowSchema.run = function(reporter: Types.ValidationReporter, data: Types.SharedData)
-	local rootInstance = data.rootInstance
+local function validateBonesForRoot(rootInstance: Instance, reporter: Types.ValidationReporter)
 	for _, bodyMeshPart in getAllInstancesIsA(rootInstance, "MeshPart") do
 		local bodyPartName = bodyMeshPart.Name
 
 		local hrd = bodyMeshPart:FindFirstChildWhichIsA("HumanoidRigDescription")
 		local drd = bodyMeshPart:FindFirstChildWhichIsA("DigitsRigDescription")
+
+		if hrd ~= nil and not FFlagUGCValidationRemoveHRDBlocker then
+			reporter:fail(ErrorSourceStrings.Keys.HrdCheck_TempR15BonesUploadNotAllowed, nil, hrd)
+		end
+
 		if hrd == nil then
 			-- If HRD does not exist, we don't expect any bone maps
 			local bones = getAllInstancesIsA(bodyMeshPart, "Bone")
 			for _, bone in bones do
-				reporter:fail(ErrorSourceStrings.Keys.HrdCheck_BoneWithoutHrd, {
-					bonePath = bone:GetFullName(),
-				})
+				reporter:fail(ErrorSourceStrings.Keys.HrdCheck_BoneWithoutHrd, { bonePath = bone:GetFullName() }, bone)
 			end
 
 			if drd ~= nil then
-				reporter:fail(ErrorSourceStrings.Keys.HrdCheck_DrdWithoutHrd)
+				reporter:fail(ErrorSourceStrings.Keys.HrdCheck_DrdWithoutHrd, nil, drd)
 			end
 
 			continue
@@ -82,9 +92,10 @@ HrdBonesFollowSchema.run = function(reporter: Types.ValidationReporter, data: Ty
 		local boneTreeFlatList = {}
 		fillBoneTreeFlatList(bodyMeshPart, false, boneTreeFlatList)
 
-		-- step 1: make sure everything in bone tree was pre-mapped in the schema
+		-- step 1: make sure all descendants of Bones were pre-mapped in the schema (This wont verify ACs/RigAttachments)
 		local existsInSchemaAndPart = { [bodyPartName] = true }
 		for _, inst in boneTreeFlatList do
+			reporter:setReportingInstance(inst)
 			local instName = inst.Name
 			local associatedSchema = expectedHierarchyList[instName]
 			if instName == R15plusUtils.JointRotationName then
@@ -113,6 +124,7 @@ HrdBonesFollowSchema.run = function(reporter: Types.ValidationReporter, data: Ty
 
 		-- step 2: make sure everything in meshpart that is in schema has proper hierarchy
 		for _, des in bodyMeshPart:GetDescendants() do
+			reporter:setReportingInstance(des)
 			local associatedSchema = expectedHierarchyList[des.Name]
 			if not associatedSchema or not des:IsA("Attachment") or des.Name == R15plusUtils.JointRotationName then
 				continue
@@ -140,6 +152,23 @@ HrdBonesFollowSchema.run = function(reporter: Types.ValidationReporter, data: Ty
 					expectedParentName = expectedParentName,
 				})
 			end
+		end
+	end
+end
+
+HrdBonesFollowSchema.run = function(reporter: Types.ValidationReporter, data: Types.SharedData)
+	validateBonesForRoot(data.rootInstance, reporter)
+
+	if getEngineFeatureEngineUGCValidateInstanceTreesEquivalent() and shouldValidateR15LegacyDuplicate(data) then
+		-- Bone descendants are authorized wholesale by the schema's _ignoreDescendants, so deep-check the
+		-- R15Fixed copy's bones too in case the dmdiff tree-equivalence check is bypassed. The copy must exist
+		-- on a folder-structured body-part upload; report a failure rather than skipping when it is absent.
+		if data.r15LegacyDuplicateRoot == nil then
+			reporter:fail(ErrorSourceStrings.Keys.FolderStructureMismatch)
+		else
+			reporter:setReportingRoot(data.r15LegacyDuplicateRoot)
+			validateBonesForRoot(data.r15LegacyDuplicateRoot, reporter)
+			reporter:setReportingRoot(data.rootInstance)
 		end
 	end
 end

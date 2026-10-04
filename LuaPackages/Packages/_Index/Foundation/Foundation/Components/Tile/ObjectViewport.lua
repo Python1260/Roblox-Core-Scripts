@@ -45,7 +45,7 @@ local function ObjectViewport(objectViewportProps: Props)
 	local props = withDefaults(objectViewportProps, defaultProps)
 	local tokens = useTokens()
 
-	local model, setModel = React.useState(props.model :: Model?)
+	local model: Model?, setModel = React.useState(props.model :: Model?)
 	local cameraRef = React.useRef(nil :: Camera?)
 	local worldModelRef = React.useRef(nil :: WorldModel?)
 
@@ -70,7 +70,7 @@ local function ObjectViewport(objectViewportProps: Props)
 
 	React.useEffect(function()
 		if model ~= nil then
-			local cFrame = model:GetModelCFrame() :: CFrame
+			local cFrame = model:GetPivot()
 			setModelCFrame(cFrame)
 			setInitialLookVector(cFrame.LookVector)
 
@@ -133,7 +133,8 @@ local function ObjectViewport(objectViewportProps: Props)
 					updateCameraRotationBinding(cameraRotationBinding:getValue() + props.rotationSpeed or 0)
 					local newLookVector =
 						rotateVectorAround(initialLookVector, cameraRotationBinding:getValue(), WORLD_Y_AXIS)
-					local newCFrame = CFrame.new(modelCFrame.p + (newLookVector * cameraDistance), modelCFrame.p)
+					local newCFrame =
+						CFrame.new(modelCFrame.Position + (newLookVector * cameraDistance), modelCFrame.Position)
 					updateCameraCFrameBinding(newCFrame)
 				end,
 			}),

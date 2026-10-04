@@ -14,6 +14,8 @@ local getFontFromName = require(AppStyle.Fonts.getFontFromName)
 local Tokens = require(AppStyle.Tokens)
 
 local getTokens = Tokens.getTokens
+local getFoundationTokens = Tokens.getFoundationTokens
+local TokensMappers = Tokens.Mappers
 
 local Packages = UIBlox.Parent
 local LuauPolyfill = require(Packages.LuauPolyfill)
@@ -84,11 +86,17 @@ function StyleProvider:render()
 
 	if style.Tokens == nil then
 		-- If tokens were not passed in, fetch them with the style object now that defaults are applied.
-		style.Tokens = getTokens(
-			Constants.DefaultDeviceType :: DeviceType,
-			if style.Theme == Themes.LightTheme then Constants.ThemeName.Light else Constants.ThemeName.Dark,
-			(style.Settings :: any).Scale
-		)
+		local themeName: ThemeName = if style.Theme == Themes.LightTheme
+			then Constants.ThemeName.Light
+			else Constants.ThemeName.Dark
+		local deviceType: DeviceType = Constants.DefaultDeviceType :: any
+		local scale = (style.Settings :: any).Scale
+
+		local baseTokens = getTokens(deviceType, themeName, scale)
+		local foundationTokens = getFoundationTokens(deviceType, themeName, scale)
+		baseTokens = TokensMappers.mapColorTokensToFoundation(baseTokens, foundationTokens)
+		style.Theme = TokensMappers.mapThemeToFoundation(style.Theme, foundationTokens)
+		style.Tokens = TokensMappers.addFoundationFlatKeys(baseTokens, foundationTokens)
 	end
 
 	if style.Font == nil then

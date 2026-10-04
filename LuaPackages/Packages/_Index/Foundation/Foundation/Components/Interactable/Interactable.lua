@@ -4,9 +4,7 @@ local Packages = Foundation.Parent
 
 local Dash = require(Packages.Dash)
 local React = require(Packages.React)
-local ReactIs = require(Packages.ReactIs)
 
-local Flags = require(Foundation.Utility.Flags)
 local Types = require(Foundation.Components.Types)
 local blendColors = require(Foundation.Utility.blendColors)
 local getOriginalBackgroundStyle = require(script.Parent.getOriginalBackgroundStyle)
@@ -87,11 +85,7 @@ local function Interactable(interactableProps: InteractableProps, forwardedRef: 
 				guiState == ControlState.Initialize
 				or guiState == ControlState.Default
 				or guiState == ControlState.Disabled
-				or (
-					if Flags.FoundationBindableStateLayer
-						then affordance == StateLayerAffordance.None
-						else props.stateLayer and props.stateLayer.affordance == StateLayerAffordance.None
-				)
+				or affordance == StateLayerAffordance.None
 			then
 				return backgroundStyle
 			end
@@ -112,9 +106,7 @@ local function Interactable(interactableProps: InteractableProps, forwardedRef: 
 					else nil
 			end
 
-			local stateLayerStyle = if Flags.FoundationBindableStateLayer
-				then getStateLayerStyle(tokens, mode, guiState)
-				else getStateLayerStyle(tokens, props.stateLayer, guiState)
+			local stateLayerStyle = getStateLayerStyle(tokens, mode, guiState)
 
 			return blendColors(finalBackgroundStyle, stateLayerStyle)
 		end,
@@ -122,47 +114,26 @@ local function Interactable(interactableProps: InteractableProps, forwardedRef: 
 			tokens,
 			props.BackgroundColor3,
 			props.BackgroundTransparency,
-			if Flags.FoundationBindableStateLayer then nil else props.stateLayer,
 		} :: { unknown }
 	)
 
 	local backgroundStyleBinding = React.useMemo(
 		function(): Bindable<ColorStyleValue>
-			if Flags.FoundationBindableStateLayer then
-				return joinBindables({
-					controlState = controlState,
-					backgroundStyle = originalBackgroundStyle,
-					mode = if props.stateLayer then props.stateLayer.mode else nil,
-					affordance = if props.stateLayer then props.stateLayer.affordance else nil,
-				}, function(values)
-					return getBackgroundStyle(
-						values.controlState,
-						values.backgroundStyle,
-						values.mode,
-						values.affordance
-					)
-				end)
-			else
-				if ReactIs.isBinding(originalBackgroundStyle) then
-					return React.joinBindings({
-						controlState = controlState,
-						backgroundStyle = originalBackgroundStyle :: React.Binding<ColorStyleValue>,
-					}):map(function(values)
-						return getBackgroundStyle(values.controlState, values.backgroundStyle)
-					end)
-				end
-
-				return controlState:map(function(guiState)
-					return getBackgroundStyle(guiState, originalBackgroundStyle :: ColorStyleValue)
-				end :: (any) -> ColorStyleValue)
-			end
+			return joinBindables({
+				controlState = controlState,
+				backgroundStyle = originalBackgroundStyle,
+				mode = if props.stateLayer then props.stateLayer.mode else nil,
+				affordance = if props.stateLayer then props.stateLayer.affordance else nil,
+			}, function(values)
+				return getBackgroundStyle(values.controlState, values.backgroundStyle, values.mode, values.affordance)
+			end)
 		end,
 		{
 			originalBackgroundStyle,
 			controlState,
 			getBackgroundStyle,
-			if Flags.FoundationBindableStateLayer and props.stateLayer then props.stateLayer.mode else nil,
-			if Flags.FoundationBindableStateLayer and props.stateLayer then props.stateLayer.affordance else nil,
+			if props.stateLayer then props.stateLayer.mode else nil,
+			if props.stateLayer then props.stateLayer.affordance else nil,
 		} :: { unknown }
 	)
 
@@ -173,25 +144,16 @@ local function Interactable(interactableProps: InteractableProps, forwardedRef: 
 	end, {})
 
 	local interactableComponentProps = {
-		BackgroundColor3 = if Flags.FoundationBindableStateLayer
-			then mapBindable(backgroundStyleBinding, function(backgroundStyle)
-				return backgroundStyle.Color3
-			end)
-			else (backgroundStyleBinding :: React.Binding<ColorStyleValue>):map(function(backgroundStyle)
-				return backgroundStyle.Color3
-			end),
-		BackgroundTransparency = if Flags.FoundationBindableStateLayer
-			then mapBindable(backgroundStyleBinding, function(backgroundStyle)
-				return backgroundStyle.Transparency
-			end)
-			else (backgroundStyleBinding :: React.Binding<ColorStyleValue>):map(function(backgroundStyle)
-				return backgroundStyle.Transparency
-			end),
+		BackgroundColor3 = mapBindable(backgroundStyleBinding, function(backgroundStyle)
+			return backgroundStyle.Color3
+		end),
+		BackgroundTransparency = mapBindable(backgroundStyleBinding, function(backgroundStyle)
+			return backgroundStyle.Transparency
+		end),
 		Active = not props.isDisabled,
 		Interactable = not props.isDisabled,
 		[React.Event.Activated] = if not props.isDisabled then props.onActivated else nil,
-		-- TODO: Replace with SecondaryActivated when available
-		[React.Event.MouseButton2Click] = if not props.isDisabled then props.onSecondaryActivated else nil,
+		[React.Event.SecondaryActivated] = if not props.isDisabled then props.onSecondaryActivated else nil,
 		ref = wrappedRef,
 		SelectionImageObject = props.SelectionImageObject or cursor,
 	}

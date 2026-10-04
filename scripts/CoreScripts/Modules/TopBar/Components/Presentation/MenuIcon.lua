@@ -6,13 +6,11 @@ local GamepadService = game:GetService("GamepadService")
 local ContextActionService = game:GetService("ContextActionService")
 
 local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
-local FFlagEnableUnibarFtuxTooltips = SharedFlags.FFlagEnableUnibarFtuxTooltips
 local FFlagEnableConsoleExpControls = SharedFlags.FFlagEnableConsoleExpControls
 local FFlagReduceTopBarInsetsWhileHidden = SharedFlags.FFlagReduceTopBarInsetsWhileHidden
 local FFlagShowUnibarOnVirtualCursor = SharedFlags.FFlagShowUnibarOnVirtualCursor
 local FFlagAddUILessMode = SharedFlags.FFlagAddUILessMode
 local FIntAddUILessModeVariant = SharedFlags.FIntAddUILessModeVariant
-local FFlagVirtualCursorTopbarAlwaysVisible = SharedFlags.FFlagVirtualCursorTopbarAlwaysVisible
 
 local Signals = require(CorePackages.Packages.Signals)
 local Display = require(CorePackages.Workspace.Packages.Display)
@@ -203,9 +201,7 @@ function MenuIcon:init()
 			self:setState({
 				isHovering = true,
 			})
-			if FFlagEnableUnibarFtuxTooltips then
-				self.fireMenuIconHoveredSignal(true)
-			end
+			self.fireMenuIconHoveredSignal(true)
 
 			delay(DEFAULT_DELAY_TIME, function()
 				if self.state.isHovering and not self.state.clickLatched then
@@ -218,9 +214,7 @@ function MenuIcon:init()
 				end
 			end)
 		else
-			if FFlagEnableUnibarFtuxTooltips then
-				self.fireMenuIconHoveredSignal(false)
-			end
+			self.fireMenuIconHoveredSignal(false)
 		end
 
 		if isNewInGameMenuEnabled() then
@@ -253,7 +247,7 @@ function MenuIcon:init()
 	if ChromeEnabled() and FFlagEnableConsoleExpControls then
 	self.onMenuIconSelectionChanged = function(MenuIcon: GuiObject, isMenuIconSelected: boolean, oldSelection: GuiObject, newSelection: GuiObject)
 			if FFlagEnableConsoleExpControls then 
-				if FFlagVirtualCursorTopbarAlwaysVisible and GamepadService.GamepadCursorEnabled then
+				if GamepadService.GamepadCursorEnabled then
 					return
 				end
 				if not (FFlagShowUnibarOnVirtualCursor and GamepadService.GamepadCursorEnabled) and newSelection and string.find(newSelection.Name, UnibarConstants.ICON_NAME_PREFIX :: string) then

@@ -1,13 +1,13 @@
 --!nonstrict
 local CorePackages = game:GetService("CorePackages")
-
 local Roact = require(CorePackages.Packages.Roact)
 local t = require(CorePackages.Packages.t)
 local UIBlox = require(CorePackages.Packages.UIBlox)
+
 local UserLib = require(CorePackages.Workspace.Packages.UserLib)
 local Cryo = require(CorePackages.Packages.Cryo)
 
-local withStyle = UIBlox.Style.withStyle
+local withFoundationOrUIBloxStyle = require(CorePackages.Workspace.Packages.CoreGuiCommon).withFoundationOrUIBloxStyle
 
 local Components = script.Parent.Parent
 local Connection = Components.Connection
@@ -16,7 +16,9 @@ local WithLayoutValues = LayoutValues.WithLayoutValues
 local UserProfiles = require(CorePackages.Workspace.Packages.UserProfiles)
 local useVerifiedBadge = UserProfiles.Hooks.useVerifiedBadge
 
-local FFlagEnableVerifiedBadgeStore = require(CorePackages.Workspace.Packages.SharedFlags).FFlagEnableVerifiedBadgeStore
+local SharedFlags = require(CorePackages.Workspace.Packages.SharedFlags)
+local FFlagEnableVerifiedBadgeStore = SharedFlags.FFlagEnableVerifiedBadgeStore
+local FFlagCoreUiMigrateUIBloxToFoundation = SharedFlags.FFlagCoreUiMigrateUIBloxToFoundation
 
 local EmojiTextLabel = UIBlox.Core.Text.EmojiTextLabel
 local Emoji = UIBlox.App.Emoji.Enum.Emoji
@@ -36,11 +38,56 @@ DropDownPlayerHeader.validateProps = t.strictInterface({
 
 function DropDownPlayerHeader:render()
 	return WithLayoutValues(function(layoutValues)
-		return withStyle(function(style)
+		return withFoundationOrUIBloxStyle(function(tokens)
+			return {
+				Theme = {
+					Divider = {
+						Color = tokens.Color.Stroke.Emphasis.Color3,
+						Transparency = tokens.Color.Stroke.Emphasis.Transparency,
+					},
+					TextEmphasis = {
+						Color = tokens.Color.Content.Emphasis.Color3,
+						Transparency = tokens.Color.Content.Emphasis.Transparency,
+					},
+					TextMuted = {
+						Color = tokens.Color.Content.Muted.Color3,
+						Transparency = tokens.Color.Content.Muted.Transparency,
+					},
+				},
+				Font = {
+					BaseSize = 1,
+					CaptionHeader = {
+						Font = tokens.Typography.CaptionLarge.Font,
+						RelativeSize = tokens.Typography.CaptionLarge.FontSize,
+					},
+					Footer = {
+						Font = tokens.Typography.CaptionSmall.Font,
+						RelativeSize = tokens.Typography.CaptionSmall.FontSize,
+					},
+					Header2 = {
+						Font = tokens.Typography.TitleLarge.Font,
+						RelativeSize = tokens.Typography.TitleLarge.FontSize,
+						FontSize = tokens.Typography.TitleLarge.FontSize,
+						LineHeight = tokens.Typography.TitleLarge.LineHeight,
+						LetterSpacing = tokens.Typography.TitleLarge.LetterSpacing,
+					},
+				},
+			}
+		end, function(style)
 			local player = self.props.player
 			local avatarBackgroundImage = "rbxasset://textures/ui/PlayerList/NewAvatarBackground.png"
-			local showVerifiedBadge = if FFlagEnableVerifiedBadgeStore then self.props.showVerifiedBadge else UserLib.Utils.isPlayerVerified(player)
-			
+			local showVerifiedBadge = if FFlagEnableVerifiedBadgeStore
+				then self.props.showVerifiedBadge
+				else UserLib.Utils.isPlayerVerified(player)
+			local emojiFontStyle = if FFlagCoreUiMigrateUIBloxToFoundation and style.Font.Header2.FontSize
+				then {
+					Font = style.Font.Header2.Font,
+					FontSize = style.Font.Header2.FontSize,
+					LineHeight = style.Font.Header2.LineHeight,
+					LetterSpacing = style.Font.Header2.LetterSpacing,
+				}
+				else style.Font.Header2
+
 			return Roact.createElement("TextButton", {
 				--Used as a text button instead of a frame so that clicking on this doesn't close the player drop down.
 				BackgroundTransparency = 1,
@@ -70,7 +117,7 @@ function DropDownPlayerHeader:render()
 						}),
 
 						DisplayName = showVerifiedBadge and Roact.createElement(EmojiTextLabel, {
-							fontStyle = style.Font.Header2,
+							fontStyle = emojiFontStyle,
 							colorStyle = style.Theme.TextEmphasis,
 							fluidSizing = false,
 							emoji = Emoji.Verified,
@@ -147,9 +194,12 @@ end
 local DropDownPlayerHeaderWrapper = function(props)
 	local showVerifiedBadge = useVerifiedBadge(props.player)
 
-	return Roact.createElement(DropDownPlayerHeader, Cryo.Dictionary.join(props, {
-		showVerifiedBadge = showVerifiedBadge,
-	}))
+	return Roact.createElement(
+		DropDownPlayerHeader,
+		Cryo.Dictionary.join(props, {
+			showVerifiedBadge = showVerifiedBadge,
+		})
+	)
 end
 
 return if FFlagEnableVerifiedBadgeStore then DropDownPlayerHeaderWrapper else DropDownPlayerHeader

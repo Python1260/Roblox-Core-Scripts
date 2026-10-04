@@ -3,6 +3,7 @@ local Packages = Foundation.Parent
 
 local Text = require(Foundation.Components.Text)
 
+local Flags = require(Foundation.Utility.Flags)
 local React = require(Packages.React)
 local Translator = require(Foundation.Utility.Localization.Translator)
 
@@ -24,6 +25,8 @@ export type InputLabelProps = {
 	textStyle: Types.ColorStyle?,
 	-- Whether the input is required or not. Leave nil for the majority case
 	isRequired: boolean?,
+	-- Whether the input is disabled
+	isDisabled: boolean?,
 	-- Size of the input label
 	size: InputLabelSize?,
 	-- Callback for when the input label is activated.
@@ -44,7 +47,9 @@ local function labelText(text: string, isRequired: boolean?): string
 	end
 
 	return if isRequired
-		then text .. REQUIRED_INDICATOR
+		then if Flags.FoundationIncludeSpaceRequiredLabel
+			then text .. ` {REQUIRED_INDICATOR}`
+			else text .. REQUIRED_INDICATOR
 		else Translator:FormatByKey("CommonUI.Controls.Input.Optional", { inputLabel = text })
 end
 
@@ -76,16 +81,19 @@ local function InputLabel(inputLabelProps: InputLabelProps, ref: React.Ref<GuiOb
 			selection = {
 				Selectable = false,
 			},
-			onActivated = props.onActivated,
-			onStateChanged = onStateChanged,
+			onActivated = if not props.isDisabled then props.onActivated else nil,
+			onStateChanged = if not props.isDisabled then onStateChanged else nil,
 			stateLayer = { affordance = StateLayerAffordance.None },
 			textStyle = props.textStyle,
 			tag = {
-				["size-0 auto-xy text-wrap text-align-x-left text-align-y-top content-default"] = true,
-				["text-title-small"] = props.size == InputLabelSize.Small,
-				["text-title-medium"] = props.size == InputLabelSize.Medium,
-				["text-title-large"] = props.size == InputLabelSize.Large,
-			},
+				["size-0 auto-xy text-wrap text-align-x-left text-align-y-top"] = true,
+				["padding-top-xxsmall"] = props.size ~= InputLabelSize.XSmall,
+				["content-muted"] = props.isDisabled,
+				["content-emphasis"] = not props.isDisabled,
+				["text-body-small"] = props.size == InputLabelSize.Small or props.size == InputLabelSize.XSmall,
+				["text-body-medium"] = props.size == InputLabelSize.Medium,
+				["text-body-large"] = props.size == InputLabelSize.Large,
+			} :: { [string]: boolean },
 			ref = ref,
 		})
 	)

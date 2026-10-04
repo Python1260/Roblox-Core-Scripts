@@ -4,19 +4,13 @@ local React = require(CorePackages.Packages.React)
 
 local Foundation = require(CorePackages.Packages.Foundation)
 local View = Foundation.View
+local ProfilePlatformEnums = require(CorePackages.Workspace.Packages.ProfilePlatform.Enums)
+local useProfileJsonComponent = require(CorePackages.Workspace.Packages.ProfilePlatform.useProfileJsonComponent)
+local ProfileWrapperContext = require(CorePackages.Workspace.Packages.ProfilePlatform.ProfileWrapperContext)
+local AvatarHeadshotComponent = require(CorePackages.Workspace.Packages.ProfilePlatform.AvatarHeadshotComponent)
+local SocialChipCountsRow = require(CorePackages.Workspace.Packages.ProfilePlatform.SocialChipCountsRow)
 
-local ProfilePlatform = require(CorePackages.Workspace.Packages.ProfilePlatform)
-local useProfileJsonComponent = ProfilePlatform.useProfileJsonComponent
-local ProfileWrapperContext = ProfilePlatform.ProfileWrapperContext
-local AvatarHeadshotComponent = ProfilePlatform.AvatarHeadshotComponent
-local SocialChipCountsRow = ProfilePlatform.SocialChipCountsRow
-
-local UniversalAppPolicy = require(CorePackages.Workspace.Packages.UniversalAppPolicy)
-local useAppPolicy = UniversalAppPolicy.useAppPolicy
-
-local FFlagFriendRequestNicknames = require(CorePackages.Workspace.Packages.SharedFlags).FFlagFriendRequestNicknames
-
-type ProfileWrapperContext = ProfilePlatform.ProfileWrapperContext
+type ProfileWrapperContext = ProfileWrapperContext.ProfileWrapperContext
 
 local formatPrimaryName = function(
 	profileInfoFromJson: any,
@@ -43,14 +37,10 @@ type ProfileHeaderProps = {
 local function ProfileHeader(props: ProfileHeaderProps)
 	local profileWrapperContext = React.useContext(ProfileWrapperContext)
 
-	local profileInfoFromJson = useProfileJsonComponent(ProfilePlatform.Components.UserProfileHeader)
+	local profileInfoFromJson = useProfileJsonComponent(ProfilePlatformEnums.Components.UserProfileHeader)
 	local shouldDisplayCounts = profileInfoFromJson.counts ~= nil
 
-	local friendRequestNicknamesEnabled = if FFlagFriendRequestNicknames
-		then useAppPolicy(function(appPolicy)
-			return appPolicy.getFriendRequestNicknamesEnabled()
-		end)
-		else false
+	local friendRequestNicknamesEnabled = false
 
 	return React.createElement(View, {
 		tag = "size-full-0 auto-y col gap-large",

@@ -4,6 +4,7 @@ local Packages = Foundation.Parent
 
 local React = require(Packages.React)
 local ContextStack = require(Packages.ReactUtils).ContextStack
+local Flags = require(Foundation.Utility.Flags)
 
 local CursorProvider = require(Providers.Cursor)
 local OverlayProvider = require(Providers.Overlay)
@@ -16,7 +17,7 @@ local StyleProvider = require(Providers.Style.StyleProvider)
 local Types = require(Foundation.Components.Types)
 local WidgetsProvider = require(Providers.StudioWidgets.WidgetsProvider)
 local ElevationProvider = require(Providers.Elevation.ElevationProvider).ElevationProvider
-local Flags = require(Foundation.Utility.Flags)
+local isPluginElevated = require(Providers.Plugin.isPluginElevated)
 
 type OverlayConfig = Types.OverlayConfig
 type StyleProps = StyleProvider.StyleProviderProps
@@ -31,10 +32,16 @@ export type FoundationProviderProps = {
 	plugin: Plugin?,
 } & StyleProps
 
+local EMPTY_TABLE = table.freeze({})
+
 local function FoundationProvider(props: FoundationProviderProps)
 	-- TODO: not any, children types acting weird
-	local preferences: any = if props.preferences then props.preferences else {}
-	local responsiveConfig = if props.responsiveConfig then props.responsiveConfig else {} :: ResponsiveConfig
+	local preferences: any = if props.preferences
+		then props.preferences
+		else (if Flags.FoundationProviderStableEmptyTable then EMPTY_TABLE else {})
+	local responsiveConfig = if props.responsiveConfig
+		then props.responsiveConfig
+		else (if Flags.FoundationProviderStableEmptyTable then EMPTY_TABLE else {}) :: ResponsiveConfig
 
 	local providers: { React.ReactElement } = {
 		React.createElement(PluginProvider, {
@@ -43,22 +50,25 @@ local function FoundationProvider(props: FoundationProviderProps)
 		React.createElement(ElevationProvider, nil),
 		React.createElement(PreferencesProvider, preferences),
 		React.createElement(StyleProvider, {
+			themeName = props.themeName,
+			colorMode = props.colorMode,
+			-- **Deprecated**. Use `colorMode` instead. Kept for backward compatibility.
 			theme = props.theme,
 			device = props.device,
 			derives = props.derives,
 			scale = preferences.scale,
+			tokenOverrides = props.tokenOverrides,
 		}),
 		React.createElement(ResponsiveProvider, { config = responsiveConfig }),
 		React.createElement(
 			OverlayProvider,
-			if Flags.FoundationOverlayDisplayOrder and typeof(props.overlayGui) == "table"
+			if typeof(props.overlayGui) == "table"
 				then { DisplayOrder = props.overlayGui.DisplayOrder }
 				else { gui = props.overlayGui }
 		),
 		React.createElement(CursorProvider),
 	}
-
-	if props.plugin and Flags.FoundationPopoverPluginSupport then
+	if props.plugin and isPluginElevated(props.plugin) then
 		table.insert(providers, React.createElement(WidgetsProvider, {}))
 		table.insert(providers, React.createElement(PanelsProvider, {}))
 	end

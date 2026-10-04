@@ -9,10 +9,10 @@ type DialogSize = DialogSize.DialogSize
 local composeStyleVariant = require(Foundation.Utility.composeStyleVariant)
 type VariantProps = composeStyleVariant.VariantProps
 
+local Flags = require(Foundation.Utility.Flags)
+
 local Tokens = require(Foundation.Providers.Style.Tokens)
 type Tokens = Tokens.Tokens
-
-local Flags = require(Foundation.Utility.Flags)
 
 local useTokens = require(Foundation.Providers.Style.useTokens)
 
@@ -56,23 +56,23 @@ local function variantsFactory(tokens: Tokens)
 			tag = "col align-x-center align-y-center size-full-full",
 		},
 		inner = {
-			tag = "shrink-1 size-full-0 auto-y clip bg-surface-100",
+			tag = if Flags.FoundationDialogBetaUpdate
+				then "shrink-1 size-full-0 auto-y clip bg-surface-100 stroke-default"
+				else "shrink-1 size-full-0 auto-y clip bg-surface-100",
 		},
 		body = {
-			tag = `col size-full auto-y padding-bottom-xlarge {if Flags.FoundationDialogBodyUpdate
-				then "gap-xlarge"
-				else ""}`,
+			tag = "col size-full auto-y padding-bottom-xlarge",
 		},
 		heroMediaWrapper = {
-			tag = "shrink position-top-center size-full-full auto-y",
+			tag = if Flags.FoundationDialogBetaUpdate
+				then "position-top-center size-full-full auto-y"
+				else "shrink position-top-center size-full-full auto-y",
 		},
 		title = {
 			tag = "size-full-0 auto-y",
 		},
 		titleText = {
-			tag = `size-full-0 auto-y text-wrap text-align-x-left {if Flags.FoundationDialogTitleEmphasisFix
-				then "content-emphasis"
-				else "content-emphasized"}`,
+			tag = "size-full-0 auto-y text-wrap text-align-x-left content-emphasis",
 		},
 		content = {
 			tag = "fill size-full auto-y",
@@ -92,16 +92,16 @@ local function variantsFactory(tokens: Tokens)
 			},
 			inner = {
 				maxWidth = DIALOG_SIZES[DialogSize.Small],
-				tag = "radius-medium",
+				tag = if Flags.FoundationDialogBetaUpdate then "radius-large" else "radius-medium",
 			},
 			body = {
-				tag = `padding-x-large {if Flags.FoundationDialogBodyUpdate then "" else "gap-large"}`,
+				tag = "gap-large padding-x-large",
 			},
 			closeAffordance = {
 				offset = tokens.Size.Size_300,
 			},
 			heroMedia = {
-				tag = "radius-medium",
+				tag = if Flags.FoundationDialogBetaUpdate then "radius-top-large" else "radius-top-medium",
 				offsetX = tokens.Padding.Large,
 			},
 			titleText = {
@@ -123,13 +123,13 @@ local function variantsFactory(tokens: Tokens)
 				tag = "radius-large",
 			},
 			body = {
-				tag = `padding-x-xlarge {if Flags.FoundationDialogBodyUpdate then "" else "gap-xlarge"}`,
+				tag = "gap-xlarge padding-x-xlarge",
 			},
 			closeAffordance = {
 				offset = tokens.Size.Size_400,
 			},
 			heroMedia = {
-				tag = "radius-large",
+				tag = "radius-top-large",
 				offsetX = tokens.Padding.XLarge,
 			},
 			titleText = {
@@ -151,13 +151,13 @@ local function variantsFactory(tokens: Tokens)
 				tag = "radius-large",
 			},
 			body = {
-				tag = `padding-x-xlarge {if Flags.FoundationDialogBodyUpdate then "" else "gap-xlarge"}`,
+				tag = "gap-xlarge padding-x-xlarge",
 			},
 			closeAffordance = {
 				offset = tokens.Size.Size_400,
 			},
 			heroMedia = {
-				tag = "radius-large",
+				tag = "radius-top-large",
 				offsetX = tokens.Padding.XLarge,
 			},
 			titleText = {

@@ -153,9 +153,10 @@ function IconButton:renderWithCursor(getCursor)
 			Size = UDim2.fromOffset(backgroundSize, backgroundSize),
 			Image = if not isNewTiltIconEnabled() then "rbxasset://textures/ui/TopBar/iconBase.png" else nil,
 			BackgroundColor3 = style.Theme.BackgroundUIContrast.Color,
-			SelectionImageObject = if isNewTiltIconEnabled() then 
-				getCursor.refCache[ICON_BUTTON_CURSOR]
-			else nil,
+			SelectionImageObject = if isNewTiltIconEnabled()
+				then 
+						getCursor.getCursor(ICON_BUTTON_CURSOR)
+				else nil,
 			NextSelectionRight = if ChromeEnabled and FFlagEnableConsoleExpControls then self.props.nextSelectionRightRef else nil :: never,
 			[Roact.Event.Activated] = self.props.onActivated,
 			[Roact.Event.SelectionChanged] = if ChromeEnabled and FFlagEnableConsoleExpControls then self.props.onSelectionChanged else nil,
@@ -231,7 +232,6 @@ function IconButton:renderWithCursor(getCursor)
 		})
 	end)
 end
-
 
 function IconButton:willUnmount()
 	if self.disposeUiScaleEffect then

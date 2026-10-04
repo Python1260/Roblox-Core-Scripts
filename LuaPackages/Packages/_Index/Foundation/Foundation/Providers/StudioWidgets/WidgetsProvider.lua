@@ -3,6 +3,7 @@ local Packages = Foundation.Parent
 
 local React = require(Packages.React)
 
+local Flags = require(Foundation.Utility.Flags)
 local StudioUri = require(Foundation.Utility.Plugin.StudioUri)
 local usePlugin = require(Foundation.Providers.Plugin.usePlugin)
 
@@ -42,15 +43,31 @@ local function WidgetsProvider(props: WidgetsProviderProps): React.ReactNode
 		manager:deregister(uri, gui)
 	end, { manager })
 
+	local refreshAsync = if Flags.FoundationPopoverPluginAnchorRefresh
+		then React.useCallback(function(uri: StudioUri): boolean
+			return manager:refreshAsync(uri)
+		end, { manager })
+		else nil :: never
+
 	local nextId = React.useCallback(function(): string
 		return manager:nextId()
 	end, { manager })
 
-	local value: WidgetsContext = {
-		register = register,
-		deregister = deregister,
-		nextId = nextId,
-	}
+	local value: WidgetsContext = if Flags.FoundationStableContextValues
+		then React.useMemo(function()
+			return {
+				register = register,
+				deregister = deregister,
+				refreshAsync = if Flags.FoundationPopoverPluginAnchorRefresh then refreshAsync else nil :: never,
+				nextId = nextId,
+			}
+		end, { register, deregister, refreshAsync, nextId } :: { unknown })
+		else {
+			register = register,
+			deregister = deregister,
+			refreshAsync = if Flags.FoundationPopoverPluginAnchorRefresh then refreshAsync else nil :: never,
+			nextId = nextId,
+		}
 
 	return React.createElement(WidgetsContext.Provider, {
 		value = value,
